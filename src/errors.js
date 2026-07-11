@@ -7,11 +7,12 @@ export class TrialNotFoundError extends Error {
 }
 
 export class TrialFetchError extends Error {
-    constructor(url, cause) {
+    constructor(url, cause, status) {
         super(`Failed to fetch: ${url}`);
         this.name = 'TrialFetchError';
         this.url = url;
         this.cause = cause;
+        this.status = status ?? null;
     }
 }
 
