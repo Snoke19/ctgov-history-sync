@@ -25,6 +25,21 @@ async function httpGet(url, timeoutMs) {
     return response;
 }
 
+export async function fetchTrials(from = 0, limit = 10) {
+    const url = new UrlBuilder(API_BASE_URL)
+        .queryParam('from', from)
+        .queryParam('limit', limit)
+        .build();
+
+    const response = await httpGet(url, FETCH_TIMEOUT_MS);
+
+    if (!response.ok) {
+        throw new TrialFetchError(url, new Error(`HTTP ${response.status}: ${response.statusText}`));
+    }
+
+    return await response.json();
+}
+
 export async function fetchTrial(code, params = {}) {
     const url = new UrlBuilder(API_BASE_URL)
         .path(code)

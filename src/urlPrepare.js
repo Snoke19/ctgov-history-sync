@@ -29,6 +29,7 @@ export class UrlBuilder {
     build() {
         const path = this.#segments.join('/');
         const qs = new URLSearchParams(this.#params).toString();
-        return `${this.#base}/${path}${qs ? `?${qs}` : ''}`;
+        const base = path ? `${this.#base}/${path}` : this.#base;
+        return `${base}${qs ? `?${qs}` : ''}`;
     }
 }

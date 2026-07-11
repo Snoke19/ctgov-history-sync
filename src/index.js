@@ -1,10 +1,12 @@
-import {fetchTrial} from './api.js';
+import {fetchTrial, fetchTrials} from './api.js';
 import {logger} from './logging.js';
 
 try {
-    const data = await fetchTrial('NCT07697053', {history: true});
+    const results = await fetchTrials();
 
-    logger.info(`Changes: ${data?.history?.changes?.length}`);
+    const data = await Promise.all(
+        results.hits.map(hit => fetchTrial(hit.id, {history: true}))
+    );
 
 } catch (err) {
     logger.error(`Error: ${err.message}`);
