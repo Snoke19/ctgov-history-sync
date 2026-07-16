@@ -6,6 +6,11 @@ import {acquireProxyDispatcher} from './readyIPs.js';
 
 export const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
+// Methods safe to retry automatically without risking duplicate side effects.
+// POST/PATCH are excluded by default — pass {idempotent: true} to override
+// for a specific call if you know the endpoint is safe to repeat.
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
+
 const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',
     'User-Agent': 'ClinicalTrialsScraper/1.0',
@@ -50,26 +55,41 @@ export function parseRetryAfterHeader(response) {
     return DEFAULT_RETRY_AFTER_MS;
 }
 
+function isIdempotent(method, override) {
+    if (typeof override === 'boolean') return override;
+    return IDEMPOTENT_METHODS.has(method.toUpperCase());
+}
+
 /**
- * Fires a single HTTP GET. Applies proxy dispatcher when configured.
+ * Fires a single HTTP request. Applies proxy dispatcher when configured.
  * `acquireProxyDispatcher` also paces the request against that proxy's
  * token bucket, so this call may await briefly instead of firing immediately.
- * Throws TrialTimeoutError when the request exceeds its timeout, or
- * TrialFetchError for other network error.
+ *
+ * Throws TrialTimeoutError on internal timeout, the original abort error
+ * unwrapped when the caller's own `options.signal` was cancelled (so it is
+ * never mistaken for a retryable failure), or TrialFetchError for any other
+ * network error.
  *
  * @param {string} url
  * @param {object} [options]
+ * @param {string} [options.method='GET']
+ * @param {BodyInit} [options.body]
  * @param {number} [options.timeoutMs]
  * @param {object} [options.headers]
+ * @param {AbortSignal} [options.signal] - external cancellation, combined with the internal timeout
  * @returns {Promise<Response>}
  */
 async function executeFetch(url, options = {}) {
     const proxyEntry = await acquireProxyDispatcher();
     const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const signal = options.signal ? AbortSignal.any([timeoutSignal, options.signal]) : timeoutSignal;
 
     const fetchOptions = {
-        signal: AbortSignal.timeout(timeoutMs),
+        signal,
         headers: {...DEFAULT_HEADERS, ...options.headers},
+        ...(options.method && {method: options.method}),
+        ...(options.body !== undefined && {body: options.body}),
         ...(proxyEntry?.dispatcher && {dispatcher: proxyEntry.dispatcher}),
     };
 
@@ -84,18 +104,24 @@ async function executeFetch(url, options = {}) {
             url, response.status, proxyEntry?.url ?? 'direct', durationMs
         );
 
-        return response
+        return response;
     } catch (error) {
         const durationMs = Math.round(performance.now() - startTime);
-        const isTimeout = error.name === 'AbortError' || error.name === 'TimeoutError';
+        const isTimeout = error.name === 'TimeoutError';
+        const isExternalAbort = !isTimeout && options.signal?.aborted;
 
         logger.warn(
             'Failed %s | Type: %s | Proxy: %s | Took: %dms | Error: %s',
-            url, isTimeout ? 'Timeout' : 'Network Error', proxyEntry?.url ?? 'direct', durationMs, error.message
+            url,
+            isTimeout ? 'Timeout' : isExternalAbort ? 'Cancelled' : 'Network Error',
+            proxyEntry?.url ?? 'direct', durationMs, error.message
         );
 
         if (isTimeout) {
             throw new TrialTimeoutError(url, timeoutMs);
+        }
+        if (isExternalAbort) {
+            throw error; // caller cancelled — propagate as-is, never retry this
         }
         throw new TrialFetchError(url, error, null, true);
     }
@@ -107,6 +133,10 @@ async function executeFetch(url, options = {}) {
  * to be either read or cancelled before the underlying connection is
  * returned to the pool — see https://undici.nodejs.org/ "Specification
  * Compliance". Swallow cancel errors: the body may already be closed.
+ *
+ * Kept private on purpose: every path in this module that receives a
+ * Response is responsible for calling this itself, so callers in other
+ * files never need to know it exists.
  *
  * @param {Response} response
  */
@@ -145,6 +175,7 @@ function buildRetryableError(url, response) {
 /**
  * Runs a single fetch attempt and classifies the outcome for the retry loop.
  * Never throws — failures are returned so the caller decides whether to retry.
+ * Guarantees the response body is drained on every retryable path.
  *
  * @param {string} url
  * @param {object} options
@@ -178,18 +209,25 @@ async function attemptFetch(url, options) {
 
 /**
  * Executes a fetch with automatic retries for transient failures.
- * Returns the raw Response on success.
- * Throws TrialFetchError after all retries are exhausted, or immediately on a
- * non-retryable failure.
+ * Returns the raw Response on success — kept internal (not exported) since
+ * every caller must be paired with body handling; `fetchJson` is the public
+ * entry point that guarantees this. Retries are skipped entirely for
+ * non-idempotent methods (POST/PATCH) unless `options.idempotent` is set.
+ *
+ * Throws TrialFetchError after all retries are exhausted, or immediately on
+ * a non-retryable failure.
  *
  * @param {string} url
  * @param {object} [options]
  * @param {number} [options.maxRetries]
  * @param {number} [options.timeoutMs]
+ * @param {boolean} [options.idempotent]
  * @returns {Promise<Response>}
  */
-export async function fetchWithRetry(url, options = {}) {
-    const maxRetries = options.maxRetries ?? MAX_RETRIES;
+async function fetchWithRetry(url, options = {}) {
+    const method = options.method ?? 'GET';
+    const canRetry = isIdempotent(method, options.idempotent);
+    const maxRetries = canRetry ? (options.maxRetries ?? MAX_RETRIES) : 0;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         const outcome = await attemptFetch(url, options);
@@ -206,19 +244,25 @@ export async function fetchWithRetry(url, options = {}) {
 }
 
 /**
- * Parses a JSON response.
- * Throws TrialFetchError for non-ok responses (other than 404 when allow404=true).
+ * Parses a JSON response. Guarantees the body is drained on every path,
+ * including the allow404 short-circuit and the 204 No Content case.
+ * Kept private — only reachable through `fetchJson`.
  *
  * @param {Response} response
  * @param {string}   url        - for error messages
  * @param {object}   [opts]
  * @param {boolean}  [opts.allow404=false]
- * @returns {Promise<object>}
+ * @returns {Promise<object|null>}
  */
-export async function parseJsonResponse(response, url, {allow404 = false} = {}) {
+async function parseJsonResponse(response, url, {allow404 = false} = {}) {
     if (allow404 && response.status === 404) {
         await drainBody(response);
         return null; // caller decides what to do
+    }
+
+    if (response.status === 204) {
+        await drainBody(response); // no content by definition, but be defensive
+        return null;
     }
 
     if (!response.ok) {
@@ -246,4 +290,27 @@ export async function parseJsonResponse(response, url, {allow404 = false} = {}) 
             false,
         );
     }
+}
+
+/**
+ * Fetches a URL and returns parsed JSON, with retry/backoff and rate-limit
+ * pacing baked in. This is the only function this module exports for making
+ * requests — it always fully consumes or cancels the response body, so
+ * calling code never has to think about connection cleanup.
+ *
+ * @param {string} url
+ * @param {object} [options]
+ * @param {string} [requestOptions.method='GET']
+ * @param {BodyInit} [requestOptions.body]
+ * @param {object} [requestOptions.headers]
+ * @param {number} [requestOptions.timeoutMs]
+ * @param {number} [requestOptions.maxRetries]
+ * @param {boolean} [requestOptions.idempotent]      - force retry on/off regardless of method
+ * @param {boolean} [options.allow404=false]  - return null instead of throwing on 404
+ * @param {AbortSignal} [requestOptions.signal]      - external cancellation
+ * @returns {Promise<object|null>}
+ */
+export async function fetchJson(url, {allow404 = false, ...requestOptions} = {}) {
+    const response = await fetchWithRetry(url, requestOptions);
+    return parseJsonResponse(response, url, {allow404});
 }

@@ -2,8 +2,6 @@ import {beforeEach, describe, test} from '@jest/globals';
 import assert from 'node:assert/strict';
 import {MockAgent, setGlobalDispatcher} from 'undici';
 
-// ─── Setup ────────────────────────────────────────────────────────────────────
-
 let mockAgent;
 
 beforeEach(() => {
@@ -11,8 +9,6 @@ beforeEach(() => {
     mockAgent.disableNetConnect();
     setGlobalDispatcher(mockAgent);
 });
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function intercept({origin, path, method = 'GET', times = 1, status, body, headers = {}, delay}) {
     const isObject = typeof body === 'object' && body !== null;
@@ -31,19 +27,14 @@ function intercept({origin, path, method = 'GET', times = 1, status, body, heade
     interceptor.times(times);
 }
 
-// ─── Module under test ────────────────────────────────────────────────────────
-
 const {
-    fetchWithRetry,
-    parseJsonResponse,
+    fetchJson,
     calculateBackoff,
     parseRetryAfterHeader,
     RETRYABLE_STATUS_CODES,
 } = await import('../src/http/httpClient.js');
 
 const ORIGIN = 'http://test.local';
-
-// ─── RETRYABLE_STATUS_CODES ────────────────────────────────────────────────────
 
 describe('RETRYABLE_STATUS_CODES', () => {
     test('includes the standard transient statuses and excludes client error', () => {
@@ -54,8 +45,6 @@ describe('RETRYABLE_STATUS_CODES', () => {
         assert.ok(!RETRYABLE_STATUS_CODES.has(404));
     });
 });
-
-// ─── calculateBackoff ─────────────────────────────────────────────────────────
 
 describe('calculateBackoff', () => {
     test('prioritises a positive retryAfterMs over exponential backoff', () => {
@@ -75,8 +64,6 @@ describe('calculateBackoff', () => {
         assert.ok(calculateBackoff(20) <= 30_000);
     });
 });
-
-// ─── parseRetryAfterHeader ────────────────────────────────────────────────────
 
 describe('parseRetryAfterHeader', () => {
     test('returns null when the header is absent', () => {
@@ -103,38 +90,60 @@ describe('parseRetryAfterHeader', () => {
     });
 });
 
-// ─── fetchWithRetry ───────────────────────────────────────────────────────────
-
-describe('fetchWithRetry', () => {
-    test('returns the response on the first success', async () => {
+describe('fetchJson', () => {
+    test('returns parsed JSON on success', async () => {
         intercept({origin: ORIGIN, path: '/ok', status: 200, body: {ok: true}});
 
-        const response = await fetchWithRetry(`${ORIGIN}/ok`);
-        assert.equal(response.status, 200);
+        const data = await fetchJson(`${ORIGIN}/ok`);
+        assert.deepEqual(data, {ok: true});
     });
 
     test('retries a retryable status and eventually succeeds', async () => {
         intercept({origin: ORIGIN, path: '/flaky', status: 503, body: 'busy', times: 1});
         intercept({origin: ORIGIN, path: '/flaky', status: 200, body: {ok: true}, times: 1});
 
-        const response = await fetchWithRetry(`${ORIGIN}/flaky`, {maxRetries: 2});
-        assert.equal(response.status, 200);
+        const data = await fetchJson(`${ORIGIN}/flaky`, {maxRetries: 2});
+        assert.deepEqual(data, {ok: true});
         mockAgent.assertNoPendingInterceptors();
     });
 
-    test('passes through a non-retryable status response without retrying', async () => {
+    test('throws a transient TrialFetchError after exhausting retries on a retryable status', async () => {
+        // maxRetries: 2 means 1 initial attempt + 2 retries = 3 total requests
+        intercept({origin: ORIGIN, path: '/fail', status: 500, body: 'error', times: 3});
+
+        await assert.rejects(
+            () => fetchJson(`${ORIGIN}/fail`, {maxRetries: 2}),
+            (err) => {
+                assert.equal(err.name, 'TrialFetchError');
+                assert.equal(err.status, 500);
+                assert.equal(err.isTransient, true);
+                return true;
+            },
+        );
+        mockAgent.assertNoPendingInterceptors();
+    });
+
+    test('throws a non-transient TrialFetchError immediately on a non-retryable status', async () => {
         intercept({origin: ORIGIN, path: '/bad', status: 400, body: 'nope', times: 1});
 
-        const response = await fetchWithRetry(`${ORIGIN}/bad`, {maxRetries: 3});
-        assert.equal(response.status, 400);
+        await assert.rejects(
+            () => fetchJson(`${ORIGIN}/bad`, {maxRetries: 3}),
+            (err) => {
+                assert.equal(err.name, 'TrialFetchError');
+                assert.equal(err.status, 400);
+                assert.equal(err.isTransient, false);
+                assert.match(err.cause.message, /HTTP 400/);
+                return true;
+            },
+        );
         mockAgent.assertNoPendingInterceptors();
     });
 
-    test('wraps a response that exceeds timeoutMs as TrialTimeoutError', async () => {
+    test('wraps a request that exceeds timeoutMs in a TrialTimeoutError', async () => {
         intercept({origin: ORIGIN, path: '/slow', status: 200, body: {ok: true}, delay: 200});
 
         await assert.rejects(
-            () => fetchWithRetry(`${ORIGIN}/slow`, {timeoutMs: 20, maxRetries: 0}),
+            () => fetchJson(`${ORIGIN}/slow`, {timeoutMs: 20, maxRetries: 0}),
             (err) => {
                 assert.equal(err.name, 'TrialTimeoutError');
                 assert.equal(err.url, `${ORIGIN}/slow`);
@@ -143,63 +152,32 @@ describe('fetchWithRetry', () => {
             },
         );
     });
-});
-
-// ─── parseJsonResponse ────────────────────────────────────────────────────────
-
-describe('parseJsonResponse', () => {
-    test('parses a valid JSON body', async () => {
-        const response = new Response(JSON.stringify({a: 1}), {
-            status: 200,
-            headers: {'Content-Type': 'application/json'},
-        });
-
-        const data = await parseJsonResponse(response, `${ORIGIN}/x`);
-        assert.equal(JSON.stringify(data), JSON.stringify({a: 1}));
-    });
 
     test('returns null on 404 when allow404 is true', async () => {
-        const response = new Response(null, {status: 404});
-        const data = await parseJsonResponse(response, `${ORIGIN}/x`, {allow404: true});
+        intercept({origin: ORIGIN, path: '/missing', status: 404, body: 'Not Found'});
+
+        const data = await fetchJson(`${ORIGIN}/missing`, {allow404: true});
         assert.equal(data, null);
     });
 
-    test('throws a transient TrialFetchError on a retryable non-ok status', async () => {
-        const response = new Response('Internal Server Error', {status: 500});
+    test('returns null on 204 No Content', async () => {
+        intercept({origin: ORIGIN, path: '/empty', status: 204, body: ''});
 
-        await assert.rejects(
-            () => parseJsonResponse(response, `${ORIGIN}/x`),
-            (err) => {
-                assert.equal(err.name, 'TrialFetchError');
-                assert.equal(err.status, 500);
-                assert.equal(err.isTransient, true);
-                return true;
-            },
-        );
-    });
-
-    test('throws a non-transient TrialFetchError on a non-retryable non-ok status', async () => {
-        const response = new Response('Bad Request', {status: 400});
-
-        await assert.rejects(
-            () => parseJsonResponse(response, `${ORIGIN}/x`),
-            (err) => {
-                assert.equal(err.name, 'TrialFetchError');
-                assert.equal(err.status, 400);
-                assert.equal(err.isTransient, false);
-                return true;
-            },
-        );
+        const data = await fetchJson(`${ORIGIN}/empty`);
+        assert.equal(data, null);
     });
 
     test('throws a non-transient TrialFetchError on malformed JSON', async () => {
-        const response = new Response('{not valid json', {
+        intercept({
+            origin: ORIGIN,
+            path: '/bad-json',
             status: 200,
-            headers: {'Content-Type': 'application/json'},
+            body: '{not valid json',
+            headers: {'Content-Type': 'application/json'}
         });
 
         await assert.rejects(
-            () => parseJsonResponse(response, `${ORIGIN}/x`),
+            () => fetchJson(`${ORIGIN}/bad-json`),
             (err) => {
                 assert.equal(err.name, 'TrialFetchError');
                 assert.equal(err.isTransient, false);
