@@ -3,7 +3,7 @@ import assert from 'node:assert';
 
 describe('logging.js', () => {
     test('should export logger', async () => {
-        const { logger } = await import('../src/logging.js');
+        const { logger } = await import('../src/config/logging.js');
         assert.ok(logger);
         assert.strictEqual(typeof logger.info, 'function');
         assert.strictEqual(typeof logger.error, 'function');
@@ -12,7 +12,7 @@ describe('logging.js', () => {
     });
 
     test('should be configured with correct service name', async () => {
-        const { logger } = await import('../src/logging.js');
+        const { logger } = await import('../src/config/logging.js');
         // Pino logger stores config internally, we test by checking it doesn't throw
         assert.doesNotThrow(() => {
             logger.info('test');
@@ -20,7 +20,7 @@ describe('logging.js', () => {
     });
 
     test('should not throw when logging messages', async () => {
-        const { logger } = await import('../src/logging.js');
+        const { logger } = await import('../src/config/logging.js');
 
         assert.doesNotThrow(() => {
             logger.info('Test info message');

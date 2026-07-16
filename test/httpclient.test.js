@@ -39,14 +39,14 @@ const {
     calculateBackoff,
     parseRetryAfterHeader,
     RETRYABLE_STATUS_CODES,
-} = await import('../src/httpClient.js');
+} = await import('../src/http/httpClient.js');
 
 const ORIGIN = 'http://test.local';
 
 // ─── RETRYABLE_STATUS_CODES ────────────────────────────────────────────────────
 
 describe('RETRYABLE_STATUS_CODES', () => {
-    test('includes the standard transient statuses and excludes client errors', () => {
+    test('includes the standard transient statuses and excludes client error', () => {
         for (const code of [408, 429, 500, 502, 503, 504]) {
             assert.ok(RETRYABLE_STATUS_CODES.has(code), `expected ${code} to be retryable`);
         }
@@ -97,7 +97,7 @@ describe('parseRetryAfterHeader', () => {
     });
 
     test('falls back to the default when the header is unparseable', async () => {
-        const {DEFAULT_RETRY_AFTER_MS} = await import('../src/config.js');
+        const {DEFAULT_RETRY_AFTER_MS} = await import('../src/config/config.js');
         const response = new Response(null, {headers: {'Retry-After': 'not-a-date'}});
         assert.equal(parseRetryAfterHeader(response), DEFAULT_RETRY_AFTER_MS);
     });

@@ -1,6 +1,6 @@
-import {API_BASE_URL, API_DETAIL_URL} from './config.js';
+import {API_BASE_URL, API_DETAIL_URL} from '../config/config.js';
 import {UrlBuilder} from './urlPrepare.js';
-import {TrialNotFoundError, TrialValidationError} from './errors.js';
+import {TrialNotFoundError, TrialValidationError} from '../error/errors.js';
 import {fetchWithRetry, parseJsonResponse} from './httpClient.js';
 
 export async function fetchStudiesPage({pageSize, pageToken, fields} = {}) {

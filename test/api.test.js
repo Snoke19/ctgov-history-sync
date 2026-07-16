@@ -32,8 +32,8 @@ function intercept({origin, path, method = 'GET', times = 1, status, body, heade
 // ─── Module under test ────────────────────────────────────────────────────────
 
 // Import config so our mocks dynamically match whatever is in .env
-const {API_BASE_URL, API_DETAIL_URL} = await import('../src/config.js');
-const {fetchTrialDetail, fetchStudiesPage} = await import('../src/api.js');
+const {API_BASE_URL, API_DETAIL_URL} = await import('../src/config/config.js');
+const {fetchTrialDetail, fetchStudiesPage} = await import('../src/http/api.js');
 
 const NCT_ID = 'NCT07697053';
 
@@ -86,7 +86,7 @@ describe('fetchTrialDetail', () => {
         });
     });
 
-    describe('non-ok HTTP errors', () => {
+    describe('non-ok HTTP error', () => {
         test('throws TrialFetchError on 500 after all retries exhausted', async () => {
             intercept({
                 origin: ORIGIN_DETAIL,

@@ -1,7 +1,7 @@
-import {fetchStudiesPage, fetchTrialDetail} from './api.js';
-import {logger} from './logging.js';
-import {TrialFetchError, TrialNotFoundError, TrialTimeoutError} from './errors.js';
-import {CONCURRENCY, PAGE_SIZE} from './config.js';
+import {fetchStudiesPage, fetchTrialDetail} from './http/api.js';
+import {logger} from './config/logging.js';
+import {TrialFetchError, TrialNotFoundError, TrialTimeoutError} from './error/errors.js';
+import {PAGE_SIZE} from './config/config.js';
 
 const FETCH_DETAILS = process.env.FETCH_DETAILS !== 'false'; // default: true
 
@@ -44,52 +44,38 @@ let pagesDone = 0;
 
 try {
     logger.info('Fetching first page to discover total study count...');
-    const firstPage = await fetchStudiesPage({
+    const firstPage1 = await fetchStudiesPage({
         pageSize: PAGE_SIZE,
     });
+
+    const firstPage2 = await fetchStudiesPage({
+        pageSize: PAGE_SIZE,
+    });
+
+    const firstPage3 = await fetchStudiesPage({
+        pageSize: PAGE_SIZE,
+    });
+
+    const firstPage4 = await fetchStudiesPage({
+        pageSize: PAGE_SIZE,
+    });
+
+    const firstPage5 = await fetchStudiesPage({
+        pageSize: PAGE_SIZE,
+    });
+
+    const firstPage6 = await fetchStudiesPage({
+        pageSize: PAGE_SIZE,
+    });
+
+    console.log("firstPage: " + firstPage.totalCount)
 
     const total = firstPage.totalCount ?? 0;
     logger.info(`Total studies: ${total.toString()}`);
 
-    let pageToken = firstPage.nextPageToken;
-    let currentStudies = firstPage.studies ?? [];
-    let pageNum = 1;
 
-    while (true) {
-        logger.info(`Processing page ${pageNum} (${currentStudies.length} studies, pageToken=${pageToken ?? 'none'})...`);
 
-        let records;
 
-        if (FETCH_DETAILS) {
-            // Fan out CONCURRENCY workers to fetch per-trial detail
-            const nctIds = currentStudies.map(s => s.protocolSection?.identificationModule?.nctId).filter(Boolean);
-            const details = await withConcurrency(nctIds, CONCURRENCY, (nctId) =>
-                fetchTrialSafe(nctId)
-            );
-            records = details.filter(Boolean);
-        } else {
-            records = currentStudies;
-        }
-
-        const failed = currentStudies.length - records.length;
-
-        pagesDone = pageNum;
-
-        logger.info(`Page ${pageNum} done: ${records.length} written, ${failed} failed `);
-
-        if (!pageToken) break;
-
-        const nextPage = await fetchStudiesPage({
-            pageSize: PAGE_SIZE,
-            pageToken,
-        });
-
-        pageToken = nextPage.nextPageToken;
-        currentStudies = nextPage.studies ?? [];
-        pageNum++;
-
-        if (!currentStudies.length) break;
-    }
 } catch (err) {
     if (err instanceof TrialFetchError) {
         const status = err.status ? ` [HTTP ${err.status}]` : '';

@@ -1,6 +1,6 @@
-import {logger} from './logging.js';
-import {DEFAULT_RETRY_AFTER_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS,} from './config.js';
-import {TrialFetchError, TrialTimeoutError} from './errors.js';
+import {logger} from '../config/logging.js';
+import {DEFAULT_RETRY_AFTER_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS,} from '../config/config.js';
+import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
 import {fetch} from 'undici';
 import {getRandomProxyDispatcher} from './readyIPs.js';
 
@@ -59,7 +59,7 @@ export function parseRetryAfterHeader(response) {
 /**
  * Fires a single HTTP GET. Applies proxy dispatcher when configured.
  * Throws TrialTimeoutError when the request exceeds its timeout, or
- * TrialFetchError for other network errors.
+ * TrialFetchError for other network error.
  *
  * @param {string} url
  * @param {object} [options]
@@ -77,12 +77,28 @@ async function executeFetch(url, options = {}) {
         ...(proxyEntry?.dispatcher && {dispatcher: proxyEntry.dispatcher}),
     };
 
-    logger.debug('Fetching URL: %s | Proxy: %s', url, proxyEntry?.url ?? 'direct');
+    const startTime = performance.now();
 
     try {
-        return await fetch(url, fetchOptions);
+        const response = await fetch(url, fetchOptions);
+        const durationMs = Math.round(performance.now() - startTime);
+
+        logger.debug(
+            'Fetched %s | Status: %d | Proxy: %s | Took: %dms',
+            url, response.status, proxyEntry?.url ?? 'direct', durationMs
+        );
+
+        return response
     } catch (error) {
-        if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+        const durationMs = Math.round(performance.now() - startTime);
+        const isTimeout = error.name === 'AbortError' || error.name === 'TimeoutError';
+
+        logger.warn(
+            'Failed %s | Type: %s | Proxy: %s | Took: %dms | Error: %s',
+            url, isTimeout ? 'Timeout' : 'Network Error', proxyEntry?.url ?? 'direct', durationMs, error.message
+        );
+
+        if (isTimeout) {
             throw new TrialTimeoutError(url, timeoutMs);
         }
         throw new TrialFetchError(url, error, null, true);

@@ -1,8 +1,19 @@
-import {ProxyAgent} from 'undici';
+import {Pool, ProxyAgent} from 'undici';
 
-const raw = process.env.PROXY_IP ?? '';
+const raw = []
 
-const proxyAgents = (process.env.NODE_ENV === 'test' || !raw) ? [] : raw
+const poolFactory = (url, opts) => {
+    return new Pool(url, {
+        ...opts,
+        connections: 5,
+        pipelining: 1,
+        keepAliveTimeout: 60_000,
+        headersTimeout: 10_000,
+        bodyTimeout: 30_000,
+    });
+};
+
+const proxyAgents = (process.env.NODE_ENV === 'test' || !raw || raw.length === 0) ? [] : raw
     .split(',')
     .map(url => url.trim())
     .filter(url => url.startsWith('http'))
@@ -10,11 +21,7 @@ const proxyAgents = (process.env.NODE_ENV === 'test' || !raw) ? [] : raw
         url,
         dispatcher: new ProxyAgent({
             uri: url,
-            connections: 5,
-            pipelining: 1,
-            keepAliveTimeout: 60_000,
-            headersTimeout: 10_000,
-            bodyTimeout: 30_000,
+            clientFactory: poolFactory,
         }),
     }));
 
