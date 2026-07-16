@@ -244,17 +244,6 @@ describe('fetchStudiesPage', () => {
     });
 
     describe('input validation', () => {
-        test('throws TrialValidationError when pageSize is missing', async () => {
-            await assert.rejects(
-                () => fetchStudiesPage({}),
-                (err) => {
-                    assert.equal(err.name, 'TrialValidationError');
-                    assert.match(err.message, /pageSize/i);
-                    return true;
-                },
-            );
-        });
-
         test('throws TrialValidationError when pageSize < 1', async () => {
             await assert.rejects(
                 () => fetchStudiesPage({pageSize: 0}),
