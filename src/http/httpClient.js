@@ -174,10 +174,7 @@ export async function fetchWithRetry(url, options = {}) {
         if (!outcome.retryable || isLastAttempt) throw outcome.error;
 
         const delay = calculateBackoff(attempt, outcome.error.retryAfterMs);
-        logger.warn(
-            '%s — retrying in %dms (attempt %d/%d) | %s',
-            outcome.reason, Math.round(delay), attempt + 1, maxRetries, url,
-        );
+        logger.warn('%s - retrying in %dms (attempt %d/%d) | %s', outcome.reason, Math.round(delay), attempt + 1, maxRetries, url);
         await sleep(delay);
     }
 }

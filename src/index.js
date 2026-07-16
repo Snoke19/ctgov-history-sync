@@ -1,9 +1,50 @@
 import {fetchStudiesPage, fetchTrialDetail} from './http/api.js';
+import {CONCURRENCY, PAGE_SIZE} from './config/config.js';
 import {logger} from './config/logging.js';
 import {TrialFetchError, TrialNotFoundError, TrialTimeoutError} from './error/errors.js';
-import {PAGE_SIZE} from './config/config.js';
 
-const FETCH_DETAILS = process.env.FETCH_DETAILS !== 'false'; // default: true
+try {
+    logger.info(`Settings: CONCURRENCY=${CONCURRENCY}, PAGE_SIZE=${PAGE_SIZE}`);
+    logger.info('Fetching first page to discover total study count…');
+    const firstPage = await fetchStudiesPage({pageSize: PAGE_SIZE});
+
+    const total = firstPage.totalCount ?? 0;
+    logger.info(`Total studies: ${total.toString()}`);
+
+    let pageToken = firstPage.nextPageToken;
+    let currentStudies = firstPage.studies ?? [];
+    let pageNum = 1;
+
+    while (true) {
+        logger.info(`Processing page ${pageNum} (${currentStudies.length} studies, pageToken=${pageToken ?? 'none'})…`);
+
+        const nctIds = currentStudies.map(s => s.protocolSection?.identificationModule?.nctId).filter(Boolean);
+        const details = await withConcurrency(nctIds, CONCURRENCY, (nctId) => fetchTrialSafe(nctId));
+
+        logger.info(`Fetched items: ${details.length}`)
+
+        if (!pageToken) break;
+
+        const nextPage = await fetchStudiesPage({pageSize: PAGE_SIZE, pageToken});
+
+        pageToken = nextPage.nextPageToken;
+        currentStudies = nextPage.studies ?? [];
+        pageNum++;
+
+        if (!currentStudies.length) break;
+    }
+
+    logger.info(`✓ Complete:`);
+} catch (err) {
+    if (err instanceof TrialFetchError) {
+        const status = err.status ? ` [HTTP ${err.status}]` : '';
+        logger.error(`Fetch error${status}: ${err.url} — ${err.cause?.message ?? ''}`);
+    } else {
+        logger.error(`Unexpected error: ${err.message}`);
+        logger.error(err.stack);
+    }
+    process.exit(1);
+}
 
 async function withConcurrency(items, limit, fn) {
     const results = new Array(items.length);
@@ -38,50 +79,4 @@ async function fetchTrialSafe(nctId) {
         }
         throw err;
     }
-}
-
-let pagesDone = 0;
-
-try {
-    logger.info('Fetching first page to discover total study count...');
-    const firstPage1 = await fetchStudiesPage({
-        pageSize: PAGE_SIZE,
-    });
-
-    const firstPage2 = await fetchStudiesPage({
-        pageSize: PAGE_SIZE,
-    });
-
-    const firstPage3 = await fetchStudiesPage({
-        pageSize: PAGE_SIZE,
-    });
-
-    const firstPage4 = await fetchStudiesPage({
-        pageSize: PAGE_SIZE,
-    });
-
-    const firstPage5 = await fetchStudiesPage({
-        pageSize: PAGE_SIZE,
-    });
-
-    const firstPage6 = await fetchStudiesPage({
-        pageSize: PAGE_SIZE,
-    });
-
-    console.log("firstPage: " + firstPage.totalCount)
-
-    const total = firstPage.totalCount ?? 0;
-    logger.info(`Total studies: ${total.toString()}`);
-
-
-
-
-} catch (err) {
-    if (err instanceof TrialFetchError) {
-        const status = err.status ? ` [HTTP ${err.status}]` : '';
-        logger.error(`Fetch error${status}: ${err.url} — ${err.cause?.message ?? ''}`);
-    } else {
-        logger.error(`Unexpected: ${err.message}`);
-    }
-    process.exit(1);
 }
