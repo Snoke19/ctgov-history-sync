@@ -6,7 +6,11 @@ import {TrialFetchError, TrialNotFoundError, TrialTimeoutError} from './error/er
 try {
     logger.info(`Settings: CONCURRENCY=${CONCURRENCY}, PAGE_SIZE=${PAGE_SIZE}`);
     logger.info('Fetching first page to discover total study count…');
-    const firstPage = await fetchStudiesPage({pageSize: PAGE_SIZE});
+    const firstPage = await fetchStudiesPage({
+        pageSize: PAGE_SIZE,
+        countTotal: true,
+        'query.term': 'AREA[StartDate]RANGE[03/16/2026, 07/18/2026]'
+    });
 
     const total = firstPage.totalCount ?? 0;
     logger.info(`Total studies: ${total.toString()}`);
@@ -16,7 +20,7 @@ try {
     let pageNum = 1;
 
     while (true) {
-        logger.info(`Processing page ${pageNum} (${currentStudies.length} studies, pageToken=${pageToken ?? 'none'})…`);
+        logger.info(`Processing page ${pageNum} (${currentStudies.length} studies, pageToken=${pageToken ?? 'none'})...`);
 
         const nctIds = currentStudies.map(s => s.protocolSection?.identificationModule?.nctId).filter(Boolean);
         const details = await withConcurrency(nctIds, CONCURRENCY, (nctId) => fetchTrialSafe(nctId));

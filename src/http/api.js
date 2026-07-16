@@ -2,17 +2,19 @@ import {API_BASE_URL, API_DETAIL_URL} from '../config/config.js';
 import {UrlBuilder} from './urlPrepare.js';
 import {TrialNotFoundError, TrialValidationError} from '../error/errors.js';
 import {fetchWithRetry, parseJsonResponse} from './httpClient.js';
+import {cleanParams} from "./cleanParams.js";
+import {validateGeoDecay, validateGeoFilter, validatePageSize} from "../validators.js";
 
-export async function fetchStudiesPage({pageSize, pageToken, fields} = {}) {
-    if (!pageSize || pageSize < 1) {
-        throw new TrialValidationError('pageSize must be a positive integer');
-    }
+export async function fetchStudiesPage(params = {pageSize: 10}) {
+    const cleaned = cleanParams(params);
+
+    if ('pageSize' in cleaned) validatePageSize(cleaned.pageSize);
+    if (cleaned['filter.geo']) validateGeoFilter(cleaned['filter.geo'], 'filter.geo');
+    if (cleaned['postFilter.geo']) validateGeoFilter(cleaned['postFilter.geo'], 'postFilter.geo');
+    if (cleaned['geoDecay']) validateGeoDecay(cleaned['geoDecay']);
 
     const url = new UrlBuilder(API_BASE_URL)
-        .queryParam('pageSize', pageSize)
-        .queryParam('countTotal', 'true')
-        .queryParam('pageToken', pageToken)
-        .queryParam('fields', fields?.join(','))
+        .queryParams(cleaned)
         .build();
 
     const response = await fetchWithRetry(url);

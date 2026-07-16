@@ -238,7 +238,7 @@ describe('fetchStudiesPage', () => {
                 body: payload,
             });
 
-            const data = await fetchStudiesPage({pageSize: 10});
+            const data = await fetchStudiesPage({pageSize: 10, countTotal: true});
             assert.deepEqual(data, payload);
         });
     });
@@ -275,7 +275,7 @@ describe('fetchStudiesPage', () => {
                 body: {studies: []},
             });
 
-            await fetchStudiesPage({pageSize: 25});
+            await fetchStudiesPage({pageSize: 25, countTotal: true});
             mockAgent.assertNoPendingInterceptors();
         });
 
@@ -287,7 +287,7 @@ describe('fetchStudiesPage', () => {
                 body: {studies: []},
             });
 
-            await fetchStudiesPage({pageSize: 10, pageToken: 'token123'});
+            await fetchStudiesPage({pageSize: 10, countTotal: true, pageToken: 'token123'});
             mockAgent.assertNoPendingInterceptors();
         });
 
@@ -299,7 +299,7 @@ describe('fetchStudiesPage', () => {
                 body: {studies: []},
             });
 
-            await fetchStudiesPage({pageSize: 10, fields: ['NCTId', 'Title', 'Status']});
+            await fetchStudiesPage({pageSize: 10, countTotal: true, fields: ['NCTId', 'Title', 'Status']});
             mockAgent.assertNoPendingInterceptors();
         });
 
@@ -311,7 +311,7 @@ describe('fetchStudiesPage', () => {
                 body: {studies: []},
             });
 
-            await fetchStudiesPage({pageSize: 10});
+            await fetchStudiesPage({pageSize: 10, countTotal: true});
             mockAgent.assertNoPendingInterceptors();
         });
     });
@@ -332,7 +332,7 @@ describe('fetchStudiesPage', () => {
                 body: {studies: []},
             });
 
-            const data = await fetchStudiesPage({pageSize: 10});
+            const data = await fetchStudiesPage({pageSize: 10, countTotal: true});
             assert.deepEqual(data, {studies: []});
             mockAgent.assertNoPendingInterceptors();
         });
@@ -347,7 +347,7 @@ describe('fetchStudiesPage', () => {
             });
 
             await assert.rejects(
-                () => fetchStudiesPage({pageSize: 10}),
+                () => fetchStudiesPage({pageSize: 10, countTotal: true}),
                 (err) => {
                     assert.equal(err.name, 'TrialFetchError'); // Replaced instanceof
                     assert.equal(err.status, 503);
