@@ -5,8 +5,8 @@
     "main": "index.js",
     "scripts": {
         "start": "node --env-file=.env src/index.js",
-        "test": "node --env-file=.env --test",
-        "test:watch": "node --env-file=.env --test --watch"
+        "test": "node --env-file=.env.test --experimental-vm-modules node_modules/jest/bin/jest.js",
+        "test:watch": "node --env-file=.env.test --experimental-vm-modules node_modules/jest/bin/jest.js --watch"
     },
     "keywords": [],
     "author": "",
@@ -17,6 +17,8 @@
         "undici": "^8.7.0"
     },
     "devDependencies": {
+        "@jest/globals": "^30.4.1",
+        "jest": "^30.4.2",
         "pino-pretty": "^13.1.3"
     }
 }

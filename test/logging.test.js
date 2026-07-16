@@ -1,4 +1,4 @@
-import {describe, test} from 'node:test';
+import {describe, test} from '@jest/globals';
 import assert from 'node:assert';
 
 describe('logging.js', () => {
