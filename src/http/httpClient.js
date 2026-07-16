@@ -2,9 +2,7 @@ import {logger} from '../config/logging.js';
 import {DEFAULT_RETRY_AFTER_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS,} from '../config/config.js';
 import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
 import {fetch} from 'undici';
-import {getRandomProxyDispatcher} from './readyIPs.js';
-
-// ─── Constants ────────────────────────────────────────────────────────────────
+import {acquireProxyDispatcher} from './readyIPs.js';
 
 export const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -12,8 +10,6 @@ const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',
     'User-Agent': 'ClinicalTrialsScraper/1.0',
 });
-
-// ─── Backoff / retry-after helpers ─────────────────────────────────────────────
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -54,10 +50,10 @@ export function parseRetryAfterHeader(response) {
     return DEFAULT_RETRY_AFTER_MS;
 }
 
-// ─── Low-level fetch ────────────────────────────────────────────────────────────
-
 /**
  * Fires a single HTTP GET. Applies proxy dispatcher when configured.
+ * `acquireProxyDispatcher` also paces the request against that proxy's
+ * token bucket, so this call may await briefly instead of firing immediately.
  * Throws TrialTimeoutError when the request exceeds its timeout, or
  * TrialFetchError for other network error.
  *
@@ -68,7 +64,7 @@ export function parseRetryAfterHeader(response) {
  * @returns {Promise<Response>}
  */
 async function executeFetch(url, options = {}) {
-    const proxyEntry = getRandomProxyDispatcher();
+    const proxyEntry = await acquireProxyDispatcher();
     const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
 
     const fetchOptions = {
@@ -105,7 +101,46 @@ async function executeFetch(url, options = {}) {
     }
 }
 
-// ─── Retry orchestration ────────────────────────────────────────────────────────
+/**
+ * Safely discards a response body that will never be consumed downstream.
+ * Undici (and Node's built-in fetch, which runs on Undici) requires the body
+ * to be either read or cancelled before the underlying connection is
+ * returned to the pool — see https://undici.nodejs.org/ "Specification
+ * Compliance". Swallow cancel errors: the body may already be closed.
+ *
+ * @param {Response} response
+ */
+async function drainBody(response) {
+    try {
+        await response.body?.cancel();
+    } catch {
+        // already closed/errored — nothing to do
+    }
+}
+
+/**
+ * Builds the TrialFetchError for a retryable HTTP status, attaching a
+ * Retry-After hint (429 only) for calculateBackoff to prioritize.
+ *
+ * @param {string} url
+ * @param {Response} response
+ * @returns {TrialFetchError}
+ */
+function buildRetryableError(url, response) {
+    const retryAfterMs = response.status === 429
+        ? (parseRetryAfterHeader(response) ?? DEFAULT_RETRY_AFTER_MS)
+        : null;
+
+    const error = new TrialFetchError(
+        url,
+        new Error(`HTTP ${response.status}: ${response.statusText}`),
+        response.status,
+        true,
+    );
+    error.retryAfterMs = retryAfterMs;
+
+    return error;
+}
 
 /**
  * Runs a single fetch attempt and classifies the outcome for the retry loop.
@@ -126,17 +161,8 @@ async function attemptFetch(url, options) {
             return {success: true, response};
         }
 
-        const retryAfterMs = response.status === 429
-            ? (parseRetryAfterHeader(response) ?? DEFAULT_RETRY_AFTER_MS)
-            : null;
-
-        const error = new TrialFetchError(
-            url,
-            new Error(`HTTP ${response.status}: ${response.statusText}`),
-            response.status,
-            true,
-        );
-        error.retryAfterMs = retryAfterMs;
+        await drainBody(response);
+        const error = buildRetryableError(url, response);
 
         return {success: false, error, retryable: true, reason: `Retryable HTTP ${response.status}`};
     } catch (error) {
@@ -179,8 +205,6 @@ export async function fetchWithRetry(url, options = {}) {
     }
 }
 
-// ─── Response parsing ────────────────────────────────────────────────────────
-
 /**
  * Parses a JSON response.
  * Throws TrialFetchError for non-ok responses (other than 404 when allow404=true).
@@ -193,6 +217,7 @@ export async function fetchWithRetry(url, options = {}) {
  */
 export async function parseJsonResponse(response, url, {allow404 = false} = {}) {
     if (allow404 && response.status === 404) {
+        await drainBody(response);
         return null; // caller decides what to do
     }
 

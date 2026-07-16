@@ -1,4 +1,4 @@
-import fetchStudiesPage, {fetchTrialDetail} from './http/api.js';
+import {fetchStudiesPage, fetchTrialDetail} from './http/api.js';
 import {CONCURRENCY, PAGE_SIZE} from './config/config.js';
 import {logger} from './config/logging.js';
 import {TrialFetchError, TrialNotFoundError, TrialTimeoutError} from './error/errors.js';

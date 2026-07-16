@@ -31,8 +31,9 @@ export async function fetchTrialDetail(nctId, params = {}) {
         .build();
 
     const response = await fetchWithRetry(url);
+    const data = await parseJsonResponse(response, url, {allow404: true});
 
-    if (response.status === 404) {
+    if (data === null) {
         throw new TrialNotFoundError(nctId);
     }
 
