@@ -8,8 +8,10 @@ import {
     POOL_KEEP_ALIVE_TIMEOUT,
     POOL_PIPELINING,
     RATE_LIMIT_CAPACITY,
-    RATE_LIMIT_WINDOW
+    RATE_LIMIT_WINDOW,
+    raw
 } from "../config/config.js";
+import {logger} from "../config/logging.js";
 
 /**
  * Token bucket rate limiter.
@@ -127,6 +129,14 @@ const proxyAgents = (process.env.NODE_ENV === 'test' || raw.length === 0) ? []
             limiter: new TokenBucket(RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW),
         }));
 
+logger.info(
+    'Proxy pool initialized | Count: %d | RateLimit: %d/%dms | Connections: %d',
+    proxyAgents.length,
+    RATE_LIMIT_CAPACITY,
+    RATE_LIMIT_WINDOW,
+    POOL_CONNECTIONS
+);
+
 /**
  * Acquire a proxy dispatcher with rate-limited selection.
  *
@@ -150,10 +160,21 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
         .filter(a => a.limiter.peekTokens() > 0)
         .sort((a, b) => b.limiter.peekTokens() - a.limiter.peekTokens());
 
+    logger.debug(
+        'Proxy selection | Available: %d/%d | Top tokens: %j',
+        available.length,
+        proxyAgents.length,
+        available.slice(0, 3).map(a => ({url: a.url, tokens: a.limiter.peekTokens()}))
+    );
+
     if (available.length > 0) {
         const tierSize = Math.min(ACQUIRE_TIER, available.length);
         const pick = available[Math.floor(Math.random() * tierSize)];
+
+        logger.debug('Acquiring proxy token | Proxy: %s | Tokens: %d', pick.url, pick.limiter.peekTokens());
         await pick.limiter.acquire(timeoutMs);
+        logger.debug('Proxy token acquired | Proxy: %s', pick.url);
+
         return pick;
     }
 
@@ -163,6 +184,14 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
         (a, b) => a.limiter.lastRefill - b.limiter.lastRefill
     );
 
+    logger.debug(
+        'All proxies exhausted | Waiting on: %s | LastRefill: %dms ago',
+        soonest[0].url,
+        Date.now() - soonest[0].limiter.lastRefill
+    );
+
     await soonest[0].limiter.acquire(timeoutMs);
+    logger.debug('Proxy token acquired after wait | Proxy: %s', soonest[0].url);
+
     return soonest[0];
 }

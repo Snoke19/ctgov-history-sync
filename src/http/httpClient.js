@@ -80,10 +80,19 @@ function isIdempotent(method, override) {
  * @returns {Promise<Response>}
  */
 async function executeFetch(url, options = {}) {
-    const proxyEntry = await acquireProxyDispatcher();
     const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
-    const timeoutSignal = AbortSignal.timeout(timeoutMs);
-    const signal = options.signal ? AbortSignal.any([timeoutSignal, options.signal]) : timeoutSignal;
+    const deadline = Date.now() + timeoutMs;
+
+    // Acquire proxy with remaining time from the overall budget
+    const proxyEntry = await acquireProxyDispatcher(timeoutMs);
+
+    const remainingMs = deadline - Date.now();
+    const fetchTimeoutMs = Math.max(remainingMs, 1000);
+
+    const timeoutSignal = AbortSignal.timeout(fetchTimeoutMs);
+    const signal = options.signal
+        ? AbortSignal.any([timeoutSignal, options.signal])
+        : timeoutSignal;
 
     const fetchOptions = {
         signal,
@@ -165,7 +174,7 @@ function buildRetryableError(url, response) {
         url,
         new Error(`HTTP ${response.status}: ${response.statusText}`),
         response.status,
-        true,
+        true
     );
     error.retryAfterMs = retryAfterMs;
 
@@ -238,7 +247,11 @@ async function fetchWithRetry(url, options = {}) {
         if (!outcome.retryable || isLastAttempt) throw outcome.error;
 
         const delay = calculateBackoff(attempt, outcome.error.retryAfterMs);
-        logger.warn('%s - retrying in %dms (attempt %d/%d) | %s', outcome.reason, Math.round(delay), attempt + 1, maxRetries, url);
+
+        logger.warn('%s - retrying in %dms (attempt %d/%d) | Proxy: %s | URL: %s',
+            outcome.reason, Math.round(delay), attempt + 1, maxRetries, outcome.error.proxyUrl ?? 'unknown', url
+        );
+
         await sleep(delay);
     }
 }
@@ -271,7 +284,7 @@ async function parseJsonResponse(response, url, {allow404 = false} = {}) {
             url,
             new Error(`HTTP ${response.status}: ${response.statusText}. Body: ${text.slice(0, 200)}`),
             response.status,
-            RETRYABLE_STATUS_CODES.has(response.status),
+            RETRYABLE_STATUS_CODES.has(response.status)
         );
     }
 
@@ -287,7 +300,7 @@ async function parseJsonResponse(response, url, {allow404 = false} = {}) {
             url,
             new Error(`Invalid JSON: ${parseError.message}`),
             response.status,
-            false,
+            false
         );
     }
 }
