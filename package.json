@@ -6,7 +6,10 @@
     "scripts": {
         "start": "node --env-file=.env src/index.js",
         "test": "node --env-file=.env.test --experimental-vm-modules node_modules/jest/bin/jest.js",
-        "test:watch": "node --env-file=.env.test --experimental-vm-modules node_modules/jest/bin/jest.js --watch"
+        "test:watch": "node --env-file=.env.test --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+        "lint": "eslint src/",
+        "lint:fix": "eslint src/ --fix",
+        "format": "prettier --write 'src/**/*.js'"
     },
     "keywords": [],
     "author": "",
@@ -18,8 +21,15 @@
         "undici": "^8.7.0"
     },
     "devDependencies": {
+        "@eslint/js": "^9.39.5",
         "@jest/globals": "^30.4.1",
+        "eslint": "^9.39.5",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-import": "^2.32.0",
+        "eslint-plugin-n": "^18.2.2",
+        "globals": "^17.7.0",
         "jest": "^30.4.2",
-        "pino-pretty": "^13.1.3"
+        "pino-pretty": "^13.1.3",
+        "prettier": "^3.9.5"
     }
 }

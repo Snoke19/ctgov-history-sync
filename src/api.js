@@ -1,8 +1,8 @@
 import {API_BASE_URL, API_DETAIL_URL} from './config/config.js';
-import {UrlBuilder} from './http/urlPrepare.js';
 import {TrialNotFoundError} from './error/errors.js';
-import {fetchJson} from './http/httpClient.js';
 import {cleanParams} from "./http/cleanParams.js";
+import {fetchJson} from './http/httpClient.js';
+import {UrlBuilder} from './http/urlPrepare.js';
 import {validateNctId, validateSearchParams} from "./validators.js";
 
 export async function fetchStudiesPage(params = {}) {

@@ -165,7 +165,9 @@ class TokenBucket {
                 );
             }
 
-            await new Promise(r => setTimeout(r, sleepMs));
+            await new Promise(r => {
+                setTimeout(r, sleepMs)
+            });
         }
     }
 }

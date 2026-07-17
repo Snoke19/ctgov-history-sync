@@ -1,4 +1,4 @@
-import {logger} from '../config/logging.js';
+import {fetch} from 'undici';
 import {
     BACKOFF_CAP_MS,
     DEFAULT_RETRY_AFTER_MS,
@@ -12,8 +12,8 @@ import {
     RETRY_ON_TIMEOUT,
     RETRYABLE_STATUS_CODES,
 } from '../config/config.js';
+import {logger} from '../config/logging.js';
 import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
-import {fetch} from 'undici';
 import {acquireProxyDispatcher, reportProxyHealth} from './proxyPool.js';
 
 // =============================================================================
@@ -78,7 +78,9 @@ const DEFAULT_HEADERS = Object.freeze({
  * @returns {Promise<void>}
  */
 function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise(resolve => {
+        setTimeout(resolve, ms);
+    });
 }
 
 /**
@@ -98,7 +100,7 @@ function sleep(ms) {
  * @returns {number} Delay in milliseconds.
  */
 export function calculateBackoff(attempt, retryAfterMs = null) {
-    if (retryAfterMs != null && retryAfterMs > 0) return retryAfterMs;
+    if (retryAfterMs !== null && retryAfterMs > 0) return retryAfterMs;
 
     const base = RETRY_BASE_DELAY_MS * 2 ** attempt;
     const jitter = Math.random() * base * 0.5;
