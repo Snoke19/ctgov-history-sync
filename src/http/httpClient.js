@@ -14,27 +14,92 @@ import {
 } from '../config/config.js';
 import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
 import {fetch} from 'undici';
-import {acquireProxyDispatcher, reportProxyResult} from './readyIPs.js';
+import {acquireProxyDispatcher, reportProxyHealth} from './proxyPool.js';
 
-// Methods safe to retry automatically without risking duplicate side effects.
-// POST/PATCH are excluded by default — pass {idempotent: true} to override
-// for a specific call if you know the endpoint is safe to repeat.
+// =============================================================================
+// HTTP CLIENT MODULE
+// =============================================================================
+//
+// This module provides a resilient HTTP client built on top of `undici` with
+// the following capabilities:
+//
+// 1. PROXY-AWARE REQUESTS
+//    Every request acquires a proxy dispatcher from the proxy pool (proxyPool.js).
+//    The proxy layer handles per-IP rate limiting via TokenBucket, so this module
+//    never needs to worry about pacing — it simply asks for a dispatcher and
+//    the pool decides when to hand it over.
+//
+// 2. AUTOMATIC RETRIES WITH EXPONENTIAL BACKOFF
+//    Transient failures (HTTP 408/429/5xx, network timeouts) are retried up to
+//    MAX_RETRIES times with jittered exponential backoff. Retry-After headers
+//    are respected when present. Non-idempotent methods (POST/PATCH) are NEVER
+//    retried unless explicitly overridden.
+//
+// 3. TIMEOUT BUDGET MANAGEMENT
+//    Each request has a single deadline (`timeoutMs`). Proxy acquisition time
+//    is subtracted from the fetch budget, so the total elapsed time never
+//    exceeds the configured timeout.
+//
+// 4. CONNECTION HYGIENE
+//    Every response body is fully consumed or explicitly cancelled before the
+//    Response object is discarded. This is required by Undici to return the
+//    underlying TCP connection to the pool.
+//
+// PUBLIC API
+// ----------
+//   fetchJson(url, options)  →  Fetches JSON with all resilience layers active.
+//
+// =============================================================================
+
+/**
+ * HTTP methods considered safe to retry automatically.
+ *
+ * GET, HEAD, PUT, DELETE, and OPTIONS are idempotent by definition — repeating
+ * them does not risk duplicate side effects on the server. POST and PATCH are
+ * deliberately excluded; pass `{idempotent: true}` to a specific call if you
+ * know the endpoint is safe to repeat (e.g. an upsert or idempotent POST).
+ */
 const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
 
+/**
+ * Default request headers merged into every outgoing request.
+ * Caller-provided headers in `options.headers` override these values.
+ */
 const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',
     'User-Agent': DEFAULT_USER_AGENT,
 });
 
+/**
+ * Returns a Promise that resolves after `ms` milliseconds.
+ * Used between retry attempts to implement backoff delays.
+ *
+ * @param {number} ms - Sleep duration in milliseconds.
+ * @returns {Promise<void>}
+ */
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
- * Exponential backoff with jitter, capped at BACKOFF_CAP_MS.
+ * Calculates the delay before the next retry attempt.
+ *
+ * Strategy (in priority order):
+ *   1. If the server sent a Retry-After header, use that value exactly.
+ *   2. Otherwise, use exponential backoff: base × 2^attempt + 50% jitter.
+ *   3. Cap the result at BACKOFF_CAP_MS (default 30 s).
+ *
+ * The jitter prevents "thundering herd" when many requests fail simultaneously
+ * and would otherwise retry at the exact same moment.
+ *
+ * @param {number} attempt - Zero-indexed retry attempt (0 = first retry).
+ * @param {number|null} [retryAfterMs] - Parsed Retry-After value from the
+ *   server, in milliseconds. Takes precedence over calculated backoff.
+ * @returns {number} Delay in milliseconds.
  */
 export function calculateBackoff(attempt, retryAfterMs = null) {
     if (retryAfterMs != null && retryAfterMs > 0) return retryAfterMs;
+
     const base = RETRY_BASE_DELAY_MS * 2 ** attempt;
     const jitter = Math.random() * base * 0.5;
     return Math.min(base + jitter, BACKOFF_CAP_MS);
@@ -42,62 +107,98 @@ export function calculateBackoff(attempt, retryAfterMs = null) {
 
 /**
  * Parses the Retry-After response header into milliseconds.
+ *
+ * The header may appear in two forms per RFC 9110:
+ *   - Integer seconds:  `Retry-After: 120`
+ *   - HTTP-date:        `Retry-After: Wed, 21 Oct 2025 07:28:00 GMT`
+ *
+ * If the value is unparseable, falls back to DEFAULT_RETRY_AFTER_MS.
+ *
+ * @param {Response} response - The fetch Response object.
+ * @returns {number|null} Delay in milliseconds, or null if the header
+ *   is absent.
  */
 export function parseRetryAfterHeader(response) {
     const raw = response.headers.get('Retry-After');
     if (!raw) return null;
 
+    // Form 1: delay-seconds (integer)
     const seconds = Number(raw);
     if (!Number.isNaN(seconds)) return seconds * 1000;
 
+    // Form 2: HTTP-date
     const dateMs = Date.parse(raw);
     if (!Number.isNaN(dateMs)) return Math.max(dateMs - Date.now(), DEFAULT_RETRY_AFTER_MS);
 
+    // Unparseable — use safe default
     return DEFAULT_RETRY_AFTER_MS;
 }
 
+/**
+ * Determines whether a request method is safe to retry.
+ *
+ * @param {string} method - HTTP method (e.g. 'GET', 'POST').
+ * @param {boolean} [override] - When explicitly provided, overrides the
+ *   built-in idempotency list. Use with caution.
+ * @returns {boolean}
+ */
 function isIdempotent(method, override) {
     if (typeof override === 'boolean') return override;
     return IDEMPOTENT_METHODS.has(method.toUpperCase());
 }
 
+
 /**
- * Fires a single HTTP request. Applies proxy dispatcher when configured.
- * `acquireProxyDispatcher` also paces the request against that proxy's
- * token bucket, so this call may await briefly instead of firing immediately.
+ * Executes a single HTTP request through the proxy pool.
  *
- * Throws TrialTimeoutError on internal timeout, the original abort error
- * unwrapped when the caller's own `options.signal` was cancelled (so it is
- * never mistaken for a retryable failure), or TrialFetchError for any other
- * network error.
+ * This is the lowest-level function in the module. It:
+ *   1. Acquires a proxy dispatcher (may block on TokenBucket pacing).
+ *   2. Calculates the remaining time budget after proxy acquisition.
+ *   3. Combines the internal timeout signal with any external AbortSignal.
+ *   4. Performs the fetch, logs the outcome, and reports proxy health.
  *
- * @param {string} url
- * @param {object} [options]
- * @param {string} [options.method='GET']
- * @param {BodyInit} [options.body]
- * @param {number} [options.timeoutMs]
- * @param {object} [options.headers]
- * @param {AbortSignal} [options.signal] - external cancellation, combined with the internal timeout
- * @returns {Promise<Response>}
+ * Throws:
+ *   - TrialTimeoutError      → The request or proxy acquisition timed out.
+ *   - The raw AbortError     → The caller cancelled via `options.signal`.
+ *   - TrialFetchError        → Any other network-level failure.
+ *
+ * @param {string} url - Target URL.
+ * @param {object} [options={}] - Request options.
+ * @param {string} [options.method='GET'] - HTTP method.
+ * @param {BodyInit} [options.body] - Request body.
+ * @param {number} [options.timeoutMs] - Total time budget for proxy
+ *   acquisition + fetch. Defaults to FETCH_TIMEOUT_MS.
+ * @param {object} [options.headers] - Additional headers merged with defaults.
+ * @param {AbortSignal} [options.signal] - External cancellation signal.
+ *   Combined with the internal timeout via AbortSignal.any().
+ * @returns {Promise<{response: Response, proxyUrl: string}>} The fetch
+ *   Response and the proxy URL that served it (or 'direct' if none).
  */
 async function executeFetch(url, options = {}) {
+    // Total time budget for the entire operation (acquire + fetch).
     const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
     const deadline = Date.now() + timeoutMs;
 
-    // Acquire proxy with remaining time from the overall budget
+    // Step 1: Acquire a rate-limited proxy dispatcher.
+    // This may wait if the proxy's TokenBucket is empty.
     const proxyEntry = await acquireProxyDispatcher(timeoutMs);
     const proxyUrl = proxyEntry?.url ?? 'direct';
 
+    // Step 2: Calculate how much time is left for the actual HTTP request.
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {
+        // Proxy acquisition consumed the entire budget.
         throw new TrialTimeoutError(url, timeoutMs);
     }
 
+    // Step 3: Build the abort signal.
+    // The internal timeout must not outlive the overall deadline.
     const timeoutSignal = AbortSignal.timeout(remainingMs);
     const signal = options.signal
         ? AbortSignal.any([timeoutSignal, options.signal])
         : timeoutSignal;
 
+    // Step 4: Assemble fetch options.
     const fetchOptions = {
         signal,
         headers: {...DEFAULT_HEADERS, ...options.headers},
@@ -108,6 +209,7 @@ async function executeFetch(url, options = {}) {
 
     const startTime = performance.now();
 
+    // Step 5: Execute and classify the outcome.
     try {
         const response = await fetch(url, fetchOptions);
         const durationMs = Math.round(performance.now() - startTime);
@@ -116,10 +218,15 @@ async function executeFetch(url, options = {}) {
             'Fetched %s | Status: %d | Proxy: %s | Took: %dms',
             url, response.status, proxyUrl, durationMs
         );
-        reportProxyResult(proxyUrl, true);
+
+        // Report success to the proxy health tracker.
+        reportProxyHealth(proxyUrl, true);
+
         return {response, proxyUrl};
     } catch (error) {
         const durationMs = Math.round(performance.now() - startTime);
+
+        // Distinguish three classes of fetch failure:
         const isTimeout = error.name === 'TimeoutError';
         const isExternalAbort = !isTimeout && options.signal?.aborted;
 
@@ -132,18 +239,24 @@ async function executeFetch(url, options = {}) {
             error.message
         );
 
-        // Attach proxyUrl to every error so upstream logging can see it
+        // Attach proxyUrl so upstream retry logic can log which proxy failed.
         error.proxyUrl = proxyUrl;
-        reportProxyResult(proxyUrl, false);
 
+        // Report failure to the proxy health tracker.
+        reportProxyHealth(proxyUrl, false);
+
+        // Re-throw as domain-specific errors.
         if (isTimeout) {
             const timeoutErr = new TrialTimeoutError(url, timeoutMs);
             timeoutErr.proxyUrl = proxyUrl;
             throw timeoutErr;
         }
         if (isExternalAbort) {
-            throw error; // already has proxyUrl
+            // Caller explicitly cancelled — propagate as-is, never retry.
+            throw error;
         }
+
+        // Generic network error (DNS, TCP reset, TLS failure, etc.).
         const fetchErr = new TrialFetchError(url, error, null, true);
         fetchErr.proxyUrl = proxyUrl;
         throw fetchErr;
@@ -151,33 +264,37 @@ async function executeFetch(url, options = {}) {
 }
 
 /**
- * Safely discards a response body that will never be consumed downstream.
- * Undici (and Node's built-in fetch, which runs on Undici) requires the body
- * to be either read or cancelled before the underlying connection is
- * returned to the pool — see https://undici.nodejs.org/ "Specification
- * Compliance". Swallow cancel errors: the body may already be closed.
+ * Cancels the response body stream to release the underlying TCP connection.
  *
- * Kept private on purpose: every path in this module that receives a
- * Response is responsible for calling this itself, so callers in other
- * files never need to know it exists.
+ * Undici (and Node's built-in fetch, which uses Undici) requires that every
+ * Response body be either fully read or explicitly cancelled before the
+ * connection can be returned to the Pool. Skipping this step leaks
+ * connections and eventually exhausts the pool.
+ *
+ * This is a no-op if the body is already closed or errored.
  *
  * @param {Response} response
+ * @returns {Promise<void>}
  */
 async function drainBody(response) {
     try {
         await response.body?.cancel();
     } catch {
-        // already closed/errored — nothing to do
+        // Already closed or errored — safe to ignore.
     }
 }
 
 /**
- * Builds the TrialFetchError for a retryable HTTP status, attaching a
- * Retry-After hint (429 only) for calculateBackoff to prioritize.
+ * Constructs a TrialFetchError for a retryable HTTP status code.
  *
- * @param {string} url
- * @param {string} proxyUrl
- * @param {Response} response
+ * Attaches:
+ *   - `retryAfterMs`  → Parsed Retry-After header (only for codes listed in
+ *     RETRY_AFTER_STATUS_CODES, e.g. 429).
+ *   - `proxyUrl`        → Which proxy returned the error.
+ *
+ * @param {string} url - The requested URL.
+ * @param {Response} response - The HTTP response.
+ * @param {string} proxyUrl - The proxy that produced this response.
  * @returns {TrialFetchError}
  */
 function buildRetryableError(url, response, proxyUrl) {
@@ -189,7 +306,7 @@ function buildRetryableError(url, response, proxyUrl) {
         url,
         new Error(`HTTP ${response.status}: ${response.statusText}`),
         response.status,
-        true
+        true   // isTransient = retryable
     );
     error.retryAfterMs = retryAfterMs;
     error.proxyUrl = proxyUrl;
@@ -198,25 +315,31 @@ function buildRetryableError(url, response, proxyUrl) {
 }
 
 /**
- * Runs a single fetch attempt and classifies the outcome for the retry loop.
- * Never throws — failures are returned so the caller decides whether to retry.
- * Guarantees the response body is drained on every retryable path.
+ * Attempts a single fetch and classifies the result for the retry loop.
+ *
+ * This function NEVER throws. All outcomes — success or failure — are returned
+ * as a structured object so the caller (`fetchWithRetry`) can decide whether
+ * to retry, abort, or propagate.
  *
  * @param {string} url
- * @param {object} options
+ * @param {object} options - Passed through to executeFetch.
  * @returns {Promise<
- *   {success: true, response: Response} |
- *   {success: false, error: Error, retryable: boolean, reason: string}
+ *   | {success: true,  response: Response}
+ *   | {success: false, error: Error, retryable: boolean, reason: string}
  * >}
  */
 async function attemptFetch(url, options) {
     try {
         const {response, proxyUrl} = await executeFetch(url, options);
 
+        // Non-retryable status → immediate success.
         if (!RETRYABLE_STATUS_CODES.has(response.status)) {
             return {success: true, response};
         }
 
+        // Retryable status (408, 429, 5xx).
+        // MUST drain the body before discarding the response, otherwise
+        // Undici cannot reuse the connection.
         await drainBody(response);
         const error = buildRetryableError(url, response, proxyUrl);
 
@@ -227,15 +350,20 @@ async function attemptFetch(url, options) {
             reason: `Retryable HTTP ${response.status}`,
         };
     } catch (error) {
-        const isTimeout = error instanceof TrialTimeoutError ||
+        // executeFetch threw — classify whether this failure is retryable.
+        const isTimeout =
+            error instanceof TrialTimeoutError ||
             error.message?.includes('TokenBucket timeout');
-        // If proxyUrl wasn't attached (shouldn't happen), default to unknown
+
+        // Defensive: ensure proxyUrl is always present for logging.
         if (!error.proxyUrl) error.proxyUrl = 'unknown';
 
         return {
             success: false,
             error,
-            retryable: (isTimeout && RETRY_ON_TIMEOUT) || (Boolean(error.isTransient) && RETRY_ON_NETWORK_ERROR),
+            retryable:
+                (isTimeout && RETRY_ON_TIMEOUT) ||
+                (Boolean(error.isTransient) && RETRY_ON_NETWORK_ERROR),
             reason: isTimeout ? 'Timeout' : 'Transient error',
         };
     }
@@ -243,20 +371,24 @@ async function attemptFetch(url, options) {
 
 /**
  * Executes a fetch with automatic retries for transient failures.
- * Returns the raw Response on success — kept internal (not exported) since
- * every caller must be paired with body handling; `fetchJson` is the public
- * entry point that guarantees this. Retries are skipped entirely for
- * non-idempotent methods (POST/PATCH) unless `options.idempotent` is set.
  *
- * Throws TrialFetchError after all retries are exhausted, or immediately on
- * a non-retryable failure.
+ * Retry policy:
+ *   - Idempotent methods (GET/HEAD/PUT/DELETE/OPTIONS): up to MAX_RETRIES.
+ *   - Non-idempotent methods (POST/PATCH): no retries unless
+ *     `options.idempotent` is explicitly set to true.
+ *   - Non-retryable HTTP statuses (4xx except 408/429): fail immediately.
+ *   - External abort (caller signal): fail immediately, never retry.
+ *
+ * On the final failed attempt, the last error is thrown as-is.
  *
  * @param {string} url
- * @param {object} [options]
- * @param {number} [options.maxRetries]
- * @param {number} [options.timeoutMs]
- * @param {boolean} [options.idempotent]
+ * @param {object} [options={}]
+ * @param {number} [options.maxRetries] - Override the global MAX_RETRIES.
+ * @param {number} [options.timeoutMs] - Override the global FETCH_TIMEOUT_MS.
+ * @param {boolean} [options.idempotent] - Force retry eligibility regardless
+ *   of HTTP method.
  * @returns {Promise<Response>}
+ * @throws {TrialFetchError|TrialTimeoutError} After all retries are exhausted.
  */
 async function fetchWithRetry(url, options = {}) {
     const method = options.method ?? 'GET';
@@ -269,8 +401,11 @@ async function fetchWithRetry(url, options = {}) {
         if (outcome.success) return outcome.response;
 
         const isLastAttempt = attempt === maxRetries;
+
+        // Non-retryable failure or final attempt → propagate the error.
         if (!outcome.retryable || isLastAttempt) throw outcome.error;
 
+        // Wait before the next attempt.
         const delay = calculateBackoff(attempt, outcome.error.retryAfterMs);
 
         logger.warn(
@@ -288,41 +423,57 @@ async function fetchWithRetry(url, options = {}) {
 }
 
 /**
- * Parses a JSON response. Guarantees the body is drained on every path,
- * including the allow404 short-circuit and the 204 No Content case.
- * Kept private — only reachable through `fetchJson`.
+ * Consumes a Response body and parses it as JSON.
+ *
+ * Special cases:
+ *   - 404 + allow404=true → returns null (caller handles missing resource).
+ *   - 204 No Content        → returns null.
+ *   - Non-2xx status        → throws TrialFetchError with body preview.
+ *   - Invalid JSON body       → throws TrialFetchError (non-retryable).
+ *
+ * The response body is always drained or consumed, satisfying Undici's
+ * connection-pool requirements.
  *
  * @param {Response} response
- * @param {string}   url        - for error messages
- * @param {object}   [opts]
- * @param {boolean}  [opts.allow404=false]
- * @returns {Promise<object|null>}
+ * @param {string} url - For error messages.
+ * @param {object} [opts={}]
+ * @param {boolean} [opts.allow404=false] - When true, 404 returns null
+ *   instead of throwing.
+ * @returns {Promise<object|null>} Parsed JSON, or null for 404/204.
+ * @throws {TrialFetchError} On HTTP error or JSON parse failure.
  */
 async function parseJsonResponse(response, url, {allow404 = false} = {}) {
+    // 404 short-circuit
     if (response.status === 404) {
         logger.debug('HTTP 404 on %s | allow404=%s', url, allow404);
     }
 
     if (allow404 && response.status === 404) {
         await drainBody(response);
-        return null; // caller decides what to do
-    }
-
-    if (response.status === 204) {
-        await drainBody(response); // no content by definition, but be defensive
         return null;
     }
 
+    // 204 No Content
+    if (response.status === 204) {
+        await drainBody(response);
+        return null;
+    }
+
+    // Any non-2xx status → error with body preview for debugging.
     if (!response.ok) {
         const text = await response.text().catch(() => '');
         throw new TrialFetchError(
             url,
-            new Error(`HTTP ${response.status}: ${response.statusText}. Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`),
+            new Error(
+                `HTTP ${response.status}: ${response.statusText}. ` +
+                `Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`
+            ),
             response.status,
             RETRYABLE_STATUS_CODES.has(response.status)
         );
     }
 
+    // Warn about unexpected Content-Type, but still attempt to parse.
     const contentType = response.headers.get('Content-Type') ?? '';
     if (!contentType.includes('application/json')) {
         logger.warn('Unexpected Content-Type: %s | %s', contentType, url);
@@ -335,28 +486,36 @@ async function parseJsonResponse(response, url, {allow404 = false} = {}) {
             url,
             new Error(`Invalid JSON: ${parseError.message}`),
             response.status,
-            false
+            false   // non-retryable: the server responded, but body is garbage
         );
     }
 }
 
 /**
- * Fetches a URL and returns parsed JSON, with retry/backoff and rate-limit
- * pacing baked in. This is the only function this module exports for making
- * requests — it always fully consumes or cancels the response body, so
- * calling code never has to think about connection cleanup.
+ * Fetches a URL and returns parsed JSON.
  *
- * @param {string} url
- * @param {object} [options]
- * @param {string} [requestOptions.method='GET']
- * @param {BodyInit} [requestOptions.body]
- * @param {object} [requestOptions.headers]
- * @param {number} [requestOptions.timeoutMs]
- * @param {number} [requestOptions.maxRetries]
- * @param {boolean} [requestOptions.idempotent]      - force retry on/off regardless of method
- * @param {boolean} [options.allow404=false]  - return null instead of throwing on 404
- * @param {AbortSignal} [requestOptions.signal]      - external cancellation
- * @returns {Promise<object|null>}
+ * This is the single entry point for all HTTP requests in the application.
+ * It composes the full resilience stack:
+ *
+ *   Proxy pacing  →  Fetch  →  Retry/backoff  →  JSON parse  →  Body cleanup
+ *
+ * The caller never needs to think about connection cleanup, proxy rotation,
+ * or retry logic — everything is handled internally.
+ *
+ * @param {string} url - Target URL.
+ * @param {object} [options={}]
+ * @param {string} [options.method='GET'] - HTTP method.
+ * @param {BodyInit} [options.body] - Request body.
+ * @param {object} [options.headers] - Additional headers.
+ * @param {number} [options.timeoutMs] - Per-request timeout override.
+ * @param {number} [options.maxRetries] - Per-request retry limit override.
+ * @param {boolean} [options.idempotent] - Force retry on/off.
+ * @param {boolean} [options.allow404=false] - Return null on 404 instead
+ *   of throwing.
+ * @param {AbortSignal} [options.signal] - External cancellation.
+ * @returns {Promise<object|null>} Parsed JSON, or null for 404 (when allowed)
+ *   or 204 No Content.
+ * @throws {TrialFetchError|TrialTimeoutError} On failure after all retries.
  */
 export async function fetchJson(url, {allow404 = false, ...requestOptions} = {}) {
     const response = await fetchWithRetry(url, requestOptions);
