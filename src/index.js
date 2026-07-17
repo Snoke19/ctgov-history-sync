@@ -1,4 +1,4 @@
-import {fetchStudiesPage, fetchTrialDetail} from './http/api.js';
+import {fetchStudiesPage, fetchTrialDetail} from './api.js';
 import {CONCURRENCY, PAGE_SIZE} from './config/config.js';
 import {logger} from './config/logging.js';
 import {TrialFetchError, TrialNotFoundError, TrialTimeoutError} from './error/errors.js';
@@ -29,7 +29,12 @@ try {
 
         if (!pageToken) break;
 
-        const nextPage = await fetchStudiesPage({pageSize: PAGE_SIZE, pageToken});
+        const nextPage = await fetchStudiesPage({
+            pageSize: PAGE_SIZE,
+            pageToken,
+            countTotal: true,
+            'query.term': 'AREA[StartDate]RANGE[07/01/2026, 07/18/2026]'
+        });
 
         pageToken = nextPage.nextPageToken;
         currentStudies = nextPage.studies ?? [];

@@ -33,7 +33,7 @@ function intercept({origin, path, method = 'GET', times = 1, status, body, heade
 
 // Import config so our mocks dynamically match whatever is in .env
 const {API_BASE_URL, API_DETAIL_URL} = await import('../src/config/config.js');
-const {fetchTrialDetail, fetchStudiesPage} = await import('../src/http/api.js');
+const {fetchTrialDetail, fetchStudiesPage} = await import('../src/api.js');
 
 const NCT_ID = 'NCT07697053';
 
@@ -99,6 +99,8 @@ describe('fetchTrialDetail', () => {
             await assert.rejects(
                 () => fetchTrialDetail(NCT_ID, {history: true}),
                 (err) => {
+                    console.log("err: " + err);
+
                     assert.equal(err.name, 'TrialFetchError'); // Replaced instanceof
                     assert.equal(err.status, 500);
                     assert.equal(err.isTransient, true);
@@ -106,7 +108,7 @@ describe('fetchTrialDetail', () => {
                     return true;
                 },
             );
-        }, 15000);
+        });
 
         test('throws TrialFetchError on 429 and exposes retryAfterMs', async () => {
             intercept({
