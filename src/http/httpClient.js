@@ -41,8 +41,8 @@ import {acquireProxyDispatcher, reportProxyHealth} from './proxyPool.js';
 //    exceeds the configured timeout.
 //
 // 4. CONNECTION HYGIENE
-//    Every response body is fully consumed or explicitly cancelled before the
-//    Response object is discarded. This is required by Undici to return the
+//    Every response body is fully consumed or explicitly canceled before the
+//    Response object is discarded. This is required by undici to return the
 //    underlying TCP connection to the pool.
 //
 // PUBLIC API
@@ -112,7 +112,7 @@ export function calculateBackoff(attempt, retryAfterMs = null) {
  *
  * The header may appear in two forms per RFC 9110:
  *   - Integer seconds:  `Retry-After: 120`
- *   - HTTP-date:        `Retry-After: Wed, 21 Oct 2025 07:28:00 GMT`
+ *   - HTTP-date:        `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT`
  *
  * If the value is unparseable, falls back to DEFAULT_RETRY_AFTER_MS.
  *
@@ -160,7 +160,7 @@ function isIdempotent(method, override) {
  *
  * Throws:
  *   - TrialTimeoutError      → The request or proxy acquisition timed out.
- *   - The raw AbortError     → The caller cancelled via `options.signal`.
+ *   - The raw AbortError     → The caller canceled via `options.signal`.
  *   - TrialFetchError        → Any other network-level failure.
  *
  * @param {string} url - Target URL.
@@ -256,7 +256,7 @@ async function executeFetch(url, options = {}) {
             throw timeoutErr;
         }
         if (isExternalAbort) {
-            // Caller explicitly cancelled — propagate as-is, never retry.
+            // Caller explicitly canceled — propagate as-is, never retry.
             throw error;
         }
 
@@ -270,8 +270,8 @@ async function executeFetch(url, options = {}) {
 /**
  * Cancels the response body stream to release the underlying TCP connection.
  *
- * Undici (and Node's built-in fetch, which uses Undici) requires that every
- * Response body be either fully read or explicitly cancelled before the
+ * undici (and Node's built-in fetch, which uses undici) requires that every
+ * Response body be either fully read or explicitly canceled before the
  * connection can be returned to the Pool. Skipping this step leaks
  * connections and eventually exhausts the pool.
  *
@@ -326,10 +326,13 @@ function buildRetryableError(url, response, proxyUrl) {
  * to retry, abort, or propagate.
  *
  * @param {string} url
+ * @typedef {Error} RetryableError
+ * @property {number} [retryAfterMs] - Parsed Retry-After header (ms).
+ * @property {string} [proxyUrl] - Proxy that produced this error.
  * @param {object} options - Passed through to executeFetch.
  * @returns {Promise<
- *   | {success: true,  response: Response}
- *   | {success: false, error: Error, retryable: boolean, reason: string}
+ *   | {success: true, response: Response}
+ *   | {success: false, error: RetryableError, retryable: boolean, reason: string}
  * >}
  */
 async function attemptFetch(url, options) {
@@ -343,7 +346,7 @@ async function attemptFetch(url, options) {
 
         // Retryable status (408, 429, 5xx).
         // MUST drain the body before discarding the response, otherwise
-        // Undici cannot reuse the connection.
+        // undici cannot reuse the connection.
         await drainBody(response);
         const error = buildRetryableError(url, response, proxyUrl);
 
@@ -385,7 +388,8 @@ async function attemptFetch(url, options) {
  * On the final failed attempt, the last error is thrown as-is.
  *
  * @param {string} url
- * @param {object} [options={}]
+ * @param {object} [options={}]\
+ * @param {string} [options.method='GET'] - HTTP method.
  * @param {number} [options.maxRetries] - Override the global MAX_RETRIES.
  * @param {number} [options.timeoutMs] - Override the global FETCH_TIMEOUT_MS.
  * @param {boolean} [options.idempotent] - Force retry eligibility regardless
@@ -434,7 +438,7 @@ async function fetchWithRetry(url, options = {}) {
  *   - Non-2xx status        → throws TrialFetchError with body preview.
  *   - Invalid JSON body       → throws TrialFetchError (non-retryable).
  *
- * The response body is always drained or consumed, satisfying Undici's
+ * The response body is always drained or consumed, satisfying undici's
  * connection-pool requirements.
  *
  * @param {Response} response
@@ -506,15 +510,17 @@ async function parseJsonResponse(response, url, { allow404 = false } = {}) {
  * or retry logic — everything is handled internally.
  *
  * @param {string} url - Target URL.
- * @param {object} [options={}]
+ * @param {object} [options={}] - Request options. All properties except
+ *   `allow404` are forwarded to the underlying fetch and retry logic.
+ * @param {boolean} [options.allow404=false] - Return null on 404 instead
+ *   of throwing.
  * @param {string} [options.method='GET'] - HTTP method.
  * @param {BodyInit} [options.body] - Request body.
  * @param {object} [options.headers] - Additional headers.
  * @param {number} [options.timeoutMs] - Per-request timeout override.
  * @param {number} [options.maxRetries] - Per-request retry limit override.
- * @param {boolean} [options.idempotent] - Force retry on/off.
- * @param {boolean} [options.allow404=false] - Return null on 404 instead
- *   of throwing.
+ * @param {boolean} [options.idempotent] - Force retry eligibility regardless
+ *   of HTTP method.
  * @param {AbortSignal} [options.signal] - External cancellation.
  * @returns {Promise<object|null>} Parsed JSON, or null for 404 (when allowed)
  *   or 204 No Content.
