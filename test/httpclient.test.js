@@ -77,6 +77,9 @@ describe('parseRetryAfterHeader', () => {
         const future = new Date(Date.now() + 10_000).toUTCString();
         const response = new Response(null, { headers: { 'Retry-After': future } });
         const parsed = parseRetryAfterHeader(response);
+
+        console.log('parsed: ' + parsed);
+
         assert.ok(parsed > 8000 && parsed <= 10_000);
     });
 

@@ -4,6 +4,7 @@ const env = {
         return val ? parseInt(val, 10) : fallback;
     },
     str: (key, fallback) => process.env[key] || fallback,
+    bool: (key) => process.env[key]?.toLowerCase() === 'true',
 };
 
 const parseStatusCodes = (envVar, fallback) => {
