@@ -141,7 +141,13 @@ logger.info(
 export function reportProxyResult(proxyUrl, success) {
     const proxy = proxyAgents.find(a => a.url === proxyUrl);
     if (!proxy) return;
-    proxy.failures = success ? Math.max(0, proxy.failures - 1) : proxy.failures + 1;
+
+    if (success) {
+        // Exponential decay: 10 → 5 → 2 → 1 → 0 (4 successes instead of 10)
+        proxy.failures = Math.floor(proxy.failures * 0.5);
+    } else {
+        proxy.failures += 1;
+    }
 }
 
 /**

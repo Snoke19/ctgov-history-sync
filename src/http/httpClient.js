@@ -139,12 +139,16 @@ async function executeFetch(url, options = {}) {
         reportProxyResult(proxyUrl, false);
 
         if (isTimeout) {
-            throw new TrialTimeoutError(url, timeoutMs);
+            const timeoutErr = new TrialTimeoutError(url, timeoutMs);
+            timeoutErr.proxyUrl = proxyUrl;
+            throw timeoutErr;
         }
         if (isExternalAbort) {
-            throw error; // caller cancelled — propagate as-is, never retry this
+            throw error; // already has proxyUrl
         }
-        throw new TrialFetchError(url, error, null, true);
+        const fetchErr = new TrialFetchError(url, error, null, true);
+        fetchErr.proxyUrl = proxyUrl;
+        throw fetchErr;
     }
 }
 
