@@ -85,6 +85,7 @@ async function executeFetch(url, options = {}) {
 
     // Acquire proxy with remaining time from the overall budget
     const proxyEntry = await acquireProxyDispatcher(timeoutMs);
+    const proxyUrl = proxyEntry?.url ?? 'direct';
 
     const remainingMs = deadline - Date.now();
     const fetchTimeoutMs = Math.max(remainingMs, 1000);
@@ -110,10 +111,13 @@ async function executeFetch(url, options = {}) {
 
         logger.debug(
             'Fetched %s | Status: %d | Proxy: %s | Took: %dms',
-            url, response.status, proxyEntry?.url ?? 'direct', durationMs
+            url,
+            response.status,
+            proxyUrl,
+            durationMs
         );
 
-        return response;
+        return {response, proxyUrl};
     } catch (error) {
         const durationMs = Math.round(performance.now() - startTime);
         const isTimeout = error.name === 'TimeoutError';
@@ -123,8 +127,13 @@ async function executeFetch(url, options = {}) {
             'Failed %s | Type: %s | Proxy: %s | Took: %dms | Error: %s',
             url,
             isTimeout ? 'Timeout' : isExternalAbort ? 'Cancelled' : 'Network Error',
-            proxyEntry?.url ?? 'direct', durationMs, error.message
+            proxyUrl,
+            durationMs,
+            error.message
         );
+
+        // Attach proxyUrl to every error so upstream logging can see it
+        error.proxyUrl = proxyUrl;
 
         if (isTimeout) {
             throw new TrialTimeoutError(url, timeoutMs);
@@ -162,10 +171,11 @@ async function drainBody(response) {
  * Retry-After hint (429 only) for calculateBackoff to prioritize.
  *
  * @param {string} url
+ * @param {string} proxyUrl
  * @param {Response} response
  * @returns {TrialFetchError}
  */
-function buildRetryableError(url, response) {
+function buildRetryableError(url, response, proxyUrl) {
     const retryAfterMs = response.status === 429
         ? (parseRetryAfterHeader(response) ?? DEFAULT_RETRY_AFTER_MS)
         : null;
@@ -177,6 +187,7 @@ function buildRetryableError(url, response) {
         true
     );
     error.retryAfterMs = retryAfterMs;
+    error.proxyUrl = proxyUrl;
 
     return error;
 }
@@ -195,18 +206,21 @@ function buildRetryableError(url, response) {
  */
 async function attemptFetch(url, options) {
     try {
-        const response = await executeFetch(url, options);
+        const {response, proxyUrl} = await executeFetch(url, options);
 
         if (!RETRYABLE_STATUS_CODES.has(response.status)) {
             return {success: true, response};
         }
 
         await drainBody(response);
-        const error = buildRetryableError(url, response);
+        const error = buildRetryableError(url, response, proxyUrl);
 
         return {success: false, error, retryable: true, reason: `Retryable HTTP ${response.status}`};
     } catch (error) {
         const isTimeout = error instanceof TrialTimeoutError;
+        // If proxyUrl wasn't attached (shouldn't happen), default to unknown
+        if (!error.proxyUrl) error.proxyUrl = 'unknown';
+
         return {
             success: false,
             error,
@@ -248,8 +262,14 @@ async function fetchWithRetry(url, options = {}) {
 
         const delay = calculateBackoff(attempt, outcome.error.retryAfterMs);
 
-        logger.warn('%s - retrying in %dms (attempt %d/%d) | Proxy: %s | URL: %s',
-            outcome.reason, Math.round(delay), attempt + 1, maxRetries, outcome.error.proxyUrl ?? 'unknown', url
+        logger.warn(
+            '%s - retrying in %dms (attempt %d/%d) | Proxy: %s | URL: %s',
+            outcome.reason,
+            Math.round(delay),
+            attempt + 1,
+            maxRetries,
+            outcome.error.proxyUrl,
+            url
         );
 
         await sleep(delay);
