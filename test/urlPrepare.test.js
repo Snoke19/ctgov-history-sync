@@ -5,7 +5,6 @@ import {UrlBuilder} from '../src/http/urlPrepare.js';
 const BASE = 'https://clinicaltrials.gov/api/int/studies';
 
 describe('UrlBuilder', () => {
-
     describe('constructor', () => {
         test('strips trailing slash from base', () => {
             const url = new UrlBuilder(`${BASE}/`).build();
@@ -32,7 +31,10 @@ describe('UrlBuilder', () => {
 
     describe('queryParam()', () => {
         test('appends a single query param', () => {
-            const url = new UrlBuilder(BASE).path('NCT07697053').queryParam('history', true).build();
+            const url = new UrlBuilder(BASE)
+                .path('NCT07697053')
+                .queryParam('history', true)
+                .build();
             assert.equal(url, `${BASE}/NCT07697053?history=true`);
         });
 
@@ -51,7 +53,10 @@ describe('UrlBuilder', () => {
         });
 
         test('skips undefined value', () => {
-            const url = new UrlBuilder(BASE).path('NCT07697053').queryParam('page', undefined).build();
+            const url = new UrlBuilder(BASE)
+                .path('NCT07697053')
+                .queryParam('page', undefined)
+                .build();
             assert.equal(url, `${BASE}/NCT07697053`);
         });
 
@@ -70,7 +75,7 @@ describe('UrlBuilder', () => {
         test('appends multiple params from object', () => {
             const url = new UrlBuilder(BASE)
                 .path('NCT07697053')
-                .queryParams({history: true, page: 1, limit: 10})
+                .queryParams({ history: true, page: 1, limit: 10 })
                 .build();
             assert.match(url, /history=true/);
             assert.match(url, /page=1/);
@@ -80,7 +85,7 @@ describe('UrlBuilder', () => {
         test('skips null/undefined values in object', () => {
             const url = new UrlBuilder(BASE)
                 .path('NCT07697053')
-                .queryParams({history: true, page: null, limit: undefined})
+                .queryParams({ history: true, page: null, limit: undefined })
                 .build();
             assert.match(url, /history=true/);
             assert.ok(!url.includes('page'));

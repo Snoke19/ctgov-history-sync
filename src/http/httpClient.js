@@ -78,7 +78,7 @@ const DEFAULT_HEADERS = Object.freeze({
  * @returns {Promise<void>}
  */
 function sleep(ms) {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
         setTimeout(resolve, ms);
     });
 }
@@ -149,7 +149,6 @@ function isIdempotent(method, override) {
     return IDEMPOTENT_METHODS.has(method.toUpperCase());
 }
 
-
 /**
  * Executes a single HTTP request through the proxy pool.
  *
@@ -203,10 +202,10 @@ async function executeFetch(url, options = {}) {
     // Step 4: Assemble fetch options.
     const fetchOptions = {
         signal,
-        headers: {...DEFAULT_HEADERS, ...options.headers},
-        ...(options.method && {method: options.method}),
-        ...(options.body !== undefined && {body: options.body}),
-        ...(proxyEntry?.dispatcher && {dispatcher: proxyEntry.dispatcher}),
+        headers: { ...DEFAULT_HEADERS, ...options.headers },
+        ...(options.method && { method: options.method }),
+        ...(options.body !== undefined && { body: options.body }),
+        ...(proxyEntry?.dispatcher && { dispatcher: proxyEntry.dispatcher }),
     };
 
     const startTime = performance.now();
@@ -218,13 +217,16 @@ async function executeFetch(url, options = {}) {
 
         logger.debug(
             'Fetched %s | Status: %d | Proxy: %s | Took: %dms',
-            url, response.status, proxyUrl, durationMs
+            url,
+            response.status,
+            proxyUrl,
+            durationMs,
         );
 
         // Report success to the proxy health tracker.
         reportProxyHealth(proxyUrl, true);
 
-        return {response, proxyUrl};
+        return { response, proxyUrl };
     } catch (error) {
         const durationMs = Math.round(performance.now() - startTime);
 
@@ -238,7 +240,7 @@ async function executeFetch(url, options = {}) {
             isTimeout ? 'Timeout' : isExternalAbort ? 'Cancelled' : 'Network Error',
             proxyUrl,
             durationMs,
-            error.message
+            error.message,
         );
 
         // Attach proxyUrl so upstream retry logic can log which proxy failed.
@@ -308,7 +310,7 @@ function buildRetryableError(url, response, proxyUrl) {
         url,
         new Error(`HTTP ${response.status}: ${response.statusText}`),
         response.status,
-        true   // isTransient = retryable
+        true, // isTransient = retryable
     );
     error.retryAfterMs = retryAfterMs;
     error.proxyUrl = proxyUrl;
@@ -332,11 +334,11 @@ function buildRetryableError(url, response, proxyUrl) {
  */
 async function attemptFetch(url, options) {
     try {
-        const {response, proxyUrl} = await executeFetch(url, options);
+        const { response, proxyUrl } = await executeFetch(url, options);
 
         // Non-retryable status → immediate success.
         if (!RETRYABLE_STATUS_CODES.has(response.status)) {
-            return {success: true, response};
+            return { success: true, response };
         }
 
         // Retryable status (408, 429, 5xx).
@@ -354,8 +356,7 @@ async function attemptFetch(url, options) {
     } catch (error) {
         // executeFetch threw — classify whether this failure is retryable.
         const isTimeout =
-            error instanceof TrialTimeoutError ||
-            error.message?.includes('TokenBucket timeout');
+            error instanceof TrialTimeoutError || error.message?.includes('TokenBucket timeout');
 
         // Defensive: ensure proxyUrl is always present for logging.
         if (!error.proxyUrl) error.proxyUrl = 'unknown';
@@ -417,7 +418,7 @@ async function fetchWithRetry(url, options = {}) {
             attempt + 1,
             maxRetries,
             outcome.error.proxyUrl,
-            url
+            url,
         );
 
         await sleep(delay);
@@ -444,7 +445,7 @@ async function fetchWithRetry(url, options = {}) {
  * @returns {Promise<object|null>} Parsed JSON, or null for 404/204.
  * @throws {TrialFetchError} On HTTP error or JSON parse failure.
  */
-async function parseJsonResponse(response, url, {allow404 = false} = {}) {
+async function parseJsonResponse(response, url, { allow404 = false } = {}) {
     // 404 short-circuit
     if (response.status === 404) {
         logger.debug('HTTP 404 on %s | allow404=%s', url, allow404);
@@ -468,10 +469,10 @@ async function parseJsonResponse(response, url, {allow404 = false} = {}) {
             url,
             new Error(
                 `HTTP ${response.status}: ${response.statusText}. ` +
-                `Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`
+                    `Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`,
             ),
             response.status,
-            RETRYABLE_STATUS_CODES.has(response.status)
+            RETRYABLE_STATUS_CODES.has(response.status),
         );
     }
 
@@ -488,7 +489,7 @@ async function parseJsonResponse(response, url, {allow404 = false} = {}) {
             url,
             new Error(`Invalid JSON: ${parseError.message}`),
             response.status,
-            false   // non-retryable: the server responded, but body is garbage
+            false, // non-retryable: the server responded, but body is garbage
         );
     }
 }
@@ -519,7 +520,7 @@ async function parseJsonResponse(response, url, {allow404 = false} = {}) {
  *   or 204 No Content.
  * @throws {TrialFetchError|TrialTimeoutError} On failure after all retries.
  */
-export async function fetchJson(url, {allow404 = false, ...requestOptions} = {}) {
+export async function fetchJson(url, { allow404 = false, ...requestOptions } = {}) {
     const response = await fetchWithRetry(url, requestOptions);
-    return parseJsonResponse(response, url, {allow404});
+    return parseJsonResponse(response, url, { allow404 });
 }

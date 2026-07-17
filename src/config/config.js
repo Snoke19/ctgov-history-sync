@@ -9,7 +9,12 @@ const env = {
 const parseStatusCodes = (envVar, fallback) => {
     const raw = process.env[envVar];
     if (!raw) return new Set(fallback);
-    return new Set(raw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)));
+    return new Set(
+        raw
+            .split(',')
+            .map((s) => parseInt(s.trim(), 10))
+            .filter((n) => !isNaN(n)),
+    );
 };
 
 export const API_BASE_URL = env.str('API_BASE_URL', '');
@@ -20,7 +25,10 @@ export const FETCH_TIMEOUT_MS = env.int('FETCH_TIMEOUT_MS', 15000);
 export const DEFAULT_RETRY_AFTER_MS = env.int('DEFAULT_RETRY_AFTER_MS', 5000);
 export const RETRY_BASE_DELAY_MS = env.int('RETRY_BASE_DELAY_MS', 1000);
 export const MAX_RETRIES = env.int('MAX_RETRIES', 3);
-export const RETRYABLE_STATUS_CODES = parseStatusCodes('RETRYABLE_STATUS_CODES', [408, 429, 500, 502, 503, 504]);
+export const RETRYABLE_STATUS_CODES = parseStatusCodes(
+    'RETRYABLE_STATUS_CODES',
+    [408, 429, 500, 502, 503, 504],
+);
 export const BACKOFF_CAP_MS = env.int('BACKOFF_CAP_MS', 30_000);
 export const DEFAULT_USER_AGENT = env.str('DEFAULT_USER_AGENT', 'ClinicalTrialsScraper/1.0');
 export const ERROR_BODY_PREVIEW_LENGTH = env.int('ERROR_BODY_PREVIEW_LENGTH', 200);

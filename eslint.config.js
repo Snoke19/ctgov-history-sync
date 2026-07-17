@@ -25,16 +25,19 @@ export default [
         },
         rules: {
             // --- Style (match your codebase) ---
-            'indent': ['error', 4, {SwitchCase: 1}],
-            'quotes': ['error', 'single', {avoidEscape: true}],
-            'semi': ['error', 'always'],
+            indent: ['error', 4, { SwitchCase: 1 }],
+            quotes: ['error', 'single', { avoidEscape: true }],
+            semi: ['error', 'always'],
             'comma-dangle': ['error', 'always-multiline'],
             'no-trailing-spaces': 'error',
             'eol-last': ['error', 'always'],
-            'max-len': ['warn', {code: 120, ignoreUrls: true, ignoreStrings: true}],
+            'max-len': ['warn', { code: 120, ignoreUrls: true, ignoreStrings: true }],
 
             // --- Best practices (critical for scrapers) ---
-            'no-unused-vars': ['error', {argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_'}],
+            'no-unused-vars': [
+                'error',
+                { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+            ],
             'prefer-const': 'error',
             'no-var': 'error',
             'object-shorthand': 'error',
@@ -53,17 +56,20 @@ export default [
             // --- Import hygiene ---
             'import/no-unresolved': 'error',
             'import/named': 'error',
-            'import/order': ['warn', {
-                'groups': ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
-                'newlines-between': 'never',
-                'alphabetize': {order: 'asc', caseInsensitive: true},
-            }],
+            'import/order': [
+                'warn',
+                {
+                    groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
+                    'newlines-between': 'never',
+                    alphabetize: { order: 'asc', caseInsensitive: true },
+                },
+            ],
 
             // --- Console (you use logger, but allow debug) ---
-            'no-console': ['warn', {allow: ['warn', 'error']}],
+            'no-console': ['warn', { allow: ['warn', 'error'] }],
 
             // --- Strict equality ---
-            'eqeqeq': ['error', 'always'],
+            eqeqeq: ['error', 'always'],
         },
     },
 
@@ -77,12 +83,6 @@ export default [
         },
     },
     {
-        ignores: [
-            'node_modules/**',
-            'output/**',
-            'coverage/**',
-            '*.log',
-            '.env',
-        ],
+        ignores: ['node_modules/**', 'output/**', 'coverage/**', '*.log', '.env'],
     },
 ];

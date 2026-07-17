@@ -14,26 +14,27 @@ beforeEach(() => {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function intercept({origin, path, method = 'GET', times = 1, status, body, headers = {}}) {
+function intercept({ origin, path, method = 'GET', times = 1, status, body, headers = {} }) {
     const isObject = typeof body === 'object' && body !== null;
     const replyBody = isObject ? JSON.stringify(body) : body;
 
-    const replyHeaders = {...headers};
+    const replyHeaders = { ...headers };
     if (isObject && !replyHeaders['content-type']) {
         replyHeaders['content-type'] = 'application/json';
     }
 
-    mockAgent.get(origin)
-        .intercept({path, method})
-        .reply(status, replyBody, {headers: replyHeaders})
+    mockAgent
+        .get(origin)
+        .intercept({ path, method })
+        .reply(status, replyBody, { headers: replyHeaders })
         .times(times);
 }
 
 // ─── Module under test ────────────────────────────────────────────────────────
 
 // Import config so our mocks dynamically match whatever is in .env
-const {API_BASE_URL, API_DETAIL_URL} = await import('../src/config/config.js');
-const {fetchTrialDetail, fetchStudiesPage} = await import('../src/api.js');
+const { API_BASE_URL, API_DETAIL_URL } = await import('../src/config/config.js');
+const { fetchTrialDetail, fetchStudiesPage } = await import('../src/api.js');
 
 const NCT_ID = 'NCT07697053';
 
@@ -50,10 +51,9 @@ const PATH_BASE = baseUrlObj.pathname.replace(/\/$/, '');
 // ─── fetchTrialDetail ─────────────────────────────────────────────────────────
 
 describe('fetchTrialDetail', () => {
-
     describe('happy path', () => {
         test('returns parsed JSON on 200', async () => {
-            const payload = {study: {nctId: NCT_ID}, history: {changes: [1, 2]}};
+            const payload = { study: { nctId: NCT_ID }, history: { changes: [1, 2] } };
             intercept({
                 origin: ORIGIN_DETAIL,
                 path: `${PATH_DETAIL}/${NCT_ID}?history=true`,
@@ -61,7 +61,7 @@ describe('fetchTrialDetail', () => {
                 body: payload,
             });
 
-            const data = await fetchTrialDetail(NCT_ID, {history: true});
+            const data = await fetchTrialDetail(NCT_ID, { history: true });
             assert.deepEqual(data, payload);
         });
     });
@@ -76,7 +76,7 @@ describe('fetchTrialDetail', () => {
             });
 
             await assert.rejects(
-                () => fetchTrialDetail(NCT_ID, {history: true}),
+                () => fetchTrialDetail(NCT_ID, { history: true }),
                 (err) => {
                     assert.equal(err.name, 'TrialNotFoundError');
                     assert.equal(err.code, NCT_ID);
@@ -97,9 +97,9 @@ describe('fetchTrialDetail', () => {
             });
 
             await assert.rejects(
-                () => fetchTrialDetail(NCT_ID, {history: true}),
+                () => fetchTrialDetail(NCT_ID, { history: true }),
                 (err) => {
-                    console.log("err: " + err);
+                    console.log('err: ' + err);
 
                     assert.equal(err.name, 'TrialFetchError'); // Replaced instanceof
                     assert.equal(err.status, 500);
@@ -116,12 +116,12 @@ describe('fetchTrialDetail', () => {
                 path: `${PATH_DETAIL}/${NCT_ID}?history=true`,
                 status: 429,
                 body: 'Too Many Requests',
-                headers: {'retry-after': '2'},
+                headers: { 'retry-after': '2' },
                 times: 4,
             });
 
             await assert.rejects(
-                () => fetchTrialDetail(NCT_ID, {history: true}),
+                () => fetchTrialDetail(NCT_ID, { history: true }),
                 (err) => {
                     assert.equal(err.name, 'TrialFetchError'); // Replaced instanceof
                     assert.equal(err.status, 429);
@@ -138,12 +138,12 @@ describe('fetchTrialDetail', () => {
                 path: `${PATH_DETAIL}/${NCT_ID}?history=true`,
                 status: 429,
                 body: 'Too Many Requests',
-                headers: {'retry-after': ''},
+                headers: { 'retry-after': '' },
                 times: 4,
             });
 
             await assert.rejects(
-                () => fetchTrialDetail(NCT_ID, {history: true}),
+                () => fetchTrialDetail(NCT_ID, { history: true }),
                 (err) => {
                     assert.equal(err.name, 'TrialFetchError');
                     assert.equal(err.status, 429);
@@ -159,12 +159,12 @@ describe('fetchTrialDetail', () => {
                 origin: ORIGIN_DETAIL,
                 path: `${PATH_DETAIL}/${NCT_ID}?history=true`,
                 status: 400,
-                body: {error: 'Bad Request'},
+                body: { error: 'Bad Request' },
                 times: 1,
             });
 
             await assert.rejects(
-                () => fetchTrialDetail(NCT_ID, {history: true}),
+                () => fetchTrialDetail(NCT_ID, { history: true }),
                 (err) => {
                     assert.equal(err.name, 'TrialFetchError'); // Replaced instanceof
                     assert.equal(err.status, 400);
@@ -208,7 +208,7 @@ describe('fetchTrialDetail', () => {
                 body: {},
             });
 
-            await fetchTrialDetail(NCT_ID, {history: true});
+            await fetchTrialDetail(NCT_ID, { history: true });
             mockAgent.assertNoPendingInterceptors();
         });
 
@@ -229,10 +229,9 @@ describe('fetchTrialDetail', () => {
 // ─── fetchStudiesPage ─────────────────────────────────────────────────────────
 
 describe('fetchStudiesPage', () => {
-
     describe('happy path', () => {
         test('returns parsed JSON on 200', async () => {
-            const payload = {studies: [{nctId: 'NCT001'}], nextPageToken: 'abc'};
+            const payload = { studies: [{ nctId: 'NCT001' }], nextPageToken: 'abc' };
             intercept({
                 origin: ORIGIN_BASE,
                 path: `${PATH_BASE}?pageSize=10&countTotal=true`,
@@ -240,7 +239,7 @@ describe('fetchStudiesPage', () => {
                 body: payload,
             });
 
-            const data = await fetchStudiesPage({pageSize: 10, countTotal: true});
+            const data = await fetchStudiesPage({ pageSize: 10, countTotal: true });
             assert.deepEqual(data, payload);
         });
     });
@@ -248,7 +247,7 @@ describe('fetchStudiesPage', () => {
     describe('input validation', () => {
         test('throws TrialValidationError when pageSize < 1', async () => {
             await assert.rejects(
-                () => fetchStudiesPage({pageSize: 0}),
+                () => fetchStudiesPage({ pageSize: 0 }),
                 (err) => {
                     assert.equal(err.name, 'TrialValidationError');
                     return true;
@@ -263,10 +262,10 @@ describe('fetchStudiesPage', () => {
                 origin: ORIGIN_BASE,
                 path: `${PATH_BASE}?pageSize=25&countTotal=true`,
                 status: 200,
-                body: {studies: []},
+                body: { studies: [] },
             });
 
-            await fetchStudiesPage({pageSize: 25, countTotal: true});
+            await fetchStudiesPage({ pageSize: 25, countTotal: true });
             mockAgent.assertNoPendingInterceptors();
         });
 
@@ -275,10 +274,10 @@ describe('fetchStudiesPage', () => {
                 origin: ORIGIN_BASE,
                 path: `${PATH_BASE}?pageSize=10&countTotal=true&pageToken=token123`,
                 status: 200,
-                body: {studies: []},
+                body: { studies: [] },
             });
 
-            await fetchStudiesPage({pageSize: 10, countTotal: true, pageToken: 'token123'});
+            await fetchStudiesPage({ pageSize: 10, countTotal: true, pageToken: 'token123' });
             mockAgent.assertNoPendingInterceptors();
         });
 
@@ -287,10 +286,14 @@ describe('fetchStudiesPage', () => {
                 origin: ORIGIN_BASE,
                 path: `${PATH_BASE}?pageSize=10&countTotal=true&fields=NCTId%2CTitle%2CStatus`,
                 status: 200,
-                body: {studies: []},
+                body: { studies: [] },
             });
 
-            await fetchStudiesPage({pageSize: 10, countTotal: true, fields: ['NCTId', 'Title', 'Status']});
+            await fetchStudiesPage({
+                pageSize: 10,
+                countTotal: true,
+                fields: ['NCTId', 'Title', 'Status'],
+            });
             mockAgent.assertNoPendingInterceptors();
         });
 
@@ -299,10 +302,10 @@ describe('fetchStudiesPage', () => {
                 origin: ORIGIN_BASE,
                 path: `${PATH_BASE}?pageSize=10&countTotal=true`,
                 status: 200,
-                body: {studies: []},
+                body: { studies: [] },
             });
 
-            await fetchStudiesPage({pageSize: 10, countTotal: true});
+            await fetchStudiesPage({ pageSize: 10, countTotal: true });
             mockAgent.assertNoPendingInterceptors();
         });
     });
@@ -320,11 +323,11 @@ describe('fetchStudiesPage', () => {
                 origin: ORIGIN_BASE,
                 path: `${PATH_BASE}?pageSize=10&countTotal=true`,
                 status: 200,
-                body: {studies: []},
+                body: { studies: [] },
             });
 
-            const data = await fetchStudiesPage({pageSize: 10, countTotal: true});
-            assert.deepEqual(data, {studies: []});
+            const data = await fetchStudiesPage({ pageSize: 10, countTotal: true });
+            assert.deepEqual(data, { studies: [] });
             mockAgent.assertNoPendingInterceptors();
         });
 
@@ -338,7 +341,7 @@ describe('fetchStudiesPage', () => {
             });
 
             await assert.rejects(
-                () => fetchStudiesPage({pageSize: 10, countTotal: true}),
+                () => fetchStudiesPage({ pageSize: 10, countTotal: true }),
                 (err) => {
                     assert.equal(err.name, 'TrialFetchError'); // Replaced instanceof
                     assert.equal(err.status, 503);

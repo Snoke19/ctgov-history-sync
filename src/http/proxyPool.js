@@ -9,9 +9,9 @@ import {
     POOL_PIPELINING,
     RATE_LIMIT_CAPACITY,
     RATE_LIMIT_WINDOW,
-    raw
-} from "../config/config.js";
-import {logger} from "../config/logging.js";
+    raw,
+} from '../config/config.js';
+import {logger} from '../config/logging.js';
 
 // =============================================================================
 // PROXY POOL MODULE
@@ -77,7 +77,7 @@ class TokenBucket {
      */
     constructor(capacity, windowMs) {
         this.#capacity = capacity;
-        this.#tokens = capacity;      // Start full
+        this.#tokens = capacity; // Start full
         this.#windowMs = windowMs;
         this.#lastRefill = Date.now(); // Tracks when tokens were last refilled
     }
@@ -134,7 +134,7 @@ class TokenBucket {
     async acquire(timeoutMs = 30000) {
         const deadline = Date.now() + timeoutMs;
 
-        for (; ;) {
+        for (;;) {
             const now = Date.now();
             const elapsed = now - this.#lastRefill;
             const refill = elapsed * (this.#capacity / this.#windowMs);
@@ -154,19 +154,14 @@ class TokenBucket {
             // Calculate exact sleep until the next token is ready.
             const tokensNeeded = 1 - this.#tokens;
             const msPerToken = this.#windowMs / this.#capacity;
-            const sleepMs = Math.min(
-                Math.ceil(tokensNeeded * msPerToken),
-                deadline - Date.now()
-            );
+            const sleepMs = Math.min(Math.ceil(tokensNeeded * msPerToken), deadline - Date.now());
 
             if (sleepMs <= 0) {
-                throw new Error(
-                    `TokenBucket timeout: no token available within ${timeoutMs}ms`
-                );
+                throw new Error(`TokenBucket timeout: no token available within ${timeoutMs}ms`);
             }
 
-            await new Promise(r => {
-                setTimeout(r, sleepMs)
+            await new Promise((r) => {
+                setTimeout(r, sleepMs);
             });
         }
     }
@@ -222,17 +217,19 @@ const poolFactory = (url, opts) => {
  *
  * @type {ProxyAgentEntry[]}
  */
-const proxyAgents = (process.env.NODE_ENV === 'test' || raw.length === 0) ? []
-    : raw
-        .split(',')
-        .map(url => url.trim())
-        .filter(url => url.startsWith('http'))
-        .map(url => ({
-            url,
-            dispatcher: new ProxyAgent({uri: url, clientFactory: poolFactory}),
-            limiter: new TokenBucket(RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW),
-            failures: 0
-        }));
+const proxyAgents =
+    process.env.NODE_ENV === 'test' || raw.length === 0
+        ? []
+        : raw
+              .split(',')
+              .map((url) => url.trim())
+              .filter((url) => url.startsWith('http'))
+              .map((url) => ({
+                  url,
+                  dispatcher: new ProxyAgent({ uri: url, clientFactory: poolFactory }),
+                  limiter: new TokenBucket(RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW),
+                  failures: 0,
+              }));
 
 // Log the initial pool state so operators can verify configuration at startup.
 logger.info(
@@ -240,7 +237,7 @@ logger.info(
     proxyAgents.length,
     RATE_LIMIT_CAPACITY,
     RATE_LIMIT_WINDOW,
-    POOL_CONNECTIONS
+    POOL_CONNECTIONS,
 );
 
 /**
@@ -261,7 +258,7 @@ logger.info(
  * @param {boolean} success - Whether the request succeeded.
  */
 export function reportProxyHealth(proxyUrl, success) {
-    const proxy = proxyAgents.find(a => a.url === proxyUrl);
+    const proxy = proxyAgents.find((a) => a.url === proxyUrl);
     if (!proxy) return;
 
     if (success) {
@@ -310,7 +307,7 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
     // Phase 1: Proxies with available tokens right now.
     // -----------------------------------------------------------------------
     const available = proxyAgents
-        .filter(a => a.limiter.peekTokens() > 0)
+        .filter((a) => a.limiter.peekTokens() > 0)
         .sort((a, b) => {
             // Primary: health (fewer failures = better).
             if (a.failures !== b.failures) return a.failures - b.failures;
@@ -322,11 +319,11 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
         'Proxy selection | Available: %d/%d | Top tokens: %j',
         available.length,
         proxyAgents.length,
-        available.slice(0, 3).map(a => ({
+        available.slice(0, 3).map((a) => ({
             url: a.url,
             tokens: a.limiter.peekTokens(),
             failures: a.failures,
-        }))
+        })),
     );
 
     if (available.length > 0) {
@@ -338,7 +335,7 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
             'Acquiring proxy token | Proxy: %s | Tokens: %d | Failures: %d',
             pick.url,
             pick.limiter.peekTokens(),
-            pick.failures
+            pick.failures,
         );
 
         await pick.limiter.acquire(timeoutMs);
@@ -351,15 +348,13 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
     // Phase 2: All proxies exhausted — wait for the one that wakes first.
     // -----------------------------------------------------------------------
     // Oldest lastRefill = most elapsed time = highest accumulated refill.
-    const soonest = [...proxyAgents].sort(
-        (a, b) => a.limiter.lastRefill - b.limiter.lastRefill
-    );
+    const soonest = [...proxyAgents].sort((a, b) => a.limiter.lastRefill - b.limiter.lastRefill);
 
     logger.debug(
         'All proxies exhausted | Waiting on: %s | LastRefill: %dms ago | Failures: %d',
         soonest[0].url,
         Date.now() - soonest[0].limiter.lastRefill,
-        soonest[0].failures
+        soonest[0].failures,
     );
 
     await soonest[0].limiter.acquire(timeoutMs);

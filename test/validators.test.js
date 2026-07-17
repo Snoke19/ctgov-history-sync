@@ -12,58 +12,58 @@ describe('validatePageSize', () => {
     test('should reject zero', () => {
         assert.throws(() => validatePageSize(0), {
             name: 'TrialValidationError',
-            message: 'pageSize must be a positive integer'
+            message: 'pageSize must be a positive integer',
         });
     });
 
     test('should reject negative integers', () => {
         assert.throws(() => validatePageSize(-1), {
             name: 'TrialValidationError',
-            message: 'pageSize must be a positive integer'
+            message: 'pageSize must be a positive integer',
         });
         assert.throws(() => validatePageSize(-100), {
             name: 'TrialValidationError',
-            message: 'pageSize must be a positive integer'
+            message: 'pageSize must be a positive integer',
         });
     });
 
     test('should reject non-integers', () => {
         assert.throws(() => validatePageSize(1.5), {
             name: 'TrialValidationError',
-            message: 'pageSize must be a positive integer'
+            message: 'pageSize must be a positive integer',
         });
         assert.throws(() => validatePageSize(10.01), {
             name: 'TrialValidationError',
-            message: 'pageSize must be a positive integer'
+            message: 'pageSize must be a positive integer',
         });
     });
 
     test('should reject strings', () => {
         assert.throws(() => validatePageSize('10'), {
             name: 'TrialValidationError',
-            message: 'pageSize must be a positive integer'
+            message: 'pageSize must be a positive integer',
         });
     });
 
     test('should reject null and undefined', () => {
         assert.throws(() => validatePageSize(null), {
             name: 'TrialValidationError',
-            message: 'pageSize must be a positive integer'
+            message: 'pageSize must be a positive integer',
         });
         assert.throws(() => validatePageSize(undefined), {
             name: 'TrialValidationError',
-            message: 'pageSize must be a positive integer'
+            message: 'pageSize must be a positive integer',
         });
     });
 
     test('should reject objects and arrays', () => {
         assert.throws(() => validatePageSize({}), {
             name: 'TrialValidationError',
-            message: 'pageSize must be a positive integer'
+            message: 'pageSize must be a positive integer',
         });
         assert.throws(() => validatePageSize([]), {
             name: 'TrialValidationError',
-            message: 'pageSize must be a positive integer'
+            message: 'pageSize must be a positive integer',
         });
     });
 });
@@ -93,22 +93,22 @@ describe('validateGeoFilter', () => {
     test('should use custom paramName in error message', () => {
         assert.throws(() => validateGeoFilter('invalid', 'postFilter.geo'), {
             name: 'TrialValidationError',
-            message: /Invalid postFilter\.geo format/
+            message: /Invalid postFilter\.geo format/,
         });
     });
 
     test('should reject non-string values', () => {
         assert.throws(() => validateGeoFilter(123), {
             name: 'TrialValidationError',
-            message: /Invalid filter\.geo format/
+            message: /Invalid filter\.geo format/,
         });
         assert.throws(() => validateGeoFilter(null), {
             name: 'TrialValidationError',
-            message: /Invalid filter\.geo format/
+            message: /Invalid filter\.geo format/,
         });
         assert.throws(() => validateGeoFilter(undefined), {
             name: 'TrialValidationError',
-            message: /Invalid filter\.geo format/
+            message: /Invalid filter\.geo format/,
         });
     });
 
@@ -124,10 +124,10 @@ describe('validateGeoFilter', () => {
             'distance(40.7128,-74.0060,10xyz)', // invalid units
         ];
 
-        invalidFormats.forEach(format => {
+        invalidFormats.forEach((format) => {
             assert.throws(() => validateGeoFilter(format), {
                 name: 'TrialValidationError',
-                message: /Invalid filter\.geo format/
+                message: /Invalid filter\.geo format/,
             });
         });
     });
@@ -135,7 +135,7 @@ describe('validateGeoFilter', () => {
     test('should reject strings without distance prefix', () => {
         assert.throws(() => validateGeoFilter('40.7128,-74.0060,10km'), {
             name: 'TrialValidationError',
-            message: /Invalid filter\.geo format/
+            message: /Invalid filter\.geo format/,
         });
     });
 
@@ -167,15 +167,15 @@ describe('validateGeoDecay', () => {
     test('should reject non-string values', () => {
         assert.throws(() => validateGeoDecay(123), {
             name: 'TrialValidationError',
-            message: 'geoDecay must be a string'
+            message: 'geoDecay must be a string',
         });
         assert.throws(() => validateGeoDecay(null), {
             name: 'TrialValidationError',
-            message: 'geoDecay must be a string'
+            message: 'geoDecay must be a string',
         });
         assert.throws(() => validateGeoDecay(undefined), {
             name: 'TrialValidationError',
-            message: 'geoDecay must be a string'
+            message: 'geoDecay must be a string',
         });
     });
 
@@ -183,13 +183,13 @@ describe('validateGeoDecay', () => {
         const invalidFunctions = [
             'func:quadratic,scale:10km,offset:5km,decay:2.5',
             'func:log,scale:10km,offset:5km,decay:2.5',
-            'func:,scale:10km,offset:5km,decay:2.5'
+            'func:,scale:10km,offset:5km,decay:2.5',
         ];
 
-        invalidFunctions.forEach(format => {
+        invalidFunctions.forEach((format) => {
             assert.throws(() => validateGeoDecay(format), {
                 name: 'TrialValidationError',
-                message: /Invalid geoDecay format/
+                message: /Invalid geoDecay format/,
             });
         });
     });
@@ -205,10 +205,10 @@ describe('validateGeoDecay', () => {
             'func:gauss,scale:10kmx,offset:5km,decay:2.5', // invalid units
         ];
 
-        invalidFormats.forEach(format => {
+        invalidFormats.forEach((format) => {
             assert.throws(() => validateGeoDecay(format), {
                 name: 'TrialValidationError',
-                message: /Invalid geoDecay format/
+                message: /Invalid geoDecay format/,
             });
         });
     });
