@@ -1,4 +1,15 @@
 import {Pool, ProxyAgent} from 'undici';
+import {
+    ACQUIRE_TIER,
+    ACQUIRE_TIMEOUT,
+    POOL_BODY_TIMEOUT,
+    POOL_CONNECTIONS,
+    POOL_HEADERS_TIMEOUT,
+    POOL_KEEP_ALIVE_TIMEOUT,
+    POOL_PIPELINING,
+    RATE_LIMIT_CAPACITY,
+    RATE_LIMIT_WINDOW
+} from "../config/config.js";
 
 /**
  * Token bucket rate limiter.
@@ -86,20 +97,14 @@ class TokenBucket {
     }
 }
 
-const raw = process.env.PROXY_IP || '';
-
-/**
- * Factory for undici Pool instances.
- * Tuned for high-throughput proxy usage.
- */
 const poolFactory = (url, opts) => {
     return new Pool(url, {
         ...opts,
-        connections: 50,
-        pipelining: 1,
-        keepAliveTimeout: 300_000,
-        headersTimeout: 15_000,
-        bodyTimeout: 45_000,
+        connections: POOL_CONNECTIONS,
+        pipelining: POOL_PIPELINING,
+        keepAliveTimeout: POOL_KEEP_ALIVE_TIMEOUT,
+        headersTimeout: POOL_HEADERS_TIMEOUT,
+        bodyTimeout: POOL_BODY_TIMEOUT,
     });
 };
 
@@ -119,7 +124,7 @@ const proxyAgents = (process.env.NODE_ENV === 'test' || raw.length === 0) ? []
         .map(url => ({
             url,
             dispatcher: new ProxyAgent({uri: url, clientFactory: poolFactory}),
-            limiter: new TokenBucket(40, 60_000),
+            limiter: new TokenBucket(RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW),
         }));
 
 /**
@@ -135,7 +140,7 @@ const proxyAgents = (process.env.NODE_ENV === 'test' || raw.length === 0) ? []
  * @param {number} [timeoutMs=30000] - Max time to wait for a token.
  * @returns {Promise<ProxyAgentEntry|undefined>}
  */
-export async function acquireProxyDispatcher(timeoutMs = 30000) {
+export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
     if (proxyAgents.length === 0) {
         return undefined;
     }
@@ -146,7 +151,7 @@ export async function acquireProxyDispatcher(timeoutMs = 30000) {
         .sort((a, b) => b.limiter.peekTokens() - a.limiter.peekTokens());
 
     if (available.length > 0) {
-        const tierSize = Math.min(3, available.length);
+        const tierSize = Math.min(ACQUIRE_TIER, available.length);
         const pick = available[Math.floor(Math.random() * tierSize)];
         await pick.limiter.acquire(timeoutMs);
         return pick;
