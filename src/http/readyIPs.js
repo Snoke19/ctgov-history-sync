@@ -127,6 +127,7 @@ const proxyAgents = (process.env.NODE_ENV === 'test' || raw.length === 0) ? []
             url,
             dispatcher: new ProxyAgent({uri: url, clientFactory: poolFactory}),
             limiter: new TokenBucket(RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW),
+            failures: 0
         }));
 
 logger.info(
@@ -136,6 +137,12 @@ logger.info(
     RATE_LIMIT_WINDOW,
     POOL_CONNECTIONS
 );
+
+export function reportProxyResult(proxyUrl, success) {
+    const proxy = proxyAgents.find(a => a.url === proxyUrl);
+    if (!proxy) return;
+    proxy.failures = success ? Math.max(0, proxy.failures - 1) : proxy.failures + 1;
+}
 
 /**
  * Acquire a proxy dispatcher with rate-limited selection.
@@ -158,7 +165,10 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
     // Proxies that have at least 1 full token right now
     const available = proxyAgents
         .filter(a => a.limiter.peekTokens() > 0)
-        .sort((a, b) => b.limiter.peekTokens() - a.limiter.peekTokens());
+        .sort((a, b) => {
+            if (a.failures !== b.failures) return a.failures - b.failures;
+            return b.limiter.peekTokens() - a.limiter.peekTokens();
+        });
 
     logger.debug(
         'Proxy selection | Available: %d/%d | Top tokens: %j',

@@ -2,7 +2,7 @@ import {logger} from '../config/logging.js';
 import {DEFAULT_RETRY_AFTER_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS,} from '../config/config.js';
 import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
 import {fetch} from 'undici';
-import {acquireProxyDispatcher} from './readyIPs.js';
+import {acquireProxyDispatcher, reportProxyResult} from './readyIPs.js';
 
 export const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -88,9 +88,11 @@ async function executeFetch(url, options = {}) {
     const proxyUrl = proxyEntry?.url ?? 'direct';
 
     const remainingMs = deadline - Date.now();
-    const fetchTimeoutMs = Math.max(remainingMs, 1000);
+    if (remainingMs <= 0) {
+        throw new TrialTimeoutError(url, timeoutMs);
+    }
 
-    const timeoutSignal = AbortSignal.timeout(fetchTimeoutMs);
+    const timeoutSignal = AbortSignal.timeout(remainingMs);
     const signal = options.signal
         ? AbortSignal.any([timeoutSignal, options.signal])
         : timeoutSignal;
@@ -116,7 +118,7 @@ async function executeFetch(url, options = {}) {
             proxyUrl,
             durationMs
         );
-
+        reportProxyResult(proxyUrl, true);
         return {response, proxyUrl};
     } catch (error) {
         const durationMs = Math.round(performance.now() - startTime);
@@ -134,6 +136,7 @@ async function executeFetch(url, options = {}) {
 
         // Attach proxyUrl to every error so upstream logging can see it
         error.proxyUrl = proxyUrl;
+        reportProxyResult(proxyUrl, false);
 
         if (isTimeout) {
             throw new TrialTimeoutError(url, timeoutMs);
@@ -217,7 +220,8 @@ async function attemptFetch(url, options) {
 
         return {success: false, error, retryable: true, reason: `Retryable HTTP ${response.status}`};
     } catch (error) {
-        const isTimeout = error instanceof TrialTimeoutError;
+        const isTimeout = error instanceof TrialTimeoutError ||
+            error.message?.includes('TokenBucket timeout');
         // If proxyUrl wasn't attached (shouldn't happen), default to unknown
         if (!error.proxyUrl) error.proxyUrl = 'unknown';
 
@@ -288,6 +292,10 @@ async function fetchWithRetry(url, options = {}) {
  * @returns {Promise<object|null>}
  */
 async function parseJsonResponse(response, url, {allow404 = false} = {}) {
+    if (response.status === 404) {
+        logger.debug('HTTP 404 on %s | allow404=%s', url, allow404);
+    }
+
     if (allow404 && response.status === 404) {
         await drainBody(response);
         return null; // caller decides what to do
