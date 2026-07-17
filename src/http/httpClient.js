@@ -1,10 +1,20 @@
 import {logger} from '../config/logging.js';
-import {DEFAULT_RETRY_AFTER_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS,} from '../config/config.js';
+import {
+    BACKOFF_CAP_MS,
+    DEFAULT_RETRY_AFTER_MS,
+    DEFAULT_USER_AGENT,
+    ERROR_BODY_PREVIEW_LENGTH,
+    FETCH_TIMEOUT_MS,
+    MAX_RETRIES,
+    RETRY_AFTER_STATUS_CODES,
+    RETRY_BASE_DELAY_MS,
+    RETRY_ON_NETWORK_ERROR,
+    RETRY_ON_TIMEOUT,
+    RETRYABLE_STATUS_CODES,
+} from '../config/config.js';
 import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
 import {fetch} from 'undici';
 import {acquireProxyDispatcher, reportProxyResult} from './readyIPs.js';
-
-export const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
 // Methods safe to retry automatically without risking duplicate side effects.
 // POST/PATCH are excluded by default — pass {idempotent: true} to override
@@ -13,7 +23,7 @@ const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
 
 const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',
-    'User-Agent': 'ClinicalTrialsScraper/1.0',
+    'User-Agent': DEFAULT_USER_AGENT,
 });
 
 function sleep(ms) {
@@ -21,26 +31,17 @@ function sleep(ms) {
 }
 
 /**
- * Exponential backoff with jitter, capped at 30 s.
- * When a Retry-After hint is provided it takes priority.
- *
- * @param {number} attempt      - zero-indexed attempt number
- * @param {number|null} retryAfterMs
- * @returns {number} delay in ms
+ * Exponential backoff with jitter, capped at BACKOFF_CAP_MS.
  */
 export function calculateBackoff(attempt, retryAfterMs = null) {
     if (retryAfterMs != null && retryAfterMs > 0) return retryAfterMs;
     const base = RETRY_BASE_DELAY_MS * 2 ** attempt;
     const jitter = Math.random() * base * 0.5;
-    return Math.min(base + jitter, 30_000);
+    return Math.min(base + jitter, BACKOFF_CAP_MS);
 }
 
 /**
  * Parses the Retry-After response header into milliseconds.
- * Handles both integer (seconds) and HTTP-date forms.
- *
- * @param {Response} response
- * @returns {number|null}
  */
 export function parseRetryAfterHeader(response) {
     const raw = response.headers.get('Retry-After');
@@ -113,10 +114,7 @@ async function executeFetch(url, options = {}) {
 
         logger.debug(
             'Fetched %s | Status: %d | Proxy: %s | Took: %dms',
-            url,
-            response.status,
-            proxyUrl,
-            durationMs
+            url, response.status, proxyUrl, durationMs
         );
         reportProxyResult(proxyUrl, true);
         return {response, proxyUrl};
@@ -183,7 +181,7 @@ async function drainBody(response) {
  * @returns {TrialFetchError}
  */
 function buildRetryableError(url, response, proxyUrl) {
-    const retryAfterMs = response.status === 429
+    const retryAfterMs = RETRY_AFTER_STATUS_CODES.has(response.status)
         ? (parseRetryAfterHeader(response) ?? DEFAULT_RETRY_AFTER_MS)
         : null;
 
@@ -222,7 +220,12 @@ async function attemptFetch(url, options) {
         await drainBody(response);
         const error = buildRetryableError(url, response, proxyUrl);
 
-        return {success: false, error, retryable: true, reason: `Retryable HTTP ${response.status}`};
+        return {
+            success: false,
+            error,
+            retryable: true,
+            reason: `Retryable HTTP ${response.status}`,
+        };
     } catch (error) {
         const isTimeout = error instanceof TrialTimeoutError ||
             error.message?.includes('TokenBucket timeout');
@@ -232,7 +235,7 @@ async function attemptFetch(url, options) {
         return {
             success: false,
             error,
-            retryable: isTimeout || Boolean(error.isTransient),
+            retryable: (isTimeout && RETRY_ON_TIMEOUT) || (Boolean(error.isTransient) && RETRY_ON_NETWORK_ERROR),
             reason: isTimeout ? 'Timeout' : 'Transient error',
         };
     }
@@ -314,7 +317,7 @@ async function parseJsonResponse(response, url, {allow404 = false} = {}) {
         const text = await response.text().catch(() => '');
         throw new TrialFetchError(
             url,
-            new Error(`HTTP ${response.status}: ${response.statusText}. Body: ${text.slice(0, 200)}`),
+            new Error(`HTTP ${response.status}: ${response.statusText}. Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`),
             response.status,
             RETRYABLE_STATUS_CODES.has(response.status)
         );
