@@ -12,6 +12,7 @@ import {
     raw,
 } from '../config/config.js';
 import {logger} from '../config/logging.js';
+import {performance} from 'node:perf_hooks';
 
 // =============================================================================
 // PROXY POOL MODULE
@@ -79,7 +80,7 @@ class TokenBucket {
         this.#capacity = capacity;
         this.#tokens = capacity; // Start full
         this.#windowMs = windowMs;
-        this.#lastRefill = Date.now(); // Tracks when tokens were last refilled
+        this.#lastRefill = performance.now();
     }
 
     /**
@@ -93,7 +94,7 @@ class TokenBucket {
      * @returns {number} Floored token count (e.g. 3.7 → 3).
      */
     peekTokens() {
-        const now = Date.now();
+        const now = performance.now();
         const elapsed = now - this.#lastRefill;
         const refill = elapsed * (this.#capacity / this.#windowMs);
         return Math.floor(Math.min(this.#capacity, this.#tokens + refill));
@@ -110,6 +111,28 @@ class TokenBucket {
      */
     get lastRefill() {
         return this.#lastRefill;
+    }
+
+    /**
+     * Returns the time (ms) until `count` tokens are available.
+     *
+     * @param {number} [count=1] - Required number of tokens.
+     * @returns {number} Milliseconds until enough tokens exist.
+     */
+    timeUntil(count = 1) {
+        const now = performance.now();
+        const elapsed = now - this.#lastRefill;
+        const refill = elapsed * (this.#capacity / this.#windowMs);
+        const available = Math.min(this.#capacity, this.#tokens + refill);
+
+        if (available >= count) {
+            return 0;
+        }
+
+        const tokensNeeded = count - available;
+        const msPerToken = this.#windowMs / this.#capacity;
+
+        return Math.ceil(tokensNeeded * msPerToken);
     }
 
     /**
@@ -135,7 +158,7 @@ class TokenBucket {
         const deadline = Date.now() + timeoutMs;
 
         for (; ;) {
-            const now = Date.now();
+            const now = performance.now();
             const elapsed = now - this.#lastRefill;
             const refill = elapsed * (this.#capacity / this.#windowMs);
 
@@ -152,9 +175,10 @@ class TokenBucket {
             }
 
             // Calculate exact sleep until the next token is ready.
-            const tokensNeeded = 1 - this.#tokens;
-            const msPerToken = this.#windowMs / this.#capacity;
-            const sleepMs = Math.min(Math.ceil(tokensNeeded * msPerToken), deadline - Date.now());
+            const sleepMs = Math.min(
+                this.timeUntil(1),
+                deadline - Date.now()
+            );
 
             if (sleepMs <= 0) {
                 throw new Error(`TokenBucket timeout: no token available within ${timeoutMs}ms`);
@@ -370,14 +394,18 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
     // -----------------------------------------------------------------------
     // Phase 2: All proxies exhausted — wait for the one that wakes first.
     // -----------------------------------------------------------------------
-    // Oldest lastRefill = most elapsed time = highest accumulated refill.
-    const soonest = [...proxyAgents].sort((a, b) => a.limiter.lastRefill - b.limiter.lastRefill);
+    // Choose the proxy with the shortest wait until one token is available.
+    const soonest = [...proxyAgents]
+        .sort((a, b) =>
+            a.limiter.timeUntil(1) - b.limiter.timeUntil(1)
+        );
+    const waitMs = soonest.limiter.timeUntil(1);
 
     logger.debug(
-        'All proxies exhausted | Waiting on: %s | LastRefill: %dms ago | Failures: %d',
-        soonest[0].url,
-        Date.now() - soonest[0].limiter.lastRefill,
-        soonest[0].failures,
+        'All proxies exhausted | Waiting on: %s | Wait: %dms | Failures: %d',
+        soonest.url,
+        waitMs,
+        soonest.failures,
     );
 
     await soonest[0].limiter.acquire(timeoutMs);
