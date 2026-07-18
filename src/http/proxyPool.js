@@ -67,9 +67,9 @@ import {performance} from 'node:perf_hooks';
  */
 class TokenBucket {
     #capacity;
-    #tokens;
     #windowMs;
     #lastRefill;
+    #availableTokens;
 
     /**
      * @param {number} capacity - Maximum tokens the bucket can hold.
@@ -78,9 +78,19 @@ class TokenBucket {
      */
     constructor(capacity, windowMs) {
         this.#capacity = capacity;
-        this.#tokens = capacity; // Start full
+        this.#availableTokens = capacity;
         this.#windowMs = windowMs;
         this.#lastRefill = performance.now();
+    }
+
+    #available(now = performance.now()) {
+        const refillRate = this.#capacity / this.#windowMs;
+        const elapsed = now - this.#lastRefill;
+
+        return Math.min(
+            this.#capacity,
+            this.#availableTokens + elapsed * refillRate,
+        );
     }
 
     /**
@@ -94,10 +104,7 @@ class TokenBucket {
      * @returns {number} Floored token count (e.g. 3.7 → 3).
      */
     peekTokens() {
-        const now = performance.now();
-        const elapsed = now - this.#lastRefill;
-        const refill = elapsed * (this.#capacity / this.#windowMs);
-        return Math.floor(Math.min(this.#capacity, this.#tokens + refill));
+        return Math.floor(this.#available());
     }
 
     /**
@@ -121,9 +128,7 @@ class TokenBucket {
      */
     timeUntil(count = 1) {
         const now = performance.now();
-        const elapsed = now - this.#lastRefill;
-        const refill = elapsed * (this.#capacity / this.#windowMs);
-        const available = Math.min(this.#capacity, this.#tokens + refill);
+        const available = this.#available(now);
 
         if (available >= count) {
             return 0;
@@ -155,37 +160,31 @@ class TokenBucket {
      *   within `timeoutMs`.
      */
     async acquire(timeoutMs = 30000) {
-        const deadline = Date.now() + timeoutMs;
+        const deadline = performance.now() + timeoutMs;
 
         for (; ;) {
             const now = performance.now();
-            const elapsed = now - this.#lastRefill;
-            const refill = elapsed * (this.#capacity / this.#windowMs);
+            const available = this.#available(now);
 
-            // Replenish tokens based on elapsed time since last refill.
-            if (refill > 0) {
-                this.#tokens = Math.min(this.#capacity, this.#tokens + refill);
+            if (available >= 1) {
+                this.#availableTokens = available - 1;
                 this.#lastRefill = now;
-            }
-
-            // Token available — consume and return.
-            if (this.#tokens >= 1) {
-                this.#tokens -= 1;
                 return;
             }
 
-            // Calculate exact sleep until the next token is ready.
             const sleepMs = Math.min(
                 this.timeUntil(1),
-                deadline - Date.now()
+                deadline - performance.now(),
             );
 
             if (sleepMs <= 0) {
-                throw new Error(`TokenBucket timeout: no token available within ${timeoutMs}ms`);
+                throw new Error(
+                    `TokenBucket timeout: no token available within ${timeoutMs}ms`,
+                );
             }
 
-            await new Promise((r) => {
-                setTimeout(r, sleepMs);
+            await new Promise(resolve => {
+                setTimeout(resolve, sleepMs);
             });
         }
     }
@@ -343,7 +342,7 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
     // -----------------------------------------------------------------------
     // Phase 1: Proxies with available tokens right now.
     // -----------------------------------------------------------------------
-    const available = proxyAgents
+    const availableProxy = proxyAgents
         .map(proxy => ({
             proxy,
             failures: proxy.failures,
@@ -364,19 +363,19 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
 
     logger.debug(
         'Proxy selection | Available: %d/%d | Top tokens: %j',
-        available.length,
+        availableProxy.length,
         proxyAgents.length,
-        available.slice(0, 3).map(a => ({
+        availableProxy.slice(0, 3).map(a => ({
             url: a.proxy.url,
             tokens: a.tokens,
             failures: a.failures,
         })),
     );
 
-    if (available.length > 0) {
+    if (availableProxy.length > 0) {
         // Random pick from the top tier prevents herding on a single proxy.
-        const tierSize = Math.min(ACQUIRE_TIER, available.length);
-        const pick = available[Math.floor(Math.random() * tierSize)];
+        const tierSize = Math.min(ACQUIRE_TIER, availableProxy.length);
+        const pick = availableProxy[Math.floor(Math.random() * tierSize)];
 
         logger.debug(
             'Acquiring proxy token | Proxy: %s | Tokens: %d | Failures: %d',
@@ -399,13 +398,13 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
         .sort((a, b) =>
             a.limiter.timeUntil(1) - b.limiter.timeUntil(1)
         );
-    const waitMs = soonest.limiter.timeUntil(1);
+    const waitMs = soonest[0].limiter.timeUntil(1);
 
     logger.debug(
         'All proxies exhausted | Waiting on: %s | Wait: %dms | Failures: %d',
-        soonest.url,
+        soonest[0].url,
         waitMs,
-        soonest.failures,
+        soonest[0].failures,
     );
 
     await soonest[0].limiter.acquire(timeoutMs);
