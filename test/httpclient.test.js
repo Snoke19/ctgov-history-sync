@@ -1,6 +1,7 @@
 import {beforeEach, describe, test} from '@jest/globals';
 import assert from 'node:assert/strict';
 import {MockAgent, setGlobalDispatcher} from 'undici';
+import {RETRYABLE_STATUS_CODES} from "../src/config/config.js";
 
 let mockAgent;
 
@@ -28,7 +29,7 @@ function intercept({ origin, path, method = 'GET', times = 1, status, body, head
     interceptor.times(times);
 }
 
-const { fetchJson, calculateBackoff, parseRetryAfterHeader, RETRYABLE_STATUS_CODES } =
+const { fetchJson, calculateBackoff, parseRetryAfterHeader } =
     await import('../src/http/httpClient.js');
 
 const ORIGIN = 'http://test.local';
@@ -77,8 +78,6 @@ describe('parseRetryAfterHeader', () => {
         const future = new Date(Date.now() + 10_000).toUTCString();
         const response = new Response(null, { headers: { 'Retry-After': future } });
         const parsed = parseRetryAfterHeader(response);
-
-        console.log('parsed: ' + parsed);
 
         assert.ok(parsed > 8000 && parsed <= 10_000);
     });

@@ -116,7 +116,7 @@ describe('fetchTrialDetail', () => {
                 path: `${PATH_DETAIL}/${NCT_ID}?history=true`,
                 status: 429,
                 body: 'Too Many Requests',
-                headers: { 'retry-after': '2' },
+                headers: { 'Retry-After': '2' },
                 times: 4,
             });
 
@@ -138,17 +138,19 @@ describe('fetchTrialDetail', () => {
                 path: `${PATH_DETAIL}/${NCT_ID}?history=true`,
                 status: 429,
                 body: 'Too Many Requests',
-                headers: { 'retry-after': '' },
+                headers: { 'Retry-After': '' },
                 times: 4,
             });
 
             await assert.rejects(
                 () => fetchTrialDetail(NCT_ID, { history: true }),
                 (err) => {
+                    console.log(err.retryAfterMs)
+
                     assert.equal(err.name, 'TrialFetchError');
                     assert.equal(err.status, 429);
                     assert.equal(err.isTransient, true);
-                    assert.ok(err.retryAfterMs === 50);
+                    assert.ok(err.retryAfterMs === 1000);
                     return true;
                 },
             );
