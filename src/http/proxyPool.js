@@ -18,8 +18,15 @@ import {performance} from 'node:perf_hooks';
  * Token bucket rate limiter.
  *
  * Models a bucket that holds up to `capacity` tokens. Each token represents
- * one permitted request. Tokens refill smoothly over time at a rate of
+ * one permitted request.
+ *
+ * Tokens refill smoothly over time at a rate of
  * `capacity / windowMs` tokens per millisecond.
+ *
+ * Instead of continuously updating the bucket, refills are computed lazily
+ * whenever the bucket is queried. The implementation stores only the token
+ * count and the timestamp of the last update, making refills O(1) without
+ * background timers.
  *
  * Thread safety: Safe for concurrent async usage because Node.js runs on a
  * single event loop. All state mutations happen synchronously before the first
@@ -83,13 +90,13 @@ class TokenBucket {
     }
 
     /**
-     * Timestamp of the last token refill.
+     * Timestamp of the last state update.
      *
-     * Used by the "all exhausted" fallback in `acquireProxyDispatcher` to
-     * pick the proxy that has accumulated the most refill time and will
-     * therefore reach 1 token soonest.
+     * Updated whenever a token is consumed. Combined with the stored token
+     * count, it allows the bucket to lazily compute the current number of
+     * available tokens without running a background refill task.
      *
-     * @returns {number} Unix timestamp in milliseconds.
+     * @returns {number} Monotonic timestamp from `performance.now()`.
      */
     get lastRefill() {
         return this.#lastRefill;
@@ -140,7 +147,7 @@ class TokenBucket {
         const deadline = performance.now() + timeoutMs;
         const refillRate = this.#refillRate;
 
-        for (;;) {
+        for (; ;) {
             const now = performance.now();
             const available = this.#available(now);
 
@@ -301,8 +308,8 @@ export function reportProxyHealth(proxyUrl, success) {
  *      This balances load while favoring healthy, well-rested proxies.
  *
  *   3. ALL PROXIES EXHAUSTED
- *      Sorts by oldest `lastRefill` → most accumulated refill time.
- *      Waits on that proxy's TokenBucket.acquire().
+ *      Finds the proxy with the shortest wait until the next token becomes
+ *      available and waits on that proxy's TokenBucket.acquire().
  *
  * The returned entry MUST be used for exactly one request. The caller
  * (httpClient.js) is responsible for reporting the result via
@@ -373,7 +380,8 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
     // -----------------------------------------------------------------------
     // Phase 2: All proxies exhausted — wait for the one that wakes first.
     // -----------------------------------------------------------------------
-    // Choose the proxy with the shortest wait until one token is available.
+    // Find the proxy whose rate limiter will produce the next available token
+    // the soonest.
     let soonest = proxyAgents[0];
     let waitMs = soonest.limiter.timeUntil(1);
 
