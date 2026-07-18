@@ -14,40 +14,6 @@ import {
 import {logger} from '../config/logging.js';
 import {performance} from 'node:perf_hooks';
 
-// =============================================================================
-// PROXY POOL MODULE
-// =============================================================================
-//
-// Manages a pool of HTTP proxy agents with per-proxy rate limiting and
-// health tracking. Built on top of `undici` Pool + ProxyAgent.
-//
-// Responsibilities:
-//   1. TOKEN BUCKET RATE LIMITING
-//      Each proxy gets its own TokenBucket that enforces a maximum request
-//      rate (e.g. 40 requests per 60 seconds). Requests block until a token
-//      is available or the acquisition timeout fires.
-//
-//   2. PROXY HEALTH TRACKING
-//      A `failures` counter per proxy tracks recent errors. Proxies with
-//      fewer failures are preferred. Successful requests decay failures
-//      exponentially (×0.5), so a "dead" proxy recovers in ~4 successes.
-//
-//   3. LOAD DISTRIBUTION (anti-herding)
-//      Instead of always picking the proxy with the most tokens, the module
-//      selects randomly from the top-N healthiest proxies. This prevents
-//      all requests from piling onto a single "richest" proxy.
-//
-//   4. FALLBACK WHEN EXHAUSTED
-//      If all proxies are out of tokens, the module waits on the one that
-//      has accumulated the most refill time (oldest lastRefill).
-//
-// PUBLIC API
-// ----------
-//   acquireProxyDispatcher(timeoutMs)  →  Returns a proxy entry or undefined.
-//   reportProxyHealth(proxyUrl, success) →  Updates health after a request.
-//
-// =============================================================================
-
 /**
  * Token bucket rate limiter.
  *
