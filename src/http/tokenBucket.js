@@ -30,13 +30,16 @@ export class TokenBucket {
     #lastRefill;
     #refillRate;
     #availableTokens;
+    #now;
 
     /**
      * @param {number} capacity - Maximum tokens the bucket can hold.
-     * @param {number} windowMs - Time window over which `capacity` tokens
-     *   are replenished, in milliseconds.
+     * @param {number} windowMs - Time window over which `capacity`
+     *   tokens are replenished, in milliseconds.
+     * @param {() => number} [now=performance.now] - Function returning a
+     *   monotonic timestamp in milliseconds. Intended primarily for testing.
      */
-    constructor(capacity, windowMs) {
+    constructor(capacity, windowMs, now = () => performance.now()) {
         if (!Number.isFinite(capacity) || capacity <= 0) {
             throw new TypeError("capacity must be a positive finite number");
         }
@@ -49,10 +52,12 @@ export class TokenBucket {
         this.#availableTokens = capacity;
         this.#windowMs = windowMs;
         this.#refillRate = capacity / windowMs;
-        this.#lastRefill = performance.now();
+
+        this.#now = now;
+        this.#lastRefill = this.#now();
     }
 
-    #available(now = performance.now()) {
+    #available(now = this.#now()) {
         const elapsed = now - this.#lastRefill;
 
         return Math.min(
@@ -95,8 +100,7 @@ export class TokenBucket {
      * @returns {number} Milliseconds until enough tokens exist.
      */
     timeUntil(count = 1) {
-        const now = performance.now();
-        const available = this.#available(now);
+        const available = this.#available(this.#now());
 
         if (available >= count) {
             return 0;
@@ -130,11 +134,11 @@ export class TokenBucket {
             throw new TypeError("timeoutMs must be a non-negative finite number");
         }
 
-        const deadline = performance.now() + timeoutMs;
+        const deadline = this.#now() + timeoutMs;
         const refillRate = this.#refillRate;
 
         for (; ;) {
-            const now = performance.now();
+            const now = this.#now();
             const available = this.#available(now);
 
             if (available >= 1) {
