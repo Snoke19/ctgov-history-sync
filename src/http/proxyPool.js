@@ -35,6 +35,7 @@ class TokenBucket {
     #capacity;
     #windowMs;
     #lastRefill;
+    #refillRate;
     #availableTokens;
 
     /**
@@ -54,16 +55,16 @@ class TokenBucket {
         this.#capacity = capacity;
         this.#availableTokens = capacity;
         this.#windowMs = windowMs;
+        this.#refillRate = capacity / windowMs;
         this.#lastRefill = performance.now();
     }
 
     #available(now = performance.now()) {
-        const refillRate = this.#capacity / this.#windowMs;
         const elapsed = now - this.#lastRefill;
 
         return Math.min(
             this.#capacity,
-            this.#availableTokens + elapsed * refillRate,
+            this.#availableTokens + elapsed * this.#refillRate,
         );
     }
 
@@ -139,8 +140,9 @@ class TokenBucket {
         }
 
         const deadline = performance.now() + timeoutMs;
+        const refillRate = this.#refillRate;
 
-        for (; ;) {
+        for (;;) {
             const now = performance.now();
             const available = this.#available(now);
 
@@ -150,9 +152,11 @@ class TokenBucket {
                 return;
             }
 
+            const tokensNeeded = 1 - available;
+
             const sleepMs = Math.min(
-                this.timeUntil(1),
-                deadline - performance.now(),
+                Math.ceil(tokensNeeded / refillRate),
+                deadline - now,
             );
 
             if (sleepMs <= 0) {
@@ -387,14 +391,17 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
 
     logger.debug(
         'All proxies exhausted | Waiting on: %s | Wait: %dms | Failures: %d',
-        soonest[0].url,
+        soonest.url,
         waitMs,
-        soonest[0].failures,
+        soonest.failures,
     );
 
-    await soonest[0].limiter.acquire(timeoutMs);
+    await soonest.limiter.acquire(timeoutMs);
 
-    logger.debug('Proxy token acquired after wait | Proxy: %s', soonest[0].url);
+    logger.debug(
+        'Proxy token acquired after wait | Proxy: %s',
+        soonest.url,
+    );
 
-    return soonest[0];
+    return soonest;
 }
