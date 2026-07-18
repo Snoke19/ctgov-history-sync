@@ -43,6 +43,14 @@ class TokenBucket {
      *   are replenished, in milliseconds.
      */
     constructor(capacity, windowMs) {
+        if (!Number.isFinite(capacity) || capacity <= 0) {
+            throw new TypeError("capacity must be a positive finite number");
+        }
+
+        if (!Number.isFinite(windowMs) || windowMs <= 0) {
+            throw new TypeError("windowMs must be a positive finite number");
+        }
+
         this.#capacity = capacity;
         this.#availableTokens = capacity;
         this.#windowMs = windowMs;
@@ -126,6 +134,10 @@ class TokenBucket {
      *   within `timeoutMs`.
      */
     async acquire(timeoutMs = 30000) {
+        if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+            throw new TypeError("timeoutMs must be a non-negative finite number");
+        }
+
         const deadline = performance.now() + timeoutMs;
 
         for (; ;) {
@@ -360,11 +372,18 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
     // Phase 2: All proxies exhausted — wait for the one that wakes first.
     // -----------------------------------------------------------------------
     // Choose the proxy with the shortest wait until one token is available.
-    const soonest = [...proxyAgents]
-        .sort((a, b) =>
-            a.limiter.timeUntil(1) - b.limiter.timeUntil(1)
-        );
-    const waitMs = soonest[0].limiter.timeUntil(1);
+    let soonest = proxyAgents[0];
+    let waitMs = soonest.limiter.timeUntil(1);
+
+    for (let i = 1; i < proxyAgents.length; i++) {
+        const proxy = proxyAgents[i];
+        const wait = proxy.limiter.timeUntil(1);
+
+        if (wait < waitMs) {
+            waitMs = wait;
+            soonest = proxy;
+        }
+    }
 
     logger.debug(
         'All proxies exhausted | Waiting on: %s | Wait: %dms | Failures: %d',
