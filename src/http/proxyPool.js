@@ -110,9 +110,7 @@ class TokenBucket {
         }
 
         const tokensNeeded = count - available;
-        const msPerToken = this.#windowMs / this.#capacity;
-
-        return Math.ceil(tokensNeeded * msPerToken);
+        return Math.ceil(tokensNeeded / this.#refillRate);
     }
 
     /**
