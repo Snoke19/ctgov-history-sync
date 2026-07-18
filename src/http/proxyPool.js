@@ -134,7 +134,7 @@ class TokenBucket {
     async acquire(timeoutMs = 30000) {
         const deadline = Date.now() + timeoutMs;
 
-        for (;;) {
+        for (; ;) {
             const now = Date.now();
             const elapsed = now - this.#lastRefill;
             const refill = elapsed * (this.#capacity / this.#windowMs);
@@ -221,15 +221,26 @@ const proxyAgents =
     process.env.NODE_ENV === 'test' || raw.length === 0
         ? []
         : raw
-              .split(',')
-              .map((url) => url.trim())
-              .filter((url) => url.startsWith('http'))
-              .map((url) => ({
-                  url,
-                  dispatcher: new ProxyAgent({ uri: url, clientFactory: poolFactory }),
-                  limiter: new TokenBucket(RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW),
-                  failures: 0,
-              }));
+            .split(',')
+            .map((url) => url.trim())
+            .filter((url) => url.startsWith('http'))
+            .map((url) => ({
+                url,
+                dispatcher: new ProxyAgent({uri: url, clientFactory: poolFactory}),
+                limiter: new TokenBucket(RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW),
+                failures: 0,
+            }));
+
+/**
+ * Fast lookup table for proxy entries by URL.
+ *
+ * Used by reportProxyHealth() to avoid a linear scan on every request.
+ *
+ * @type {Map<string, ProxyAgentEntry>}
+ */
+const proxyByUrl = new Map(
+    proxyAgents.map(proxy => [proxy.url, proxy]),
+);
 
 // Log the initial pool state so operators can verify configuration at startup.
 logger.info(
@@ -258,8 +269,10 @@ logger.info(
  * @param {boolean} success - Whether the request succeeded.
  */
 export function reportProxyHealth(proxyUrl, success) {
-    const proxy = proxyAgents.find((a) => a.url === proxyUrl);
-    if (!proxy) return;
+    const proxy = proxyByUrl.get(proxyUrl);
+    if (!proxy) {
+        return;
+    }
 
     if (success) {
         // Exponential decay: recover quickly from transient failures.
@@ -286,7 +299,7 @@ export function reportProxyHealth(proxyUrl, success) {
  *
  *   3. ALL PROXIES EXHAUSTED
  *      Sorts by oldest `lastRefill` → most accumulated refill time.
- Waits on that proxy's TokenBucket.acquire().
+ *      Waits on that proxy's TokenBucket.acquire().
  *
  * The returned entry MUST be used for exactly one request. The caller
  * (httpClient.js) is responsible for reporting the result via
@@ -307,21 +320,31 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
     // Phase 1: Proxies with available tokens right now.
     // -----------------------------------------------------------------------
     const available = proxyAgents
-        .filter((a) => a.limiter.peekTokens() > 0)
+        .map(proxy => ({
+            proxy,
+            failures: proxy.failures,
+            tokens: proxy.limiter.peekTokens()
+        }))
+        .filter(item => item.tokens > 0)
+        // Full sort is acceptable here because the proxy pool is expected
+        // to remain relatively small (<100). Revisit with a top-k selection
+        // algorithm if the pool grows significantly.
         .sort((a, b) => {
             // Primary: health (fewer failures = better).
-            if (a.failures !== b.failures) return a.failures - b.failures;
+            if (a.failures !== b.failures) {
+                return a.failures - b.failures;
+            }
             // Secondary: token wealth (more tokens = better).
-            return b.limiter.peekTokens() - a.limiter.peekTokens();
+            return b.tokens - a.tokens;
         });
 
     logger.debug(
         'Proxy selection | Available: %d/%d | Top tokens: %j',
         available.length,
         proxyAgents.length,
-        available.slice(0, 3).map((a) => ({
-            url: a.url,
-            tokens: a.limiter.peekTokens(),
+        available.slice(0, 3).map(a => ({
+            url: a.proxy.url,
+            tokens: a.tokens,
             failures: a.failures,
         })),
     );
@@ -333,15 +356,15 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
 
         logger.debug(
             'Acquiring proxy token | Proxy: %s | Tokens: %d | Failures: %d',
-            pick.url,
-            pick.limiter.peekTokens(),
+            pick.proxy.url,
+            pick.tokens,
             pick.failures,
         );
 
-        await pick.limiter.acquire(timeoutMs);
-        logger.debug('Proxy token acquired | Proxy: %s', pick.url);
+        await pick.proxy.limiter.acquire(timeoutMs);
+        logger.debug('Proxy token acquired | Proxy: %s', pick.proxy.url);
 
-        return pick;
+        return pick.proxy;
     }
 
     // -----------------------------------------------------------------------
