@@ -32,3 +32,11 @@ export class TrialValidationError extends Error {
         this.name = 'TrialValidationError';
     }
 }
+
+export class TokenBucketTimeoutError extends Error {
+    constructor(timeoutMs) {
+        super(`TokenBucket timeout: no token available within ${timeoutMs}ms`);
+        this.name = 'TokenBucketTimeoutError';
+        this.timeoutMs = timeoutMs;
+    }
+}

@@ -333,3 +333,71 @@ validateSearchParams({
 ## License
 
 MIT
+
+---
+Here's how the credit-based `TokenBucket` works, from the ground up.
+
+## The core idea
+
+Instead of literally refilling the bucket on a timer, the bucket stores two things:
+
+- `#creditMs` — how much "capacity" is currently banked, expressed in milliseconds rather than token count
+- `#lastRefill` — the timestamp of the last time that credit was updated
+
+Nothing runs in the background. Every time you *ask* the bucket a question ("can I go?" / "how many can I do?" / "let me in"), it recomputes the current state on the spot based on how much time has passed. This is the "lazy refill" pattern — cheap, no timers to leak, no drift.
+
+## Why milliseconds instead of token counts
+
+A token is really just a unit of "permission," and permission accumulates over time. If `capacity=10` tokens refill every `windowMs=1000` ms, then one token is worth `100ms` of accumulated time. So instead of tracking "6.3 tokens available," the bucket tracks "630ms of credit available" — same information, different ruler. The payoff: refilling becomes plain addition (`credit + elapsed`), and "how long until I can go" becomes plain subtraction (`needed - available`), with no multiplication or division needed on the hot path.
+
+## Walking through each piece
+
+**Constructor**
+```js
+this.#msPerToken = windowMs / capacity;   // cost of one token, in ms
+this.#creditMs = windowMs;                // start full: capacity tokens' worth
+```
+The bucket starts completely full — full credit, equivalent to `capacity` tokens available immediately, which matches how a fresh rate limiter should behave (burst capacity available right away).
+
+**`#availableCreditMs(now)` — the refill calculation**
+```js
+const elapsed = now - this.#lastRefill;
+return Math.min(this.#windowMs, this.#creditMs + elapsed);
+```
+This is the heart of the whole class. It says: "however much credit we had last time, add back the time that's passed since then — but never go over a full bucket (`windowMs`)." This function doesn't mutate anything; it's a pure calculation of "what would the state be right now."
+
+**`peekTokens()` — read-only check**
+```js
+Math.floor(this.#availableCreditMs() / this.#msPerToken);
+```
+Converts current credit back into a whole token count, for display or for comparing proxies against each other, without spending anything. Purely observational — call it as often as you like.
+
+**`timeUntil(count)` — "when will I be able to go?"**
+```js
+const neededCreditMs = count * this.#msPerToken;
+const availableCreditMs = this.#availableCreditMs(now);
+if (availableCreditMs >= neededCreditMs) return 0;
+return Math.ceil(neededCreditMs - availableCreditMs);
+```
+Figures out the ms-value of the requested token count, compares it to what's currently available, and returns the shortfall directly as a millisecond wait time — no unit conversion needed, because everything's already in ms. If you ask for more tokens than the bucket can ever hold (`count > capacity`), it returns `Infinity` rather than a misleading finite number.
+
+**`acquire(timeoutMs)` — the actual gate**
+
+This is a loop, not a single check, because time keeps passing while you wait:
+
+1. Compute current available credit.
+2. If there's enough to cover one token's cost (`#msPerToken`), **spend it immediately**: subtract the cost from the credit, stamp `#lastRefill = now`, and return. The caller proceeds.
+3. If not, compute exactly how long until there *would* be enough (the deficit, in ms — no division needed), cap that by whatever's left before `timeoutMs` runs out, and `await` a `setTimeout` for that exact duration.
+4. Loop back to step 1 and check again.
+
+The sleep duration is calculated precisely to the millisecond needed — not a fixed polling interval — so it doesn't oversleep or busy-wait.
+
+If the deadline arrives before a token frees up, it throws `TokenBucketTimeoutError` instead of hanging forever.
+
+## Why it's safe with many concurrent callers
+
+Node runs on a single thread with an event loop. Inside `acquire()`, everything between reading `availableCreditMs` and writing `this.#creditMs`/`this.#lastRefill` happens **synchronously** — there's no `await` in between. That means if ten `acquire()` calls are all waiting on `setTimeout` and their timers fire around the same moment, JavaScript still only runs one of their "wake up and check" blocks at a time, start to finish, before moving to the next. So two callers can never both see "1 token available" and both successfully deduct it — whichever runs first spends the credit, and the next one recomputes and (correctly) sees it's gone.
+
+## The mental model, summarized
+
+Think of it less like "a bucket filling with marbles" and more like **a running balance of pre-paid time**. Every millisecond that passes deposits one millisecond of balance (capped at a full window's worth). Spending a token withdraws `windowMs/capacity` milliseconds from that balance. If the balance can't cover a withdrawal, you wait exactly as long as it takes for the balance to reach zero-or-above, then try again.
