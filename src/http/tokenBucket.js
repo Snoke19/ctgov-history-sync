@@ -1,6 +1,8 @@
 import {performance} from 'node:perf_hooks';
 import {TokenBucketTimeoutError} from '../error/errors.js';
 
+const EPS = 1e-9;
+
 /**
  * Token bucket rate limiter using credit-milliseconds.
  *
@@ -94,7 +96,12 @@ export class TokenBucket {
             return this.#capacity;
         }
 
-        return Math.floor(creditMs / this.#msPerToken);
+        // Guard against floating-point undershoot. After subtracting msPerToken,
+        // creditMs can be epsilon-smaller than the exact mathematical value,
+        // causing floor() to undercount by 1.
+        const tokens = creditMs / this.#msPerToken;
+
+        return Math.floor(Math.min(tokens + EPS, this.#capacity));
     }
 
     /**
@@ -179,7 +186,7 @@ export class TokenBucket {
             const now = this.#clock();
             const availableCreditMs = this.#availableCreditMs(now);
 
-            if (availableCreditMs >= costMs) {
+            if (availableCreditMs + EPS >= costMs) {
                 this.#creditMs = availableCreditMs - costMs;
                 this.#lastRefill = now;
                 return;
