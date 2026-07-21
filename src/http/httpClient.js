@@ -14,7 +14,7 @@ import {
 } from '../config/config.js';
 import {logger} from '../config/logging.js';
 import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
-import {acquireProxyDispatcher} from './proxyPool.js';
+import {acquireProxy} from './proxyPool.js';
 
 // =============================================================================
 // HTTP CLIENT MODULE
@@ -182,7 +182,7 @@ async function executeFetch(url, options = {}) {
 
     // Step 1: Acquire a rate-limited proxy dispatcher.
     // This may wait if the proxy's TokenBucket is empty.
-    const proxyEntry = await acquireProxyDispatcher(timeoutMs);
+    const proxyEntry = await acquireProxy(timeoutMs);
     const proxyUrl = proxyEntry?.url ?? 'direct';
 
     // Step 2: Calculate how much time is left for the actual HTTP request.

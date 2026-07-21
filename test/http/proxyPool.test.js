@@ -1,5 +1,5 @@
 import {afterAll, afterEach, beforeEach, describe, expect, jest, test} from '@jest/globals';
-import {acquireProxyDispatcher} from '../../src/http/proxyPool.js';
+import {acquireProxy} from '../../src/http/proxyPool.js';
 
 let mockTime = 0;
 const REAL_NODE_ENV = process.env.NODE_ENV;
@@ -48,7 +48,7 @@ afterAll(() => {
     process.env.NODE_ENV = REAL_NODE_ENV;
 });
 
-describe('acquireProxyDispatcher', () => {
+describe('acquireProxy', () => {
     beforeEach(() => {
         mockTime = 0;
     });
@@ -59,11 +59,11 @@ describe('acquireProxyDispatcher', () => {
     });
 
     test('ignores invalid proxies and keeps valid ones', async () => {
-        const {acquireProxyDispatcher} = await setupProxyPool({
+        const {acquireProxy} = await setupProxyPool({
             PROXY_IPS: 'invalid,https://user:pass@10.50.10.106:6254,also-invalid',
         });
 
-        const proxy = await acquireProxyDispatcher();
+        const proxy = await acquireProxy();
 
         expect(proxy?.url).toBe('https://user:pass@10.50.10.106:6254');
     });
@@ -111,13 +111,13 @@ describe('acquireProxyDispatcher', () => {
             poolFactory: jest.fn(),
         }));
 
-        const {acquireProxyDispatcher} = await import('../../src/http/proxyPool.js');
+        const {acquireProxy} = await import('../../src/http/proxyPool.js');
 
-        expect(await acquireProxyDispatcher()).toBeUndefined();
+        expect(await acquireProxy()).toBeUndefined();
     });
 
     test('throws ProxyAcquisitionTimeoutError when waiting longer than timeout', async () => {
-        const {acquireProxyDispatcher} = await setupProxyPool({
+        const {acquireProxy} = await setupProxyPool({
             PROXY_IPS: 'http://user:pass@10.50.10.106:6254',
             RATE_LIMIT_CAPACITY: 1,
             RATE_LIMIT_WINDOW: 1000,
@@ -125,11 +125,11 @@ describe('acquireProxyDispatcher', () => {
 
         const {ProxyAcquisitionTimeoutError} = await import('../../src/error/errors.js');
 
-        await acquireProxyDispatcher();
+        await acquireProxy();
 
         jest.useFakeTimers();
 
-        const promise = acquireProxyDispatcher(100);
+        const promise = acquireProxy(100);
 
         mockTime += 100;
         jest.advanceTimersByTime(100);
@@ -143,19 +143,19 @@ describe('acquireProxyDispatcher', () => {
     });
 
     test('ProxyAcquisitionTimeoutError reports the full pool size', async () => {
-        const {acquireProxyDispatcher} = await setupProxyPool({
+        const {acquireProxy} = await setupProxyPool({
             PROXY_IPS: 'https://a:a@10.0.0.1:8000,https://b:b@10.0.0.2:8000,https://c:c@10.0.0.3:8000',
             RATE_LIMIT_CAPACITY: 1,
             RATE_LIMIT_WINDOW: 1_000,
         });
 
-        await acquireProxyDispatcher();
-        await acquireProxyDispatcher();
-        await acquireProxyDispatcher(); // all three now exhausted
+        await acquireProxy();
+        await acquireProxy();
+        await acquireProxy(); // all three now exhausted
 
         jest.useFakeTimers();
 
-        const promise = acquireProxyDispatcher(50);
+        const promise = acquireProxy(50);
         mockTime += 50;
         jest.advanceTimersByTime(50);
 
@@ -163,17 +163,17 @@ describe('acquireProxyDispatcher', () => {
     });
 
     test('uses ACQUIRE_TIMEOUT from config when timeoutMs is omitted', async () => {
-        const {acquireProxyDispatcher} = await setupProxyPool({
+        const {acquireProxy} = await setupProxyPool({
             PROXY_IPS: 'http://user:pass@10.50.10.106:6254',
             RATE_LIMIT_CAPACITY: 1,
             RATE_LIMIT_WINDOW: 10_000,
             ACQUIRE_TIMEOUT: 200,
         });
 
-        await acquireProxyDispatcher(); // drain the only proxy
+        await acquireProxy(); // drain the only proxy
 
         jest.useFakeTimers();
-        const promise = acquireProxyDispatcher(); // no arg
+        const promise = acquireProxy(); // no arg
 
         mockTime += 200;
         jest.advanceTimersByTime(200);
@@ -182,32 +182,32 @@ describe('acquireProxyDispatcher', () => {
     });
 
     test('skips empty entries from stray commas without throwing', async () => {
-        const {acquireProxyDispatcher} = await setupProxyPool({
+        const {acquireProxy} = await setupProxyPool({
             PROXY_IPS: 'https://a:a@10.0.0.1:8000,,   ,https://b:b@10.0.0.2:8000',
         });
 
         const {logger} = await import('../../src/config/logging.js');
 
-        const first = await acquireProxyDispatcher();
+        const first = await acquireProxy();
         expect(first.url).toBe('https://a:a@10.0.0.1:8000');
         expect(logger.warn).toHaveBeenCalledTimes(2); // the two empty entries
     });
 
     test('prefers the first proxy when multiple exhausted proxies become available simultaneously', async () => {
-        const {acquireProxyDispatcher} = await setupProxyPool({
+        const {acquireProxy} = await setupProxyPool({
             PROXY_IPS: 'https://a:a@10.0.0.1:8000,http://b:b@10.0.0.2:8000',
             RATE_LIMIT_CAPACITY: 1,
             RATE_LIMIT_WINDOW: 1000,
         });
 
-        await acquireProxyDispatcher();
+        await acquireProxy();
 
         mockTime += 100;
-        await acquireProxyDispatcher();
+        await acquireProxy();
 
         jest.useFakeTimers({doNotFake: ['nextTick', 'setImmediate']});
 
-        const promise = acquireProxyDispatcher();
+        const promise = acquireProxy();
 
         mockTime += 900;
         jest.advanceTimersByTime(900);
@@ -218,11 +218,11 @@ describe('acquireProxyDispatcher', () => {
     });
 
     test('ignores proxies with unsupported protocol', async () => {
-        const {acquireProxyDispatcher} = await setupProxyPool({
+        const {acquireProxy} = await setupProxyPool({
             PROXY_IPS: 'ftp://user:pass@10.0.0.1:21,http://user:pass@10.0.0.2:8000',
         });
 
-        const proxy = await acquireProxyDispatcher();
+        const proxy = await acquireProxy();
 
         expect(proxy?.url).toBe('http://user:pass@10.0.0.2:8000');
     });
@@ -233,16 +233,16 @@ describe('acquireProxyDispatcher', () => {
             'https://b:b@10.0.0.2:8000,' +
             'https://c:c@10.0.0.3:8000';
 
-        const {acquireProxyDispatcher} = await setupProxyPool({
+        const {acquireProxy} = await setupProxyPool({
             PROXY_IPS: proxies,
             RATE_LIMIT_CAPACITY: 5,
             RATE_LIMIT_WINDOW: 5_000,
         });
 
-        const first = await acquireProxyDispatcher();
-        const second = await acquireProxyDispatcher();
-        const third = await acquireProxyDispatcher();
-        const fourth = await acquireProxyDispatcher();
+        const first = await acquireProxy();
+        const second = await acquireProxy();
+        const third = await acquireProxy();
+        const fourth = await acquireProxy();
 
         expect(first.url).toBe('https://a:a@10.0.0.1:8000');
         expect(second.url).toBe('https://b:b@10.0.0.2:8000');
@@ -255,41 +255,41 @@ describe('acquireProxyDispatcher', () => {
             'https://a:a@10.0.0.1:8000,' +
             'https://b:b@10.0.0.2:8000';
 
-        const {acquireProxyDispatcher} = await setupProxyPool({
+        const {acquireProxy} = await setupProxyPool({
             PROXY_IPS: proxies,
             RATE_LIMIT_CAPACITY: 1,
             RATE_LIMIT_WINDOW: 1000,
         });
 
-        const first = await acquireProxyDispatcher();
+        const first = await acquireProxy();
         expect(first.url).toBe('https://a:a@10.0.0.1:8000');
 
-        const second = await acquireProxyDispatcher();
+        const second = await acquireProxy();
         expect(second.url).toBe('https://b:b@10.0.0.2:8000');
     });
 
     test('returns undefined when no proxies are configured', async () => {
-        const {acquireProxyDispatcher} = await setupProxyPool({PROXY_IPS: ''});
+        const {acquireProxy} = await setupProxyPool({PROXY_IPS: ''});
 
-        const result = await acquireProxyDispatcher(2000);
+        const result = await acquireProxy(2000);
 
         expect(result).toBeUndefined();
     });
 
     test('returns undefined when proxy configuration is invalid', async () => {
-        const {acquireProxyDispatcher} = await setupProxyPool({PROXY_IPS: 'test'});
+        const {acquireProxy} = await setupProxyPool({PROXY_IPS: 'test'});
 
-        const result = await acquireProxyDispatcher(2000);
+        const result = await acquireProxy(2000);
 
         expect(result).toBeUndefined();
     });
 
     test('returns the only configured proxy', async () => {
-        const {acquireProxyDispatcher} = await setupProxyPool({
+        const {acquireProxy} = await setupProxyPool({
             PROXY_IPS: 'http://test:test@10.50.10.106:6254',
         });
 
-        const proxy = await acquireProxyDispatcher(5000);
+        const proxy = await acquireProxy(5000);
 
         expect(proxy?.url).toBe('http://test:test@10.50.10.106:6254');
     });
@@ -301,12 +301,12 @@ describe('acquireProxyDispatcher', () => {
             RATE_LIMIT_WINDOW: 1_000,
         });
 
-        const first = await mod.acquireProxyDispatcher(5000);
+        const first = await mod.acquireProxy(5000);
         expect(first?.url).toBe('http://test:test@10.50.10.106:6254');
 
         jest.useFakeTimers();
 
-        const promise = mod.acquireProxyDispatcher(5000);
+        const promise = mod.acquireProxy(5000);
 
         mockTime += 1_000;
         jest.advanceTimersByTime(1_000);
@@ -318,23 +318,23 @@ describe('acquireProxyDispatcher', () => {
 
     describe('when all buckets are empty', () => {
         test('waits for the proxy with the shortest timeUntil (proxy-a wins)', async () => {
-            const {acquireProxyDispatcher} = await setupProxyPool({
+            const {acquireProxy} = await setupProxyPool({
                 PROXY_IPS:
                     'https://test1:test1@10.50.10.106:6254,http://test2:test2@10.50.10.106:6254',
                 RATE_LIMIT_CAPACITY: 1,
                 RATE_LIMIT_WINDOW: 1_000,
             });
 
-            const first = await acquireProxyDispatcher(5000);
+            const first = await acquireProxy(5000);
             expect(first.url).toBe('https://test1:test1@10.50.10.106:6254');
 
             mockTime += 100;
-            const second = await acquireProxyDispatcher(5000);
+            const second = await acquireProxy(5000);
             expect(second.url).toBe('http://test2:test2@10.50.10.106:6254');
 
             jest.useFakeTimers({doNotFake: ['nextTick', 'setImmediate']});
 
-            const promise = acquireProxyDispatcher(5000);
+            const promise = acquireProxy(5000);
 
             mockTime += 900;
             jest.advanceTimersByTime(900);
@@ -344,26 +344,26 @@ describe('acquireProxyDispatcher', () => {
         });
 
         test('waits until the next available proxy when all proxies are exhausted', async () => {
-            const {acquireProxyDispatcher} = await setupProxyPool({
+            const {acquireProxy} = await setupProxyPool({
                 PROXY_IPS:
                     'https://test3:test3@10.50.10.106:6254,http://test4:test4@10.50.10.106:6254',
                 RATE_LIMIT_CAPACITY: 1,
                 RATE_LIMIT_WINDOW: 1_000,
             });
 
-            const first = await acquireProxyDispatcher(5000);
+            const first = await acquireProxy(5000);
 
             expect(first.url)
                 .toBe('https://test3:test3@10.50.10.106:6254');
 
-            const second = await acquireProxyDispatcher(5000);
+            const second = await acquireProxy(5000);
 
             expect(second.url)
                 .toBe('http://test4:test4@10.50.10.106:6254');
 
             jest.useFakeTimers({doNotFake: ['nextTick', 'setImmediate']});
 
-            const promise = acquireProxyDispatcher(5000);
+            const promise = acquireProxy(5000);
 
             mockTime += 1000;
             jest.advanceTimersByTime(1000);
