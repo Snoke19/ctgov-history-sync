@@ -10,17 +10,23 @@ import {logger} from '../config/logging.js';
 import {TokenBucket} from "./tokenBucket.js";
 import {poolFactory} from "./poolFactory.js";
 
-const proxyAgents = process.env.NODE_ENV === 'test' || PROXY_IPS.length === 0
-    ? []
-    : PROXY_IPS
-        .split(',')
-        .map((url) => url.trim())
-        .filter((url) => url.startsWith('http') || url.startsWith('https'))
-        .map((url) => ({
+const PROXY_REGEX = /^(https?):\/\/([^:@/]+):([^@/]+)@([^:@/]+):(\d+)$/;
+
+const proxyAgents = [];
+if (process.env.NODE_ENV !== 'test' && PROXY_IPS.length > 0) {
+    for (const raw of PROXY_IPS.split(',')) {
+        const url = raw.trim();
+        if (!PROXY_REGEX.test(url)) {
+            logger.warn(`[Proxy] Skipping invalid proxy URL: "${url}"`);
+            continue;
+        }
+        proxyAgents.push({
             url,
             dispatcher: new ProxyAgent({uri: url, clientFactory: poolFactory}),
             limiter: new TokenBucket(RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW)
-        }));
+        });
+    }
+}
 
 logger.info(
     'Proxy pool initialized | Count: %d | RateLimit: %d/%dms | Connections: %d',

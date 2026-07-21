@@ -75,19 +75,19 @@ describe("test", () => {
 
     test('should return empty object for empty input1', async () => {
         const {acquireProxyDispatcher} = await loadProxyPool({
-            PROXY_IPS: 'http://test'
+            PROXY_IPS: 'http://test:test@10.50.10.106:6254'
         });
 
         const proxy = await acquireProxyDispatcher(5000);
 
         expect(proxy).toBeDefined();
-        expect(proxy.url).toBe("http://test");
+        expect(proxy.url).toBe("http://test:test@10.50.10.106:6254");
         expect(proxy.limiter.peekTokens()).toBe(4);
     });
 
     test('waits when all proxies are exhausted and then acquires after refill', async () => {
         const mod = await loadProxyPool({
-            PROXY_IPS: 'http://proxy-a.com',
+            PROXY_IPS: 'http://test:test@10.50.10.106:6254',
             RATE_LIMIT_CAPACITY: 1,
             RATE_LIMIT_WINDOW: 1_000,
         });
@@ -106,28 +106,28 @@ describe("test", () => {
         const second = await promise;
 
         expect(second).toBeDefined();
-        expect(second.url).toBe('http://proxy-a.com');
+        expect(second.url).toBe('http://test:test@10.50.10.106:6254');
         expect(second.limiter.peekTokens()).toBe(0);
     });
 
     describe('when all buckets are empty', () => {
         test('waits for the proxy with the shortest timeUntil (proxy-a wins)', async () => {
-            const { acquireProxyDispatcher } = await loadProxyPool({
-                PROXY_IPS: 'http://proxy-a.com,http://proxy-b.com',
+            const {acquireProxyDispatcher} = await loadProxyPool({
+                PROXY_IPS: 'https://test1:test1@10.50.10.106:6254,http://test2:test2@10.50.10.106:6254',
                 RATE_LIMIT_CAPACITY: 1,
                 RATE_LIMIT_WINDOW: 1_000,
             });
 
             jest.spyOn(Math, 'random').mockReturnValue(0);
             const first = await acquireProxyDispatcher(5000);
-            expect(first.url).toBe('http://proxy-a.com');
+            expect(first.url).toBe('https://test1:test1@10.50.10.106:6254');
             Math.random.mockRestore();
 
             mockTime += 100;
             const second = await acquireProxyDispatcher(5000);
-            expect(second.url).toBe('http://proxy-b.com');
+            expect(second.url).toBe('http://test2:test2@10.50.10.106:6254');
 
-            jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+            jest.useFakeTimers({doNotFake: ['nextTick', 'setImmediate']});
 
             const promise = acquireProxyDispatcher(5000);
 
@@ -135,27 +135,27 @@ describe("test", () => {
             jest.advanceTimersByTime(900);
 
             const third = await promise;
-            expect(third.url).toBe('http://proxy-a.com');
+            expect(third.url).toBe('https://test1:test1@10.50.10.106:6254');
             expect(third.limiter.peekTokens()).toBe(0);
         });
 
         test('waits for proxy-b when it has the shorter timeUntil', async () => {
-            const { acquireProxyDispatcher } = await loadProxyPool({
-                PROXY_IPS: 'http://proxy-a.com,http://proxy-b.com',
+            const {acquireProxyDispatcher} = await loadProxyPool({
+                PROXY_IPS: 'https://test3:test3@10.50.10.106:6254,http://test4:test4@10.50.10.106:6254',
                 RATE_LIMIT_CAPACITY: 1,
                 RATE_LIMIT_WINDOW: 1_000,
             });
 
             jest.spyOn(Math, 'random').mockReturnValue(0.99);
             const first = await acquireProxyDispatcher(5000);
-            expect(first.url).toBe('http://proxy-b.com');
+            expect(first.url).toBe('http://test4:test4@10.50.10.106:6254');
             Math.random.mockRestore();
 
             mockTime += 500;
             const second = await acquireProxyDispatcher(5000);
-            expect(second.url).toBe('http://proxy-a.com');
+            expect(second.url).toBe('https://test3:test3@10.50.10.106:6254');
 
-            jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+            jest.useFakeTimers({doNotFake: ['nextTick', 'setImmediate']});
 
             const promise = acquireProxyDispatcher(5000);
 
@@ -163,7 +163,7 @@ describe("test", () => {
             jest.advanceTimersByTime(500);
 
             const third = await promise;
-            expect(third.url).toBe('http://proxy-b.com');
+            expect(third.url).toBe('http://test4:test4@10.50.10.106:6254');
         });
     });
 });
