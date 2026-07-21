@@ -1,6 +1,6 @@
 import {describe, test} from '@jest/globals';
 import assert from 'node:assert/strict';
-import {cleanParams} from '../src/http/cleanParams.js';
+import {cleanParams} from '../../src/http/cleanParams.js';
 
 describe('cleanParams', () => {
     test('should return empty object for empty input', () => {

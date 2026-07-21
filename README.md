@@ -139,7 +139,7 @@ src/
 │   └── errors.js             # Custom error classes
 ├── http/
 │   ├── httpClient.js         # Resilient fetch with retry/backoff/proxy
-│   ├── proxyPool.js          # Proxy pool, token bucket, health tracking
+│   ├── proxyPool.test.js          # Proxy pool, token bucket, health tracking
 │   ├── cleanParams.js        # Parameter cleaning utility
 │   └── urlPrepare.js         # URL builder (UrlBuilder class)
 └── validators.js             # Input validation (NCT ID, geo filters, etc.)

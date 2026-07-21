@@ -1,6 +1,6 @@
 import {describe, test} from '@jest/globals';
 import assert from 'node:assert/strict';
-import {UrlBuilder} from '../src/http/urlPrepare.js';
+import {UrlBuilder} from '../../src/http/urlPrepare.js';
 
 const BASE = 'https://clinicaltrials.gov/api/int/studies';
 
