@@ -37,7 +37,7 @@
         }
 
         body {
-            font-family: var(--font),serif;
+            font-family: var(--font), serif;
             background: var(--bg);
             color: var(--text-primary);
             margin: 0;
@@ -130,6 +130,17 @@
             border-radius: 50%;
             border: 2px solid var(--surface);
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+            cursor: pointer;
+        }
+
+        select {
+            font-family: inherit;
+            font-size: 0.8125rem;
+            padding: 0.4rem 0.6rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--surface);
+            color: var(--text-primary);
             cursor: pointer;
         }
 
@@ -236,6 +247,17 @@
             min-height: 32px;
             margin-bottom: 1.25rem;
             flex-wrap: wrap;
+        }
+
+        .queue-chip {
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 0.375rem 0.875rem;
+            border-radius: 9999px;
+            background: var(--warning-bg);
+            color: var(--warning-text);
+            border: 1px solid #fde68a;
+            animation: popIn 0.2s ease;
         }
 
         @keyframes popIn {
@@ -413,6 +435,17 @@
         <button id="queueBtn">Queue request</button>
         <button id="burstBtn">Send burst (capacity + 5)</button>
         <button id="autoBtn" class="success">Start auto-traffic</button>
+
+        <div class="control-group">
+            <label for="pattern">Pattern</label>
+            <select id="pattern">
+                <option value="steady">Steady</option>
+                <option value="ramp">Ramp Up</option>
+                <option value="random">Random Jitter</option>
+                <option value="spike">Spike</option>
+                <option value="overload">Overload (2×)</option>
+            </select>
+        </div>
         <div class="control-group">
             <label for="rate">Rate</label>
             <input type="range" id="rate" min="1" max="30" step="1" value="10">
@@ -433,7 +466,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
     /* ------------------------------------------------------------------ */
-    /*  Browser shim for the Node.js modules used by the original source  */
+    /*  Browser shim                                                      */
     /* ------------------------------------------------------------------ */
     const performance = window.performance;
 
@@ -446,32 +479,10 @@
     }
 
     /* ------------------------------------------------------------------ */
-    /*  EXACT TokenBucket class from your source file                     */
-    /*  (Only addition: fraction() method for the visual demo bar)        */
+    /*  EXACT TokenBucket class                                           */
     /* ------------------------------------------------------------------ */
     const EPS = 1e-9;
 
-    /**
-     * Token bucket rate limiter using credit-milliseconds.
-     *
-     * Internally the bucket stores "credit" in milliseconds, not fractional tokens.
-     * A full bucket holds `windowMs` credit (equivalent to `capacity` tokens).
-     * One token costs `msPerToken = windowMs / capacity` credit.
-     *
-     * Refill is lazy and O(1): credit increases by exactly `elapsed` milliseconds
-     * since the last update, capped at `windowMs`. No background timer runs.
-     *
-     * Thread safety: Safe for concurrent async usage within a single Node.js
-     * process because all state mutations in `acquire()` happen synchronously
-     * before the first `await`.
-     *
-     * Example with capacity=40, windowMs=60000:
-     *   - Starts full: 40 tokens available (60000 ms of credit).
-     *   - Each request consumes 1 token (1500 ms of credit).
-     *   - After 30 instantaneous requests, 10 tokens remain; the 31st request
-     *     is allowed immediately because credit is still in the bucket.
-     *   - Once fully drained, the next token takes ~1500 ms to refill.
-     */
     class TokenBucket {
         #capacity;
         #windowMs;
@@ -480,48 +491,21 @@
         #lastUpdate;
         #clock;
 
-        /**
-         * @param {number} capacity - Maximum tokens the bucket can hold. Must be
-         *   a positive integer — fractional capacities can make `timeUntil`
-         *   permanently unsatisfiable since acquisition always consumes whole
-         *   tokens.
-         * @param {number} windowMs - Time window over which `capacity`
-         *   tokens are replenished, in milliseconds.
-         * @param {() => number} [now=performance.now] - Function returning a
-         *   monotonic timestamp in milliseconds. Intended primarily for testing.
-         * @throws {TypeError} If `capacity` is not a positive integer, or
-         *   `windowMs` is not a positive finite number.
-         */
         constructor(capacity, windowMs, now = () => performance.now()) {
             if (!Number.isInteger(capacity) || capacity < 1) {
                 throw new TypeError('capacity must be a positive integer');
             }
-
             if (!Number.isFinite(windowMs) || windowMs <= 0) {
                 throw new TypeError('windowMs must be a positive finite number');
             }
-
             this.#capacity = capacity;
             this.#windowMs = windowMs;
             this.#msPerToken = windowMs / capacity;
-            this.#creditMs = windowMs; // starts full: capacity tokens' worth of credit
-
+            this.#creditMs = windowMs;
             this.#clock = now;
             this.#lastUpdate = this.#clock();
         }
 
-        /**
-         * Compute the current credit in milliseconds.
-         *
-         * Lazily adds `elapsed` milliseconds since `#lastUpdate`, capped at
-         * `#windowMs`. Elapsed time is clamped to zero so an injected
-         * non-monotonic clock (e.g. in tests) can't drain credit by going
-         * backwards. This is a pure function: it does not mutate state.
-         *
-         * @param {number} [now] - Timestamp to compute availability at.
-         *   Defaults to the injected clock.
-         * @returns {number} Current credit in milliseconds, range [0, windowMs].
-         */
         #availableCreditMs(now = this.#clock()) {
             const elapsed = Math.max(0, now - this.#lastUpdate);
             return Math.min(this.#windowMs, this.#creditMs + elapsed);
@@ -530,159 +514,72 @@
         tryAcquire() {
             const now = this.#clock();
             const availableCreditMs = this.#availableCreditMs(now);
-
             if (availableCreditMs + EPS < this.#msPerToken) {
                 return false;
             }
-
             this.#creditMs = availableCreditMs - this.#msPerToken;
             this.#lastUpdate = now;
             return true;
         }
 
-        /**
-         * Peek at the number of tokens currently available.
-         *
-         * This is a read-only snapshot: it computes how many tokens would be
-         * available right now based on elapsed time since the last refill, but
-         * does NOT mutate the bucket state. Use this for selection/sorting;
-         * use `acquire()` to actually consume a token.
-         *
-         * @returns {number} Floored token count (e.g. 3.7 → 3). Returns
-         *   `#capacity` when the bucket is exactly full, bypassing a
-         *   floating-point division edge case.
-         */
         peekTokens() {
             const creditMs = this.#availableCreditMs();
-
-            // Guard against floating-point undershoot when the bucket is exactly
-            // full. `windowMs / msPerToken` should equal `capacity`, but IEEE-754
-            // division can produce `2.9999999999999996` instead of `3`.
             if (creditMs >= this.#windowMs) {
                 return this.#capacity;
             }
-
-            // Guard against floating-point undershoot. After subtracting msPerToken,
-            // creditMs can be epsilon-smaller than the exact mathematical value,
-            // causing floor() to undercount by 1.
             const tokens = creditMs / this.#msPerToken;
-
             return Math.floor(Math.min(tokens + EPS, this.#capacity));
         }
 
-        /**
-         * Timestamp of the last state update.
-         *
-         * Updated whenever a token is consumed. Combined with the stored credit,
-         * it allows the bucket to lazily compute the current number of available
-         * tokens without running a background refill task.
-         *
-         * @returns {number} Monotonic timestamp from the injected clock.
-         */
         get lastUpdate() {
             return this.#lastUpdate;
         }
 
-        /**
-         * Maximum tokens this bucket can hold.
-         * @returns {number}
-         */
         get capacity() {
             return this.#capacity;
         }
 
-        /**
-         * Refill window in milliseconds.
-         * @returns {number}
-         */
         get windowMs() {
             return this.#windowMs;
         }
 
-        /**
-         * Returns the time (ms) until `count` tokens are available.
-         *
-         * @param {number} [count=1] - Required number of tokens. Must be a
-         *   positive finite number.
-         * @returns {number} Milliseconds until enough tokens exist, or
-         *   `Infinity` if `count` exceeds the bucket's capacity and can never
-         *   be satisfied.
-         * @throws {TypeError} If `count` is not a positive finite number.
-         */
         timeUntil(count = 1) {
             if (!Number.isFinite(count) || count <= 0) {
                 throw new TypeError('count must be a positive finite number');
             }
-
             if (count > this.#capacity) {
                 return Infinity;
             }
-
             const availableCreditMs = this.#availableCreditMs(this.#clock());
-
-            // Full bucket: any count ≤ capacity is satisfied immediately.
             if (availableCreditMs >= this.#windowMs) {
                 return 0;
             }
-
             const neededCreditMs = count * this.#msPerToken;
-
-            // EPS tolerance mirrors tryAcquire(), so timeUntil() and tryAcquire()
-            // never disagree about whether a token is available right now.
             if (availableCreditMs + EPS >= neededCreditMs) {
                 return 0;
             }
-
             return Math.ceil(neededCreditMs - availableCreditMs);
         }
 
-        /**
-         * Acquire one token, blocking until available or the timeout expires.
-         *
-         * Algorithm:
-         *   1. Compute elapsed time since last refill.
-         *   2. Add back proportional credit (capped at windowMs).
-         *   3. If at least one token's worth of credit is available: deduct the
-         *      cost, update `#lastUpdate`, and return immediately.
-         *   4. Otherwise: sleep exactly until the next token is ready
-         *      (not a fixed interval), then loop.
-         *
-         * The sleep duration is calculated precisely: if 750 ms of credit are
-         * needed and the rate is 1 token per 1500 ms, it sleeps 750 ms.
-         * This minimizes unnecessary waiting under high concurrency.
-         *
-         * @param {number} [timeoutMs=30000] - Maximum time to wait for a token.
-         *   Must be a non-negative finite number.
-         * @returns {Promise<void>} Resolves when a token is consumed.
-         * @throws {TypeError} If `timeoutMs` is not a non-negative finite number.
-         * @throws {TokenBucketTimeoutError} If no token becomes available
-         *   within `timeoutMs`.
-         */
         async acquire(timeoutMs = 30000) {
             if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
                 throw new TypeError('timeoutMs must be a non-negative finite number');
             }
-
             const deadline = this.#clock() + timeoutMs;
-
             while (true) {
                 if (this.tryAcquire()) {
                     return;
                 }
-
                 const remaining = deadline - this.#clock();
-
                 if (remaining <= 0) {
                     throw new TokenBucketTimeoutError(timeoutMs);
                 }
-
                 await new Promise(resolve =>
                     setTimeout(resolve, Math.min(this.timeUntil(1), remaining)),
                 );
             }
         }
 
-        /* ---- Added for demo visualization only ---- */
         fraction() {
             return this.#availableCreditMs() / this.#windowMs;
         }
@@ -705,6 +602,9 @@
     const tokenLabelEl = document.getElementById('tokenLabel');
     const logEl = document.getElementById('logLine');
     const queueRow = document.getElementById('queueRow');
+    const patternSelect = document.getElementById('pattern');
+    const rateInput = document.getElementById('rate');
+    const autoBtn = document.getElementById('autoBtn');
 
     function buildTicks() {
         ticksEl.innerHTML = '';
@@ -725,6 +625,11 @@
         chartData.labels = [];
         chartData.values = [];
         queueRow.innerHTML = '';
+        waiters.length = 0;
+        if (queueTimer) {
+            clearTimeout(queueTimer);
+            queueTimer = null;
+        }
         document.getElementById('statGranted').textContent = '0';
         document.getElementById('statBlocked').textContent = '0';
         buildTicks();
@@ -739,6 +644,11 @@
         logEl.textContent = msg;
     }
 
+    function updateStats() {
+        document.getElementById('statGranted').textContent = granted;
+        document.getElementById('statBlocked').textContent = blocked;
+    }
+
     function flashFill(ok) {
         fillEl.style.background = ok
             ? 'linear-gradient(90deg, var(--success) 0%, #34d399 100%)'
@@ -748,6 +658,200 @@
         }, 220);
     }
 
+    function setAutoBtn(active) {
+        if (active) {
+            autoBtn.innerHTML = '<i class="ti ti-player-stop" aria-hidden="true"></i> Stop auto-traffic';
+            autoBtn.classList.remove('success');
+            autoBtn.classList.add('danger');
+        } else {
+            autoBtn.innerHTML = '<i class="ti ti-activity" aria-hidden="true"></i> Start auto-traffic';
+            autoBtn.classList.remove('danger');
+            autoBtn.classList.add('success');
+        }
+    }
+
+    function stopAutoTraffic() {
+        if (autoTimer) {
+            clearTimeout(autoTimer);
+            autoTimer = null;
+        }
+        setAutoBtn(false);
+        log('Auto-traffic stopped.');
+    }
+
+    /* ==================== FIFO Queue (fixed) ==================== */
+    const waiters = [];      // { chip }
+    let queueTimer = null;   // active setTimeout id for the queue processor
+
+    function updateQueueChips() {
+        waiters.forEach((w, i) => {
+            if (i === 0) {
+                const remaining = bucket.timeUntil(1);
+                w.chip.textContent = remaining <= 0 ? 'resolving…' : 'waiting ' + Math.ceil(remaining) + 'ms';
+            } else {
+                w.chip.textContent = 'queued #' + (i + 1);
+            }
+        });
+    }
+
+    function processQueue() {
+        queueTimer = null;
+
+        // Hand out tokens in strict FIFO order while we have them
+        while (waiters.length > 0) {
+            if (!bucket.tryAcquire()) break;   // ← properly checked!
+
+            const waiter = waiters.shift();
+            granted++;
+            updateStats();
+            if (waiter.chip.parentNode) queueRow.removeChild(waiter.chip);
+            log('Queued request resolved.');
+        }
+
+        // Still waiters left? Schedule next check for when 1 token is ready
+        if (waiters.length > 0) {
+            const wait = bucket.timeUntil(1);
+            queueTimer = setTimeout(processQueue, wait);
+        }
+    }
+
+    // Visual update loop for queue chips
+    function queueFrame() {
+        if (waiters.length > 0) updateQueueChips();
+        requestAnimationFrame(queueFrame);
+    }
+
+    queueFrame();
+
+    document.getElementById('queueBtn').addEventListener('click', () => {
+        // Immediate grant if possible
+        if (bucket.tryAcquire()) {
+            granted++;
+            updateStats();
+            log('Queued request resolved immediately.');
+            return;
+        }
+
+        // Add to FIFO queue
+        const chip = document.createElement('div');
+        chip.className = 'queue-chip';
+        queueRow.appendChild(chip);
+
+        waiters.push({chip});
+
+        // Kick off processor if it isn't already running
+        if (!queueTimer) {
+            const wait = bucket.timeUntil(1);
+            queueTimer = setTimeout(processQueue, wait);
+        }
+    });
+    /* ============================================================ */
+
+    /* -------------------- Traffic patterns -------------------- */
+    function tick() {
+        const ok = bucket.tryAcquire();
+        if (ok) granted++; else blocked++;
+        updateStats();
+    }
+
+    function runSteady(rateVal) {
+        log(`Steady traffic at ${rateVal}/s.`);
+        const interval = 1000 / rateVal;
+
+        function loop() {
+            if (!autoTimer) return;
+            tick();
+            autoTimer = setTimeout(loop, interval);
+        }
+
+        autoTimer = true;
+        loop();
+    }
+
+    function runRampUp(targetRate) {
+        let currentRate = Math.max(1, Math.floor(targetRate / 5));
+        let lastBump = performance.now();
+        log(`Ramp-up traffic starting at ${currentRate}/s...`);
+
+        function loop() {
+            if (!autoTimer) return;
+            tick();
+            const now = performance.now();
+            if (now - lastBump > 2000 && currentRate < targetRate) {
+                currentRate = Math.min(targetRate, currentRate + Math.max(1, Math.ceil(targetRate / 5)));
+                lastBump = now;
+                log(`Ramping up to ${currentRate}/s...`);
+            }
+            autoTimer = setTimeout(loop, 1000 / currentRate);
+        }
+
+        autoTimer = true;
+        loop();
+    }
+
+    function runRandom(rateVal) {
+        log(`Random jitter traffic ~${rateVal}/s.`);
+        const base = 1000 / rateVal;
+
+        function loop() {
+            if (!autoTimer) return;
+            tick();
+            const jitter = base * 0.6;
+            const next = Math.max(10, base + (Math.random() * jitter * 2 - jitter));
+            autoTimer = setTimeout(loop, next);
+        }
+
+        autoTimer = true;
+        loop();
+    }
+
+    function runSpike() {
+        const count = bucket.capacity * 3;
+        for (let i = 0; i < count; i++) tick();
+        log(`Spike: fired ${count} requests instantly.`);
+    }
+
+    function runOverload(rateVal) {
+        const overloadRate = rateVal * 2;
+        log(`Sustained overload at ${overloadRate}/s (2× slider).`);
+        const interval = 1000 / overloadRate;
+
+        function loop() {
+            if (!autoTimer) return;
+            tick();
+            autoTimer = setTimeout(loop, interval);
+        }
+
+        autoTimer = true;
+        loop();
+    }
+
+    function startAutoTraffic() {
+        const pattern = patternSelect.value;
+        const rateVal = parseInt(rateInput.value, 10);
+        setAutoBtn(true);
+
+        switch (pattern) {
+            case 'steady':
+                runSteady(rateVal);
+                break;
+            case 'ramp':
+                runRampUp(rateVal);
+                break;
+            case 'random':
+                runRandom(rateVal);
+                break;
+            case 'spike':
+                runSpike();
+                setAutoBtn(false);
+                break;
+            case 'overload':
+                runOverload(rateVal);
+                break;
+        }
+    }
+
+    /* -------------------- Event listeners -------------------- */
     capacityInput.addEventListener('input', () => {
         document.getElementById('capacityOut').textContent = capacityInput.value;
     });
@@ -762,13 +866,12 @@
         const ok = bucket.tryAcquire();
         if (ok) {
             granted++;
-            document.getElementById('statGranted').textContent = granted;
             log('Acquired instantly — token was available.');
         } else {
             blocked++;
-            document.getElementById('statBlocked').textContent = blocked;
             log('Rejected — bucket was empty. Next token in ' + Math.round(bucket.timeUntil(1)) + 'ms.');
         }
+        updateStats();
         flashFill(ok);
     });
 
@@ -780,81 +883,23 @@
         }
         granted += g;
         blocked += b;
-        document.getElementById('statGranted').textContent = granted;
-        document.getElementById('statBlocked').textContent = blocked;
+        updateStats();
         log('Burst of ' + n + ': ' + g + ' granted instantly, ' + b + ' rejected (bucket only had ' + bucket.capacity + ' tokens).');
     });
 
-    document.getElementById('queueBtn').addEventListener('click', () => {
-        const wait = bucket.timeUntil(1);
-        if (wait <= 0) {
-            bucket.tryAcquire();
-            granted++;
-            document.getElementById('statGranted').textContent = granted;
-            log('Queued request resolved immediately.');
-            return;
-        }
-        const chip = document.createElement('div');
-        chip.className = 'queue-chip';
-        queueRow.appendChild(chip);
-        const deadline = clock() + wait;
-        const tick = () => {
-            const remaining = Math.max(0, deadline - clock());
-            chip.textContent = 'waiting ' + Math.ceil(remaining) + 'ms';
-            if (remaining > 0) {
-                requestAnimationFrame(tick);
-            } else {
-                bucket.tryAcquire();
-                granted++;
-                document.getElementById('statGranted').textContent = granted;
-                queueRow.removeChild(chip);
-                log('Queued request resolved after waiting exactly ' + Math.round(wait) + 'ms for refill.');
-            }
-        };
-        tick();
-    });
-
-    const rateInput = document.getElementById('rate');
     rateInput.addEventListener('input', () => {
         document.getElementById('rateOut').textContent = rateInput.value + '/s';
     });
 
-    const autoBtn = document.getElementById('autoBtn');
-
-    function setAutoBtn(active) {
-        if (active) {
-            autoBtn.innerHTML = '<i class="ti ti-player-stop" aria-hidden="true"></i> Stop auto-traffic';
-            autoBtn.classList.remove('success');
-            autoBtn.classList.add('danger');
-        } else {
-            autoBtn.innerHTML = '<i class="ti ti-activity" aria-hidden="true"></i> Start auto-traffic';
-            autoBtn.classList.remove('danger');
-            autoBtn.classList.add('success');
-        }
-    }
-
-    autoBtn.addEventListener('click', function () {
+    autoBtn.addEventListener('click', () => {
         if (autoTimer) {
-            clearInterval(autoTimer);
-            autoTimer = null;
-            setAutoBtn(false);
-            log('Auto-traffic stopped.');
-            return;
+            stopAutoTraffic();
+        } else {
+            startAutoTraffic();
         }
-        setAutoBtn(true);
-        log('Auto-traffic running at ' + rateInput.value + ' req/s.');
-        autoTimer = setInterval(() => {
-            const ok = bucket.tryAcquire();
-            if (ok) {
-                granted++;
-                document.getElementById('statGranted').textContent = granted;
-            } else {
-                blocked++;
-                document.getElementById('statBlocked').textContent = blocked;
-            }
-        }, 1000 / parseInt(rateInput.value, 10));
     });
 
+    /* -------------------- Chart -------------------- */
     let chart = null;
 
     function initChart() {
