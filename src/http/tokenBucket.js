@@ -29,7 +29,7 @@ export class TokenBucket {
     #windowMs;
     #msPerToken;
     #creditMs;
-    #lastRefill;
+    #lastUpdate;
     #clock;
 
     /**
@@ -56,13 +56,13 @@ export class TokenBucket {
         this.#creditMs = windowMs; // starts full: capacity tokens' worth of credit
 
         this.#clock = now;
-        this.#lastRefill = this.#clock();
+        this.#lastUpdate = this.#clock();
     }
 
     /**
      * Compute the current credit in milliseconds.
      *
-     * Lazily adds `elapsed` milliseconds since `#lastRefill`, capped at
+     * Lazily adds `elapsed` milliseconds since `#lastUpdate`, capped at
      * `#windowMs`. This is a pure function: it does not mutate state.
      *
      * @param {number} [now] - Timestamp to compute availability at.
@@ -70,8 +70,21 @@ export class TokenBucket {
      * @returns {number} Current credit in milliseconds, range [0, windowMs].
      */
     #availableCreditMs(now = this.#clock()) {
-        const elapsed = now - this.#lastRefill;
+        const elapsed = now - this.#lastUpdate;
         return Math.min(this.#windowMs, this.#creditMs + elapsed);
+    }
+
+    tryAcquire() {
+        const now = this.#clock();
+        const availableCreditMs = this.#availableCreditMs(now);
+
+        if (availableCreditMs + EPS < this.#msPerToken) {
+            return false;
+        }
+
+        this.#creditMs = availableCreditMs - this.#msPerToken;
+        this.#lastUpdate = now;
+        return true;
     }
 
     /**
@@ -113,8 +126,8 @@ export class TokenBucket {
      *
      * @returns {number} Monotonic timestamp from the injected clock.
      */
-    get lastRefill() {
-        return this.#lastRefill;
+    get lastUpdate() {
+        return this.#lastUpdate;
     }
 
     /**
@@ -159,7 +172,7 @@ export class TokenBucket {
      *   1. Compute elapsed time since last refill.
      *   2. Add back proportional credit (capped at windowMs).
      *   3. If at least one token's worth of credit is available: deduct the
-     *      cost, update `#lastRefill`, and return immediately.
+     *      cost, update `#lastUpdate`, and return immediately.
      *   4. Otherwise: sleep exactly until the next token is ready
      *      (not a fixed interval), then loop.
      *
@@ -180,27 +193,21 @@ export class TokenBucket {
         }
 
         const deadline = this.#clock() + timeoutMs;
-        const costMs = this.#msPerToken;
 
-        for (;;) {
-            const now = this.#clock();
-            const availableCreditMs = this.#availableCreditMs(now);
-
-            if (availableCreditMs + EPS >= costMs) {
-                this.#creditMs = availableCreditMs - costMs;
-                this.#lastRefill = now;
+        while (true) {
+            if (this.tryAcquire()) {
                 return;
             }
 
-            const sleepMs = Math.min(Math.ceil(costMs - availableCreditMs), deadline - now);
+            const remaining = deadline - this.#clock();
 
-            if (sleepMs <= 0) {
+            if (remaining <= 0) {
                 throw new TokenBucketTimeoutError(timeoutMs);
             }
 
-            await new Promise((resolve) => {
-                setTimeout(resolve, sleepMs);
-            });
+            await new Promise(resolve =>
+                setTimeout(resolve, Math.min(this.timeUntil(1), remaining)),
+            );
         }
     }
 }

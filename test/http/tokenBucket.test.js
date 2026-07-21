@@ -38,13 +38,13 @@ describe('TokenBucket', () => {
             const before = performance.now();
             const bucket = new TokenBucket(10, 5_000);
             const after = performance.now();
-            expect(bucket.lastRefill).toBeGreaterThanOrEqual(Math.floor(before));
-            expect(bucket.lastRefill).toBeLessThanOrEqual(after);
+            expect(bucket.lastUpdate).toBeGreaterThanOrEqual(Math.floor(before));
+            expect(bucket.lastUpdate).toBeLessThanOrEqual(after);
         });
 
         it('accepts a custom now() function', () => {
             const bucket = new TokenBucket(10, 5_000, () => 12_345);
-            expect(bucket.lastRefill).toBe(12_345);
+            expect(bucket.lastUpdate).toBe(12_345);
         });
 
         describe('capacity validation', () => {
@@ -164,22 +164,22 @@ describe('TokenBucket', () => {
     });
 
     /* ==================================================================
-       lastRefill
+       lastUpdate
        ================================================================== */
-    describe('lastRefill', () => {
+    describe('lastUpdate', () => {
         it('updates on every successful token consumption', async () => {
             const clock = createClock(1_000);
             const bucket = new TokenBucket(10, 10_000, clock.now);
 
-            expect(bucket.lastRefill).toBe(1_000);
+            expect(bucket.lastUpdate).toBe(1_000);
 
             clock.advance(500);
             await bucket.acquire(0);
-            expect(bucket.lastRefill).toBe(1_500);
+            expect(bucket.lastUpdate).toBe(1_500);
 
             clock.advance(200);
             await bucket.acquire(0);
-            expect(bucket.lastRefill).toBe(1_700);
+            expect(bucket.lastUpdate).toBe(1_700);
         });
 
         it('does NOT update when acquire times out', async () => {
@@ -187,7 +187,7 @@ describe('TokenBucket', () => {
             const bucket = new TokenBucket(1, 1_000, clock.now);
 
             await bucket.acquire(0); // drain
-            const lastBefore = bucket.lastRefill;
+            const lastBefore = bucket.lastUpdate;
 
             try {
                 await bucket.acquire(0); // timeout immediately
@@ -195,7 +195,7 @@ describe('TokenBucket', () => {
                 // expected
             }
 
-            expect(bucket.lastRefill).toBe(lastBefore);
+            expect(bucket.lastUpdate).toBe(lastBefore);
         });
     });
 
@@ -395,7 +395,7 @@ describe('TokenBucket', () => {
 
                 await bucket.acquire(0);
                 const creditBefore = bucket.peekTokens();
-                const lastRefillBefore = bucket.lastRefill;
+                const lastUpdateBefore = bucket.lastUpdate;
 
                 const promise = bucket.acquire(100);
 
@@ -405,7 +405,7 @@ describe('TokenBucket', () => {
                 await expect(promise).rejects.toThrow(TokenBucketTimeoutError);
 
                 expect(bucket.peekTokens()).toBe(creditBefore);
-                expect(bucket.lastRefill).toBe(lastRefillBefore);
+                expect(bucket.lastUpdate).toBe(lastUpdateBefore);
             });
         });
 
@@ -836,14 +836,14 @@ describe('TokenBucket', () => {
                 const bucket = new TokenBucket(5, 5_000, clock.now);
 
                 const before = bucket.peekTokens();
-                const lastRefillBefore = bucket.lastRefill;
+                const lastUpdateBefore = bucket.lastUpdate;
 
                 for (let i = 0; i < 1000; i++) {
                     bucket.peekTokens();
                 }
 
                 expect(bucket.peekTokens()).toBe(before);
-                expect(bucket.lastRefill).toBe(lastRefillBefore);
+                expect(bucket.lastUpdate).toBe(lastUpdateBefore);
             });
 
             it('peek during long idle does not prevent full refill', async () => {

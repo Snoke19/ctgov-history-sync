@@ -1,4 +1,6 @@
+import {performance} from 'node:perf_hooks';
 import {ProxyAgent} from 'undici';
+
 import {
     ACQUIRE_TIMEOUT,
     POOL_CONNECTIONS,
@@ -6,23 +8,32 @@ import {
     RATE_LIMIT_CAPACITY,
     RATE_LIMIT_WINDOW,
 } from '../config/config.js';
+
 import {logger} from '../config/logging.js';
+import {TokenBucketTimeoutError} from '../error/errors.js';
 import {poolFactory} from './poolFactory.js';
 import {TokenBucket} from './tokenBucket.js';
 
-const PROXY_REGEX = /^(https?):\/\/([^:@/]+):([^@/]+)@([^:@/]+):(\d+)$/;
+const PROXY_REGEX = /^(https?):\/\/([^:@/]+):([^:@/]+)@([^:@/]+):(\d+)$/;
+
+const now = () => performance.now();
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const proxyAgents = [];
+let nextProxyIndex = 0;
+
 if (process.env.NODE_ENV !== 'test' && PROXY_IPS.length > 0) {
     for (const raw of PROXY_IPS.split(',')) {
         const url = raw.trim();
+
         if (!PROXY_REGEX.test(url)) {
             logger.warn(`[Proxy] Skipping invalid proxy URL: "${url}"`);
             continue;
         }
+
         proxyAgents.push({
             url,
-            dispatcher: new ProxyAgent({ uri: url, clientFactory: poolFactory }),
+            dispatcher: new ProxyAgent({uri: url, clientFactory: poolFactory}),
             limiter: new TokenBucket(RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW),
         });
     }
@@ -41,53 +52,32 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
         return undefined;
     }
 
-    const proxy = pickBestAvailableProxy() ?? pickSoonestProxy();
+    const deadline = now() + timeoutMs;
 
-    await proxy.limiter.acquire(timeoutMs);
+    while (true) {
+        let shortestWait = Infinity;
 
-    return proxy;
-}
+        for (let i = 0; i < proxyAgents.length; i++) {
+            const index = (nextProxyIndex + i) % proxyAgents.length;
+            const proxy = proxyAgents[index];
 
-function pickBestAvailableProxy() {
-    let maxTokens = 0;
-    const candidates = [];
+            if (proxy.limiter.tryAcquire()) {
+                nextProxyIndex = (index + 1) % proxyAgents.length;
+                return proxy;
+            }
 
-    for (const proxy of proxyAgents) {
-        const tokens = proxy.limiter.peekTokens();
-
-        if (tokens <= 0) {
-            continue;
+            shortestWait = Math.min(
+                shortestWait,
+                proxy.limiter.timeUntil(1),
+            );
         }
 
-        if (tokens > maxTokens) {
-            maxTokens = tokens;
-            candidates.length = 0;
-            candidates.push(proxy);
-        } else if (tokens === maxTokens) {
-            candidates.push(proxy);
+        const remaining = deadline - now();
+
+        if (remaining <= 0) {
+            throw new TokenBucketTimeoutError(timeoutMs);
         }
+
+        await sleep(Math.min(shortestWait, remaining));
     }
-
-    if (candidates.length === 0) {
-        return undefined;
-    }
-
-    return candidates[Math.floor(Math.random() * candidates.length)];
-}
-
-function pickSoonestProxy() {
-    let soonest = proxyAgents[0];
-    let waitMs = soonest.limiter.timeUntil(1);
-
-    for (let i = 1; i < proxyAgents.length; i++) {
-        const proxy = proxyAgents[i];
-        const wait = proxy.limiter.timeUntil(1);
-
-        if (wait < waitMs) {
-            waitMs = wait;
-            soonest = proxy;
-        }
-    }
-
-    return soonest;
 }
