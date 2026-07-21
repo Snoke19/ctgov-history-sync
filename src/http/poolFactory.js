@@ -1,11 +1,11 @@
-import {Pool} from "undici";
+import {Pool} from 'undici';
 import {
     POOL_BODY_TIMEOUT,
     POOL_CONNECTIONS,
     POOL_HEADERS_TIMEOUT,
     POOL_KEEP_ALIVE_TIMEOUT,
-    POOL_PIPELINING
-} from "../config/config.js";
+    POOL_PIPELINING,
+} from '../config/config.js';
 
 export const poolFactory = (url, opts) => {
     return new Pool(url, {

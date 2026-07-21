@@ -7,8 +7,8 @@ import {
     RATE_LIMIT_WINDOW,
 } from '../config/config.js';
 import {logger} from '../config/logging.js';
-import {TokenBucket} from "./tokenBucket.js";
-import {poolFactory} from "./poolFactory.js";
+import {poolFactory} from './poolFactory.js';
+import {TokenBucket} from './tokenBucket.js';
 
 const PROXY_REGEX = /^(https?):\/\/([^:@/]+):([^@/]+)@([^:@/]+):(\d+)$/;
 
@@ -22,8 +22,8 @@ if (process.env.NODE_ENV !== 'test' && PROXY_IPS.length > 0) {
         }
         proxyAgents.push({
             url,
-            dispatcher: new ProxyAgent({uri: url, clientFactory: poolFactory}),
-            limiter: new TokenBucket(RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW)
+            dispatcher: new ProxyAgent({ uri: url, clientFactory: poolFactory }),
+            limiter: new TokenBucket(RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW),
         });
     }
 }
@@ -42,8 +42,8 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
     }
 
     const availableProxy = proxyAgents
-        .map(proxy => ({proxy, tokens: proxy.limiter.peekTokens()}))
-        .filter(item => item.tokens > 0)
+        .map((proxy) => ({ proxy, tokens: proxy.limiter.peekTokens() }))
+        .filter((item) => item.tokens > 0)
         .sort((a, b) => b.tokens - a.tokens);
 
     if (availableProxy.length > 0) {

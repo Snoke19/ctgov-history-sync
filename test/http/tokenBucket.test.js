@@ -1,7 +1,7 @@
 import {TokenBucket} from '../../src/http/tokenBucket.js';
 import {performance} from 'node:perf_hooks';
 import {afterEach, beforeEach, describe, expect, it, jest} from '@jest/globals';
-import {TokenBucketTimeoutError} from "../../src/error/errors.js";
+import {TokenBucketTimeoutError} from '../../src/error/errors.js';
 
 function createClock(initialTime = 0) {
     let time = initialTime;
@@ -645,7 +645,7 @@ describe('TokenBucket', () => {
                 const clock = createClock(0);
                 const bucket = new TokenBucket(4, 4_000, clock.now);
 
-                await consume(bucket, 3);          // 1 token left = 1000 ms credit
+                await consume(bucket, 3); // 1 token left = 1000 ms credit
                 expect(bucket.peekTokens()).toBe(1);
 
                 // creditMs should be exactly 1000, costMs is 1000
@@ -676,7 +676,7 @@ describe('TokenBucket', () => {
                 const clock = createClock(0);
                 const bucket = new TokenBucket(1, 1_000, clock.now);
 
-                await bucket.acquire(0);           // drain
+                await bucket.acquire(0); // drain
                 const promise = bucket.acquire(1_000);
 
                 clock.advance(1_000);
@@ -690,7 +690,7 @@ describe('TokenBucket', () => {
                 const clock = createClock(0);
                 const bucket = new TokenBucket(1, 1_000, clock.now);
 
-                await bucket.acquire(0);           // drain
+                await bucket.acquire(0); // drain
                 const promise = bucket.acquire(999);
 
                 clock.advance(999);
@@ -935,7 +935,7 @@ describe('TokenBucket', () => {
                 const bucket = new TokenBucket(10, 10_000, clock.now);
 
                 await consume(bucket, 10); // drain
-                clock.advance(500);        // 0.5 token refilled
+                clock.advance(500); // 0.5 token refilled
                 expect(bucket.timeUntil(1)).toBe(500);
             });
         });

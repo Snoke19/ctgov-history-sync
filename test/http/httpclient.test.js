@@ -1,7 +1,7 @@
 import {beforeEach, describe, test} from '@jest/globals';
 import assert from 'node:assert/strict';
 import {MockAgent, setGlobalDispatcher} from 'undici';
-import {RETRYABLE_STATUS_CODES} from "../../src/config/config.js";
+import {RETRYABLE_STATUS_CODES} from '../../src/config/config.js';
 
 let mockAgent;
 

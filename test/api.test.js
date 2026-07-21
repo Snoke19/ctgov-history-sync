@@ -145,7 +145,7 @@ describe('fetchTrialDetail', () => {
             await assert.rejects(
                 () => fetchTrialDetail(NCT_ID, { history: true }),
                 (err) => {
-                    console.log(err.retryAfterMs)
+                    console.log(err.retryAfterMs);
 
                     assert.equal(err.name, 'TrialFetchError');
                     assert.equal(err.status, 429);

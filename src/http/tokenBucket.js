@@ -182,7 +182,7 @@ export class TokenBucket {
         const deadline = this.#clock() + timeoutMs;
         const costMs = this.#msPerToken;
 
-        for (; ;) {
+        for (;;) {
             const now = this.#clock();
             const availableCreditMs = this.#availableCreditMs(now);
 
@@ -192,10 +192,7 @@ export class TokenBucket {
                 return;
             }
 
-            const sleepMs = Math.min(
-                Math.ceil(costMs - availableCreditMs),
-                deadline - now,
-            );
+            const sleepMs = Math.min(Math.ceil(costMs - availableCreditMs), deadline - now);
 
             if (sleepMs <= 0) {
                 throw new TokenBucketTimeoutError(timeoutMs);

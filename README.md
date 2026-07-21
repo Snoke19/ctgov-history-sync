@@ -335,6 +335,7 @@ validateSearchParams({
 MIT
 
 ---
+
 Here's how the credit-based `TokenBucket` works, from the ground up.
 
 ## The core idea
@@ -344,7 +345,7 @@ Instead of literally refilling the bucket on a timer, the bucket stores two thin
 - `#creditMs` — how much "capacity" is currently banked, expressed in milliseconds rather than token count
 - `#lastRefill` — the timestamp of the last time that credit was updated
 
-Nothing runs in the background. Every time you *ask* the bucket a question ("can I go?" / "how many can I do?" / "let me in"), it recomputes the current state on the spot based on how much time has passed. This is the "lazy refill" pattern — cheap, no timers to leak, no drift.
+Nothing runs in the background. Every time you _ask_ the bucket a question ("can I go?" / "how many can I do?" / "let me in"), it recomputes the current state on the spot based on how much time has passed. This is the "lazy refill" pattern — cheap, no timers to leak, no drift.
 
 ## Why milliseconds instead of token counts
 
@@ -353,32 +354,40 @@ A token is really just a unit of "permission," and permission accumulates over t
 ## Walking through each piece
 
 **Constructor**
+
 ```js
-this.#msPerToken = windowMs / capacity;   // cost of one token, in ms
-this.#creditMs = windowMs;                // start full: capacity tokens' worth
+this.#msPerToken = windowMs / capacity; // cost of one token, in ms
+this.#creditMs = windowMs; // start full: capacity tokens' worth
 ```
+
 The bucket starts completely full — full credit, equivalent to `capacity` tokens available immediately, which matches how a fresh rate limiter should behave (burst capacity available right away).
 
 **`#availableCreditMs(now)` — the refill calculation**
+
 ```js
 const elapsed = now - this.#lastRefill;
 return Math.min(this.#windowMs, this.#creditMs + elapsed);
 ```
+
 This is the heart of the whole class. It says: "however much credit we had last time, add back the time that's passed since then — but never go over a full bucket (`windowMs`)." This function doesn't mutate anything; it's a pure calculation of "what would the state be right now."
 
 **`peekTokens()` — read-only check**
+
 ```js
 Math.floor(this.#availableCreditMs() / this.#msPerToken);
 ```
+
 Converts current credit back into a whole token count, for display or for comparing proxies against each other, without spending anything. Purely observational — call it as often as you like.
 
 **`timeUntil(count)` — "when will I be able to go?"**
+
 ```js
 const neededCreditMs = count * this.#msPerToken;
 const availableCreditMs = this.#availableCreditMs(now);
 if (availableCreditMs >= neededCreditMs) return 0;
 return Math.ceil(neededCreditMs - availableCreditMs);
 ```
+
 Figures out the ms-value of the requested token count, compares it to what's currently available, and returns the shortfall directly as a millisecond wait time — no unit conversion needed, because everything's already in ms. If you ask for more tokens than the bucket can ever hold (`count > capacity`), it returns `Infinity` rather than a misleading finite number.
 
 **`acquire(timeoutMs)` — the actual gate**
@@ -387,7 +396,7 @@ This is a loop, not a single check, because time keeps passing while you wait:
 
 1. Compute current available credit.
 2. If there's enough to cover one token's cost (`#msPerToken`), **spend it immediately**: subtract the cost from the credit, stamp `#lastRefill = now`, and return. The caller proceeds.
-3. If not, compute exactly how long until there *would* be enough (the deficit, in ms — no division needed), cap that by whatever's left before `timeoutMs` runs out, and `await` a `setTimeout` for that exact duration.
+3. If not, compute exactly how long until there _would_ be enough (the deficit, in ms — no division needed), cap that by whatever's left before `timeoutMs` runs out, and `await` a `setTimeout` for that exact duration.
 4. Loop back to step 1 and check again.
 
 The sleep duration is calculated precisely to the millisecond needed — not a fixed polling interval — so it doesn't oversleep or busy-wait.
