@@ -41,18 +41,41 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
         return undefined;
     }
 
-    const availableProxy = proxyAgents
-        .map((proxy) => ({ proxy, tokens: proxy.limiter.peekTokens() }))
-        .filter((item) => item.tokens > 0)
-        .sort((a, b) => b.tokens - a.tokens);
+    const proxy = pickBestAvailableProxy() ?? pickSoonestProxy();
 
-    if (availableProxy.length > 0) {
-        const pick = availableProxy[Math.floor(Math.random() * availableProxy.length)];
+    await proxy.limiter.acquire(timeoutMs);
 
-        await pick.proxy.limiter.acquire(timeoutMs);
-        return pick.proxy;
+    return proxy;
+}
+
+function pickBestAvailableProxy() {
+    let maxTokens = 0;
+    const candidates = [];
+
+    for (const proxy of proxyAgents) {
+        const tokens = proxy.limiter.peekTokens();
+
+        if (tokens <= 0) {
+            continue;
+        }
+
+        if (tokens > maxTokens) {
+            maxTokens = tokens;
+            candidates.length = 0;
+            candidates.push(proxy);
+        } else if (tokens === maxTokens) {
+            candidates.push(proxy);
+        }
     }
 
+    if (candidates.length === 0) {
+        return undefined;
+    }
+
+    return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+function pickSoonestProxy() {
     let soonest = proxyAgents[0];
     let waitMs = soonest.limiter.timeUntil(1);
 
@@ -65,8 +88,6 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
             soonest = proxy;
         }
     }
-
-    await soonest.limiter.acquire(timeoutMs);
 
     return soonest;
 }
