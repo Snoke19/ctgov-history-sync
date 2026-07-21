@@ -33,17 +33,20 @@ export class TokenBucket {
     #clock;
 
     /**
-     * @param {number} capacity - Maximum tokens the bucket can hold.
+     * @param {number} capacity - Maximum tokens the bucket can hold. Must be
+     *   a positive integer — fractional capacities can make `timeUntil`
+     *   permanently unsatisfiable since acquisition always consumes whole
+     *   tokens.
      * @param {number} windowMs - Time window over which `capacity`
      *   tokens are replenished, in milliseconds.
      * @param {() => number} [now=performance.now] - Function returning a
      *   monotonic timestamp in milliseconds. Intended primarily for testing.
-     * @throws {TypeError} If `capacity` or `windowMs` is not a positive
-     *   finite number.
+     * @throws {TypeError} If `capacity` is not a positive integer, or
+     *   `windowMs` is not a positive finite number.
      */
     constructor(capacity, windowMs, now = () => performance.now()) {
-        if (!Number.isFinite(capacity) || capacity <= 0) {
-            throw new TypeError('capacity must be a positive finite number');
+        if (!Number.isInteger(capacity) || capacity < 1) {
+            throw new TypeError('capacity must be a positive integer');
         }
 
         if (!Number.isFinite(windowMs) || windowMs <= 0) {
@@ -63,14 +66,16 @@ export class TokenBucket {
      * Compute the current credit in milliseconds.
      *
      * Lazily adds `elapsed` milliseconds since `#lastUpdate`, capped at
-     * `#windowMs`. This is a pure function: it does not mutate state.
+     * `#windowMs`. Elapsed time is clamped to zero so an injected
+     * non-monotonic clock (e.g. in tests) can't drain credit by going
+     * backwards. This is a pure function: it does not mutate state.
      *
      * @param {number} [now] - Timestamp to compute availability at.
      *   Defaults to the injected clock.
      * @returns {number} Current credit in milliseconds, range [0, windowMs].
      */
     #availableCreditMs(now = this.#clock()) {
-        const elapsed = now - this.#lastUpdate;
+        const elapsed = Math.max(0, now - this.#lastUpdate);
         return Math.min(this.#windowMs, this.#creditMs + elapsed);
     }
 
@@ -131,6 +136,22 @@ export class TokenBucket {
     }
 
     /**
+     * Maximum tokens this bucket can hold.
+     * @returns {number}
+     */
+    get capacity() {
+        return this.#capacity;
+    }
+
+    /**
+     * Refill window in milliseconds.
+     * @returns {number}
+     */
+    get windowMs() {
+        return this.#windowMs;
+    }
+
+    /**
      * Returns the time (ms) until `count` tokens are available.
      *
      * @param {number} [count=1] - Required number of tokens. Must be a
@@ -158,7 +179,9 @@ export class TokenBucket {
 
         const neededCreditMs = count * this.#msPerToken;
 
-        if (availableCreditMs >= neededCreditMs) {
+        // EPS tolerance mirrors tryAcquire(), so timeUntil() and tryAcquire()
+        // never disagree about whether a token is available right now.
+        if (availableCreditMs + EPS >= neededCreditMs) {
             return 0;
         }
 

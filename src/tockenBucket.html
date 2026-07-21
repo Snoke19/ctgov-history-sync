@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Bucket Rate Limiter</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+    <style>
+        :root {
+            --bg: #f8f9fb;
+            --surface: #ffffff;
+            --text-primary: #1a1d23;
+            --text-secondary: #6b7280;
+            --text-muted: #9ca3af;
+            --border: #e5e7eb;
+            --border-light: #f3f4f6;
+            --accent: #0ea5e9;
+            --accent-hover: #0284c7;
+            --success: #10b981;
+            --success-bg: #d1fae5;
+            --success-text: #065f46;
+            --danger: #ef4444;
+            --danger-bg: #fee2e2;
+            --danger-text: #991b1b;
+            --warning: #f59e0b;
+            --warning-bg: #fef3c7;
+            --warning-text: #92400e;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+            --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font),serif;
+            background: var(--bg);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 2rem 1rem;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h2.sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        .controls-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+            padding: 1rem 1.25rem;
+            background: var(--surface);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .control-group label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .control-value {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            min-width: 2.5rem;
+            text-align: right;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 120px;
+            height: 6px;
+            background: var(--border-light);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--accent);
+            border-radius: 50%;
+            border: 2px solid var(--surface);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+            transition: transform 0.15s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: var(--accent);
+            border-radius: 50%;
+            border: 2px solid var(--surface);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+            cursor: pointer;
+        }
+
+        button {
+            font-family: inherit;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--surface);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            white-space: nowrap;
+        }
+
+        button:hover {
+            background: var(--bg);
+            border-color: var(--text-muted);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button.primary {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        button.primary:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        button.danger {
+            color: var(--danger);
+            border-color: #fecaca;
+            background: var(--danger-bg);
+        }
+
+        button.danger:hover {
+            background: #fecaca;
+        }
+
+        button.success {
+            color: var(--success-text);
+            border-color: #a7f3d0;
+            background: var(--success-bg);
+        }
+
+        button.success:hover {
+            background: #a7f3d0;
+        }
+
+        .bucket-wrap {
+            position: relative;
+            height: 64px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            background: var(--surface);
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+            box-shadow: var(--shadow);
+        }
+
+        .bucket-fill {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: linear-gradient(90deg, var(--success) 0%, #34d399 100%);
+            transition: width 0.1s linear;
+        }
+
+        .bucket-ticks {
+            position: absolute;
+            inset: 0;
+            display: flex;
+        }
+
+        .bucket-label {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+            letter-spacing: 0.02em;
+        }
+
+        .queue-row {
+            display: flex;
+            gap: 0.5rem;
+            min-height: 32px;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+        }
+
+        @keyframes popIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 640px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .controls-bar {
+                gap: 1rem;
+            }
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border-radius: var(--radius);
+            padding: 1.25rem 1rem;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-light);
+            transition: box-shadow 0.2s ease;
+        }
+
+        .stat-card:hover {
+            box-shadow: var(--shadow-md);
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin: 0 0 0.25rem;
+        }
+
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .stat-value.success {
+            color: var(--success);
+        }
+
+        .stat-value.danger {
+            color: var(--danger);
+        }
+
+        .stat-value.accent {
+            color: var(--accent);
+        }
+
+        .action-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.625rem;
+            margin-bottom: 0.75rem;
+            padding: 0.75rem;
+            background: var(--surface);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+
+        .action-bar .control-group {
+            margin-left: auto;
+        }
+
+        @media (max-width: 640px) {
+            .action-bar .control-group {
+                margin-left: 0;
+                width: 100%;
+                margin-top: 0.5rem;
+            }
+        }
+
+        .log-line {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            margin: 0 0 1.25rem;
+            padding: 0.75rem 1rem;
+            background: var(--surface);
+            border-radius: var(--radius-sm);
+            border-left: 3px solid var(--accent);
+            box-shadow: var(--shadow);
+        }
+
+        .chart-wrap {
+            position: relative;
+            width: 100%;
+            height: 220px;
+            background: var(--surface);
+            border-radius: var(--radius);
+            padding: 1rem;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-light);
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 class="sr-only">Interactive demo of a token bucket rate limiter: watch tokens refill over time, and see how
+        single requests, bursts, and steady traffic drain and refill the bucket.</h2>
+
+    <div class="controls-bar">
+        <div class="control-group">
+            <label for="capacity">Capacity</label>
+            <input type="range" id="capacity" min="1" max="20" step="1" value="8">
+            <span class="control-value" id="capacityOut">8</span>
+        </div>
+        <div class="control-group">
+            <label for="windowMs">Refill window</label>
+            <input type="range" id="windowMs" min="1000" max="10000" step="500" value="4000">
+            <span class="control-value" id="windowOut">4.0s</span>
+        </div>
+        <button id="resetBtn" class="danger" style="margin-left:auto;">
+            <i class="ti ti-refresh" aria-hidden="true"></i> Reset
+        </button>
+    </div>
+
+    <div class="bucket-wrap">
+        <div class="bucket-fill" id="fill"></div>
+        <div class="bucket-ticks" id="ticks"></div>
+        <div class="bucket-label" id="tokenLabel">8 / 8 tokens</div>
+    </div>
+    <div class="queue-row" id="queueRow"></div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <p class="stat-label">Tokens available</p>
+            <p class="stat-value accent" id="statTokens">8</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-label">Next token in</p>
+            <p class="stat-value" id="statNext">ready</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-label">Granted</p>
+            <p class="stat-value success" id="statGranted">0</p>
+        </div>
+        <div class="stat-card">
+            <p class="stat-label">Blocked</p>
+            <p class="stat-value danger" id="statBlocked">0</p>
+        </div>
+    </div>
+
+    <div class="action-bar">
+        <button id="tryBtn" class="primary">
+            <i class="ti ti-player-play" aria-hidden="true"></i> Try acquire
+        </button>
+        <button id="queueBtn">Queue request</button>
+        <button id="burstBtn">Send burst (capacity + 5)</button>
+        <button id="autoBtn" class="success">Start auto-traffic</button>
+        <div class="control-group">
+            <label for="rate">Rate</label>
+            <input type="range" id="rate" min="1" max="30" step="1" value="10">
+            <span class="control-value" id="rateOut">10/s</span>
+        </div>
+    </div>
+
+    <p class="log-line" id="logLine">Ready. Try acquiring a token, or send a burst to drain the bucket.</p>
+
+    <div class="chart-wrap">
+        <canvas id="chart" role="img"
+                aria-label="Line chart of tokens available in the bucket over time, showing drain and refill">Tokens
+            available fluctuates between 0 and capacity as requests consume tokens and time refills them.
+        </canvas>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+    /* ------------------------------------------------------------------ */
+    /*  Browser shim for the Node.js modules used by the original source  */
+    /* ------------------------------------------------------------------ */
+    const performance = window.performance;
+
+    class TokenBucketTimeoutError extends Error {
+        constructor(timeoutMs) {
+            super(`Token bucket timeout after ${timeoutMs}ms`);
+            this.timeoutMs = timeoutMs;
+            this.name = 'TokenBucketTimeoutError';
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  EXACT TokenBucket class from your source file                     */
+    /*  (Only addition: fraction() method for the visual demo bar)        */
+    /* ------------------------------------------------------------------ */
+    const EPS = 1e-9;
+
+    /**
+     * Token bucket rate limiter using credit-milliseconds.
+     *
+     * Internally the bucket stores "credit" in milliseconds, not fractional tokens.
+     * A full bucket holds `windowMs` credit (equivalent to `capacity` tokens).
+     * One token costs `msPerToken = windowMs / capacity` credit.
+     *
+     * Refill is lazy and O(1): credit increases by exactly `elapsed` milliseconds
+     * since the last update, capped at `windowMs`. No background timer runs.
+     *
+     * Thread safety: Safe for concurrent async usage within a single Node.js
+     * process because all state mutations in `acquire()` happen synchronously
+     * before the first `await`.
+     *
+     * Example with capacity=40, windowMs=60000:
+     *   - Starts full: 40 tokens available (60000 ms of credit).
+     *   - Each request consumes 1 token (1500 ms of credit).
+     *   - After 30 instantaneous requests, 10 tokens remain; the 31st request
+     *     is allowed immediately because credit is still in the bucket.
+     *   - Once fully drained, the next token takes ~1500 ms to refill.
+     */
+    class TokenBucket {
+        #capacity;
+        #windowMs;
+        #msPerToken;
+        #creditMs;
+        #lastUpdate;
+        #clock;
+
+        /**
+         * @param {number} capacity - Maximum tokens the bucket can hold. Must be
+         *   a positive integer — fractional capacities can make `timeUntil`
+         *   permanently unsatisfiable since acquisition always consumes whole
+         *   tokens.
+         * @param {number} windowMs - Time window over which `capacity`
+         *   tokens are replenished, in milliseconds.
+         * @param {() => number} [now=performance.now] - Function returning a
+         *   monotonic timestamp in milliseconds. Intended primarily for testing.
+         * @throws {TypeError} If `capacity` is not a positive integer, or
+         *   `windowMs` is not a positive finite number.
+         */
+        constructor(capacity, windowMs, now = () => performance.now()) {
+            if (!Number.isInteger(capacity) || capacity < 1) {
+                throw new TypeError('capacity must be a positive integer');
+            }
+
+            if (!Number.isFinite(windowMs) || windowMs <= 0) {
+                throw new TypeError('windowMs must be a positive finite number');
+            }
+
+            this.#capacity = capacity;
+            this.#windowMs = windowMs;
+            this.#msPerToken = windowMs / capacity;
+            this.#creditMs = windowMs; // starts full: capacity tokens' worth of credit
+
+            this.#clock = now;
+            this.#lastUpdate = this.#clock();
+        }
+
+        /**
+         * Compute the current credit in milliseconds.
+         *
+         * Lazily adds `elapsed` milliseconds since `#lastUpdate`, capped at
+         * `#windowMs`. Elapsed time is clamped to zero so an injected
+         * non-monotonic clock (e.g. in tests) can't drain credit by going
+         * backwards. This is a pure function: it does not mutate state.
+         *
+         * @param {number} [now] - Timestamp to compute availability at.
+         *   Defaults to the injected clock.
+         * @returns {number} Current credit in milliseconds, range [0, windowMs].
+         */
+        #availableCreditMs(now = this.#clock()) {
+            const elapsed = Math.max(0, now - this.#lastUpdate);
+            return Math.min(this.#windowMs, this.#creditMs + elapsed);
+        }
+
+        tryAcquire() {
+            const now = this.#clock();
+            const availableCreditMs = this.#availableCreditMs(now);
+
+            if (availableCreditMs + EPS < this.#msPerToken) {
+                return false;
+            }
+
+            this.#creditMs = availableCreditMs - this.#msPerToken;
+            this.#lastUpdate = now;
+            return true;
+        }
+
+        /**
+         * Peek at the number of tokens currently available.
+         *
+         * This is a read-only snapshot: it computes how many tokens would be
+         * available right now based on elapsed time since the last refill, but
+         * does NOT mutate the bucket state. Use this for selection/sorting;
+         * use `acquire()` to actually consume a token.
+         *
+         * @returns {number} Floored token count (e.g. 3.7 → 3). Returns
+         *   `#capacity` when the bucket is exactly full, bypassing a
+         *   floating-point division edge case.
+         */
+        peekTokens() {
+            const creditMs = this.#availableCreditMs();
+
+            // Guard against floating-point undershoot when the bucket is exactly
+            // full. `windowMs / msPerToken` should equal `capacity`, but IEEE-754
+            // division can produce `2.9999999999999996` instead of `3`.
+            if (creditMs >= this.#windowMs) {
+                return this.#capacity;
+            }
+
+            // Guard against floating-point undershoot. After subtracting msPerToken,
+            // creditMs can be epsilon-smaller than the exact mathematical value,
+            // causing floor() to undercount by 1.
+            const tokens = creditMs / this.#msPerToken;
+
+            return Math.floor(Math.min(tokens + EPS, this.#capacity));
+        }
+
+        /**
+         * Timestamp of the last state update.
+         *
+         * Updated whenever a token is consumed. Combined with the stored credit,
+         * it allows the bucket to lazily compute the current number of available
+         * tokens without running a background refill task.
+         *
+         * @returns {number} Monotonic timestamp from the injected clock.
+         */
+        get lastUpdate() {
+            return this.#lastUpdate;
+        }
+
+        /**
+         * Maximum tokens this bucket can hold.
+         * @returns {number}
+         */
+        get capacity() {
+            return this.#capacity;
+        }
+
+        /**
+         * Refill window in milliseconds.
+         * @returns {number}
+         */
+        get windowMs() {
+            return this.#windowMs;
+        }
+
+        /**
+         * Returns the time (ms) until `count` tokens are available.
+         *
+         * @param {number} [count=1] - Required number of tokens. Must be a
+         *   positive finite number.
+         * @returns {number} Milliseconds until enough tokens exist, or
+         *   `Infinity` if `count` exceeds the bucket's capacity and can never
+         *   be satisfied.
+         * @throws {TypeError} If `count` is not a positive finite number.
+         */
+        timeUntil(count = 1) {
+            if (!Number.isFinite(count) || count <= 0) {
+                throw new TypeError('count must be a positive finite number');
+            }
+
+            if (count > this.#capacity) {
+                return Infinity;
+            }
+
+            const availableCreditMs = this.#availableCreditMs(this.#clock());
+
+            // Full bucket: any count ≤ capacity is satisfied immediately.
+            if (availableCreditMs >= this.#windowMs) {
+                return 0;
+            }
+
+            const neededCreditMs = count * this.#msPerToken;
+
+            // EPS tolerance mirrors tryAcquire(), so timeUntil() and tryAcquire()
+            // never disagree about whether a token is available right now.
+            if (availableCreditMs + EPS >= neededCreditMs) {
+                return 0;
+            }
+
+            return Math.ceil(neededCreditMs - availableCreditMs);
+        }
+
+        /**
+         * Acquire one token, blocking until available or the timeout expires.
+         *
+         * Algorithm:
+         *   1. Compute elapsed time since last refill.
+         *   2. Add back proportional credit (capped at windowMs).
+         *   3. If at least one token's worth of credit is available: deduct the
+         *      cost, update `#lastUpdate`, and return immediately.
+         *   4. Otherwise: sleep exactly until the next token is ready
+         *      (not a fixed interval), then loop.
+         *
+         * The sleep duration is calculated precisely: if 750 ms of credit are
+         * needed and the rate is 1 token per 1500 ms, it sleeps 750 ms.
+         * This minimizes unnecessary waiting under high concurrency.
+         *
+         * @param {number} [timeoutMs=30000] - Maximum time to wait for a token.
+         *   Must be a non-negative finite number.
+         * @returns {Promise<void>} Resolves when a token is consumed.
+         * @throws {TypeError} If `timeoutMs` is not a non-negative finite number.
+         * @throws {TokenBucketTimeoutError} If no token becomes available
+         *   within `timeoutMs`.
+         */
+        async acquire(timeoutMs = 30000) {
+            if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+                throw new TypeError('timeoutMs must be a non-negative finite number');
+            }
+
+            const deadline = this.#clock() + timeoutMs;
+
+            while (true) {
+                if (this.tryAcquire()) {
+                    return;
+                }
+
+                const remaining = deadline - this.#clock();
+
+                if (remaining <= 0) {
+                    throw new TokenBucketTimeoutError(timeoutMs);
+                }
+
+                await new Promise(resolve =>
+                    setTimeout(resolve, Math.min(this.timeUntil(1), remaining)),
+                );
+            }
+        }
+
+        /* ---- Added for demo visualization only ---- */
+        fraction() {
+            return this.#availableCreditMs() / this.#windowMs;
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Demo wiring                                                       */
+    /* ------------------------------------------------------------------ */
+    const clock = () => performance.now();
+    let bucket = new TokenBucket(8, 4000, clock);
+    let granted = 0, blocked = 0;
+    let autoTimer = null;
+    const start = clock();
+    const chartData = {labels: [], values: []};
+
+    const capacityInput = document.getElementById('capacity');
+    const windowInput = document.getElementById('windowMs');
+    const fillEl = document.getElementById('fill');
+    const ticksEl = document.getElementById('ticks');
+    const tokenLabelEl = document.getElementById('tokenLabel');
+    const logEl = document.getElementById('logLine');
+    const queueRow = document.getElementById('queueRow');
+
+    function buildTicks() {
+        ticksEl.innerHTML = '';
+        for (let i = 0; i < bucket.capacity; i++) {
+            const d = document.createElement('div');
+            d.style.flex = '1';
+            if (i < bucket.capacity - 1) d.style.borderRight = '0.5px solid var(--border)';
+            ticksEl.appendChild(d);
+        }
+    }
+
+    function resetBucket() {
+        const cap = parseInt(capacityInput.value, 10);
+        const win = parseInt(windowInput.value, 10);
+        bucket = new TokenBucket(cap, win, clock);
+        granted = 0;
+        blocked = 0;
+        chartData.labels = [];
+        chartData.values = [];
+        queueRow.innerHTML = '';
+        document.getElementById('statGranted').textContent = '0';
+        document.getElementById('statBlocked').textContent = '0';
+        buildTicks();
+        log('Bucket reset.');
+        if (chart) {
+            chart.options.scales.y.max = cap;
+            chart.update();
+        }
+    }
+
+    function log(msg) {
+        logEl.textContent = msg;
+    }
+
+    function flashFill(ok) {
+        fillEl.style.background = ok
+            ? 'linear-gradient(90deg, var(--success) 0%, #34d399 100%)'
+            : 'linear-gradient(90deg, var(--danger) 0%, #f87171 100%)';
+        setTimeout(() => {
+            fillEl.style.background = 'linear-gradient(90deg, var(--success) 0%, #34d399 100%)';
+        }, 220);
+    }
+
+    capacityInput.addEventListener('input', () => {
+        document.getElementById('capacityOut').textContent = capacityInput.value;
+    });
+    windowInput.addEventListener('input', () => {
+        document.getElementById('windowOut').textContent = (windowInput.value / 1000).toFixed(1) + 's';
+    });
+    capacityInput.addEventListener('change', resetBucket);
+    windowInput.addEventListener('change', resetBucket);
+    document.getElementById('resetBtn').addEventListener('click', resetBucket);
+
+    document.getElementById('tryBtn').addEventListener('click', () => {
+        const ok = bucket.tryAcquire();
+        if (ok) {
+            granted++;
+            document.getElementById('statGranted').textContent = granted;
+            log('Acquired instantly — token was available.');
+        } else {
+            blocked++;
+            document.getElementById('statBlocked').textContent = blocked;
+            log('Rejected — bucket was empty. Next token in ' + Math.round(bucket.timeUntil(1)) + 'ms.');
+        }
+        flashFill(ok);
+    });
+
+    document.getElementById('burstBtn').addEventListener('click', () => {
+        const n = bucket.capacity + 5;
+        let g = 0, b = 0;
+        for (let i = 0; i < n; i++) {
+            if (bucket.tryAcquire()) g++; else b++;
+        }
+        granted += g;
+        blocked += b;
+        document.getElementById('statGranted').textContent = granted;
+        document.getElementById('statBlocked').textContent = blocked;
+        log('Burst of ' + n + ': ' + g + ' granted instantly, ' + b + ' rejected (bucket only had ' + bucket.capacity + ' tokens).');
+    });
+
+    document.getElementById('queueBtn').addEventListener('click', () => {
+        const wait = bucket.timeUntil(1);
+        if (wait <= 0) {
+            bucket.tryAcquire();
+            granted++;
+            document.getElementById('statGranted').textContent = granted;
+            log('Queued request resolved immediately.');
+            return;
+        }
+        const chip = document.createElement('div');
+        chip.className = 'queue-chip';
+        queueRow.appendChild(chip);
+        const deadline = clock() + wait;
+        const tick = () => {
+            const remaining = Math.max(0, deadline - clock());
+            chip.textContent = 'waiting ' + Math.ceil(remaining) + 'ms';
+            if (remaining > 0) {
+                requestAnimationFrame(tick);
+            } else {
+                bucket.tryAcquire();
+                granted++;
+                document.getElementById('statGranted').textContent = granted;
+                queueRow.removeChild(chip);
+                log('Queued request resolved after waiting exactly ' + Math.round(wait) + 'ms for refill.');
+            }
+        };
+        tick();
+    });
+
+    const rateInput = document.getElementById('rate');
+    rateInput.addEventListener('input', () => {
+        document.getElementById('rateOut').textContent = rateInput.value + '/s';
+    });
+
+    const autoBtn = document.getElementById('autoBtn');
+
+    function setAutoBtn(active) {
+        if (active) {
+            autoBtn.innerHTML = '<i class="ti ti-player-stop" aria-hidden="true"></i> Stop auto-traffic';
+            autoBtn.classList.remove('success');
+            autoBtn.classList.add('danger');
+        } else {
+            autoBtn.innerHTML = '<i class="ti ti-activity" aria-hidden="true"></i> Start auto-traffic';
+            autoBtn.classList.remove('danger');
+            autoBtn.classList.add('success');
+        }
+    }
+
+    autoBtn.addEventListener('click', function () {
+        if (autoTimer) {
+            clearInterval(autoTimer);
+            autoTimer = null;
+            setAutoBtn(false);
+            log('Auto-traffic stopped.');
+            return;
+        }
+        setAutoBtn(true);
+        log('Auto-traffic running at ' + rateInput.value + ' req/s.');
+        autoTimer = setInterval(() => {
+            const ok = bucket.tryAcquire();
+            if (ok) {
+                granted++;
+                document.getElementById('statGranted').textContent = granted;
+            } else {
+                blocked++;
+                document.getElementById('statBlocked').textContent = blocked;
+            }
+        }, 1000 / parseInt(rateInput.value, 10));
+    });
+
+    let chart = null;
+
+    function initChart() {
+        chart = new Chart(document.getElementById('chart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    borderColor: '#0ea5e9',
+                    backgroundColor: 'rgba(14,165,233,0.08)',
+                    fill: true,
+                    borderWidth: 2.5,
+                    pointRadius: 0,
+                    tension: 0.2
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {legend: {display: false}},
+                scales: {
+                    x: {ticks: {maxTicksLimit: 6, color: '#9ca3af', font: {size: 11}}, grid: {display: false}},
+                    y: {
+                        min: 0,
+                        max: bucket.capacity,
+                        ticks: {stepSize: 1, color: '#9ca3af', font: {size: 11}},
+                        grid: {color: '#f3f4f6'}
+                    }
+                }
+            }
+        });
+    }
+
+    initChart();
+    buildTicks();
+
+    function frame() {
+        const frac = bucket.fraction();
+        fillEl.style.width = (frac * 100) + '%';
+        const tokens = bucket.peekTokens();
+        tokenLabelEl.textContent = tokens + ' / ' + bucket.capacity + ' tokens';
+        document.getElementById('statTokens').textContent = tokens;
+        const next = bucket.timeUntil(1);
+        document.getElementById('statNext').textContent = next <= 0 ? 'ready' : Math.round(next) + 'ms';
+        requestAnimationFrame(frame);
+    }
+
+    frame();
+
+    setInterval(() => {
+        const t = ((clock() - start) / 1000).toFixed(1);
+        chartData.labels.push(t + 's');
+        chartData.values.push(bucket.peekTokens());
+        if (chartData.labels.length > 50) {
+            chartData.labels.shift();
+            chartData.values.shift();
+        }
+        chart.data.labels = chartData.labels;
+        chart.data.datasets[0].data = chartData.values;
+        chart.update('none');
+    }, 200);
+</script>
+
+</body>
+</html>

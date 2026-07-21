@@ -25,6 +25,49 @@ describe('TokenBucket', () => {
         jest.useRealTimers();
     });
 
+    describe('timeUntil/tryAcquire agreement at float boundaries', () => {
+        it('timeUntil(1) returns 0 whenever tryAcquire() would succeed', async () => {
+            const clock = createClock(0);
+            const bucket = new TokenBucket(3, 10_000, clock.now);
+            // msPerToken = 3333.333...; after consuming 2 of 3 tokens, the
+            // remaining credit is mathematically exactly one token's worth,
+            // but float subtraction leaves it ~9e-13 below that — enough to
+            // flip a non-tolerant comparison without an EPS guard.
+            await consume(bucket, 2);
+
+            expect(bucket.timeUntil(1)).toBe(0);
+            await expect(bucket.acquire(0)).resolves.toBeUndefined();
+        });
+    });
+
+    describe('non-monotonic clock defensiveness', () => {
+        it('does not lose credit if the injected clock reports a backward jump', async () => {
+            let time = 1_000;
+            const bucket = new TokenBucket(5, 10_000, () => time);
+
+            await bucket.acquire(0); // consumes 1 token at time=1000
+            expect(bucket.peekTokens()).toBe(4);
+
+            time = 500; // clock moves backward — shouldn't happen with
+                        // performance.now(), but a broken injected clock
+                        // shouldn't be able to drain credit as a side effect
+            expect(bucket.peekTokens()).toBe(4);
+
+            time = 1_000; // back to normal, unaffected
+            expect(bucket.peekTokens()).toBe(4);
+        });
+    });
+
+    describe('capacity and windowMs getters', () => {
+        it('exposes the configured capacity', () => {
+            expect(new TokenBucket(7, 5_000).capacity).toBe(7);
+        });
+
+        it('exposes the configured windowMs', () => {
+            expect(new TokenBucket(7, 5_000).windowMs).toBe(5_000);
+        });
+    });
+
     /* ==================================================================
        CONSTRUCTOR
        ================================================================== */
@@ -57,9 +100,26 @@ describe('TokenBucket', () => {
                 ['string', '10'],
                 ['null', null],
                 ['undefined', undefined],
+                ['non-integer greater than 1', 2.5],   // add
+                ['non-integer between 0 and 1', 0.5],  // add
             ])('throws TypeError for %s (%p)', (_label, value) => {
                 expect(() => new TokenBucket(value, 5_000)).toThrow(
-                    new TypeError('capacity must be a positive finite number'),
+                    new TypeError('capacity must be a positive integer'),
+                );
+            });
+
+            it.each([
+                ['zero', 0],
+                ['negative', -1],
+                ['NaN', NaN],
+                ['Infinity', Infinity],
+                ['-Infinity', -Infinity],
+                ['string', '10'],
+                ['null', null],
+                ['undefined', undefined],
+            ])('throws TypeError for %s (%p)', (_label, value) => {
+                expect(() => new TokenBucket(value, 5_000)).toThrow(
+                    new TypeError('capacity must be a positive integer'),
                 );
             });
         });

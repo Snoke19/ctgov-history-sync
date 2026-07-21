@@ -1,6 +1,5 @@
 import {performance} from 'node:perf_hooks';
 import {ProxyAgent} from 'undici';
-
 import {
     ACQUIRE_TIMEOUT,
     POOL_CONNECTIONS,
@@ -8,9 +7,8 @@ import {
     RATE_LIMIT_CAPACITY,
     RATE_LIMIT_WINDOW,
 } from '../config/config.js';
-
 import {logger} from '../config/logging.js';
-import {TokenBucketTimeoutError} from '../error/errors.js';
+import {ProxyAcquisitionTimeoutError} from '../error/errors.js';
 import {poolFactory} from './poolFactory.js';
 import {TokenBucket} from './tokenBucket.js';
 
@@ -75,7 +73,7 @@ export async function acquireProxyDispatcher(timeoutMs = ACQUIRE_TIMEOUT) {
         const remaining = deadline - now();
 
         if (remaining <= 0) {
-            throw new TokenBucketTimeoutError(timeoutMs);
+            throw new ProxyAcquisitionTimeoutError(timeoutMs, proxyAgents.length);
         }
 
         await sleep(Math.min(shortestWait, remaining));
