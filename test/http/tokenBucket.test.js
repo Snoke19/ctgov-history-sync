@@ -1,4 +1,4 @@
-import {TokenBucket} from '../../src/http/tokenBucket.js';
+import {TokenBucket} from '../../src/http/limiter/tokenBucket.js';
 import {performance} from 'node:perf_hooks';
 import {afterEach, beforeEach, describe, expect, it, jest} from '@jest/globals';
 import {TokenBucketTimeoutError} from '../../src/error/errors.js';

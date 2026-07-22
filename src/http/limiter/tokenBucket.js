@@ -1,5 +1,5 @@
 import {performance} from 'node:perf_hooks';
-import {TokenBucketTimeoutError} from '../error/errors.js';
+import {TokenBucketTimeoutError} from '../../error/errors.js';
 
 const EPS = 1e-9;
 

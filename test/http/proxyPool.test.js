@@ -1,5 +1,5 @@
 import {afterAll, afterEach, beforeEach, describe, expect, jest, test} from '@jest/globals';
-import {acquireProxy} from '../../src/http/proxyPool.js';
+import {acquireProxy} from '../../src/http/proxy/proxyManager.js';
 
 let mockTime = 0;
 const REAL_NODE_ENV = process.env.NODE_ENV;
@@ -41,7 +41,7 @@ async function setupProxyPool(configOverrides = {}) {
         poolFactory: jest.fn().mockImplementation((url) => ({url, type: 'Pool'})),
     }));
 
-    return import('../../src/http/proxyPool.js');
+    return import('../../src/http/proxy/proxyManager.js');
 }
 
 afterAll(() => {
@@ -111,7 +111,7 @@ describe('acquireProxy', () => {
             poolFactory: jest.fn(),
         }));
 
-        const {acquireProxy} = await import('../../src/http/proxyPool.js');
+        const {acquireProxy} = await import('../../src/http/proxy/proxyManager.js');
 
         expect(await acquireProxy()).toBeUndefined();
     });

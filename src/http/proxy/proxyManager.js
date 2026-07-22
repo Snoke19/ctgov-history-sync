@@ -5,9 +5,9 @@ import {
     PROXY_IPS,
     RATE_LIMIT_CAPACITY,
     RATE_LIMIT_WINDOW,
-} from '../config/config.js';
-import {logger} from '../config/logging.js';
-import {ProxyAcquisitionTimeoutError} from '../error/errors.js';
+} from '../../config/config.js';
+import {logger} from '../../config/logging.js';
+import {ProxyAcquisitionTimeoutError} from '../../error/errors.js';
 import {ProxyInstance} from "./proxyInstance.js";
 
 const PROXY_REGEX = /^(https?):\/\/([^:@/]+):([^:@/]+)@([^:@/]+):(\d+)$/;

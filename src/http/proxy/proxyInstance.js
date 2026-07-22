@@ -1,18 +1,18 @@
 import {ProxyAgent} from 'undici';
 
-import {RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW,} from '../config/config.js';
+import {RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW,} from '../../config/config.js';
 
-import {poolFactory} from './poolFactory.js';
-import {TokenBucket} from './tokenBucket.js';
-
+import {poolFactory} from '../poolFactory.js';
+import {TokenBucket} from '../limiter/tokenBucket.js';
 
 export class ProxyInstance {
     #limiter;
+    #dispatcher;
 
     constructor(url) {
         this.url = url;
 
-        this.dispatcher = new ProxyAgent({
+        this.#dispatcher = new ProxyAgent({
             uri: url,
             clientFactory: poolFactory,
         });
@@ -34,7 +34,7 @@ export class ProxyInstance {
     getHandle() {
         return Object.freeze({
             url: this.url,
-            dispatcher: this.dispatcher,
+            dispatcher: this.#dispatcher
         });
     }
 }

@@ -14,7 +14,7 @@ import {
 } from '../config/config.js';
 import {logger} from '../config/logging.js';
 import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
-import {acquireProxy} from './proxyPool.js';
+import {acquireProxy} from './proxy/proxyManager.js';
 
 // =============================================================================
 // HTTP CLIENT MODULE
