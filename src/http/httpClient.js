@@ -6,6 +6,8 @@ import {
     ERROR_BODY_PREVIEW_LENGTH,
     FETCH_TIMEOUT_MS,
     MAX_RETRIES,
+    RATE_LIMIT_CAPACITY,
+    RATE_LIMIT_WINDOW,
     RETRY_AFTER_STATUS_CODES,
     RETRY_BASE_DELAY_MS,
     RETRY_ON_NETWORK_ERROR,
@@ -14,7 +16,7 @@ import {
 } from '../config/config.js';
 import {logger} from '../config/logging.js';
 import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
-import {acquireProxy} from './proxy/proxyManager.js';
+import {EndpointManager} from './endpoint/endpointManager.js';
 
 // =============================================================================
 // HTTP CLIENT MODULE
@@ -182,7 +184,13 @@ async function executeFetch(url, options = {}) {
 
     // Step 1: Acquire a rate-limited proxy dispatcher.
     // This may wait if the proxy's TokenBucket is empty.
-    const proxyEntry = await acquireProxy(timeoutMs);
+    const endpointManager = new EndpointManager({
+        useProxy: true,
+        useRateLimit: true,
+        rateLimitCapacity: RATE_LIMIT_CAPACITY,
+        rateLimitWindow: RATE_LIMIT_WINDOW
+    });
+    const proxyEntry = await endpointManager.acquireProxy(timeoutMs);
     const proxyUrl = proxyEntry?.url ?? 'direct';
 
     // Step 2: Calculate how much time is left for the actual HTTP request.
@@ -202,10 +210,10 @@ async function executeFetch(url, options = {}) {
     // Step 4: Assemble fetch options.
     const fetchOptions = {
         signal,
-        headers: { ...DEFAULT_HEADERS, ...options.headers },
-        ...(options.method && { method: options.method }),
-        ...(options.body !== undefined && { body: options.body }),
-        ...(proxyEntry?.dispatcher && { dispatcher: proxyEntry.dispatcher }),
+        headers: {...DEFAULT_HEADERS, ...options.headers},
+        ...(options.method && {method: options.method}),
+        ...(options.body !== undefined && {body: options.body}),
+        ...(proxyEntry?.dispatcher && {dispatcher: proxyEntry.dispatcher}),
     };
 
     const startTime = performance.now();
@@ -223,7 +231,7 @@ async function executeFetch(url, options = {}) {
             durationMs,
         );
 
-        return { response, proxyUrl };
+        return {response, proxyUrl};
     } catch (error) {
         const durationMs = Math.round(performance.now() - startTime);
 
@@ -331,11 +339,11 @@ function buildRetryableError(url, response, proxyUrl) {
  */
 async function attemptFetch(url, options) {
     try {
-        const { response, proxyUrl } = await executeFetch(url, options);
+        const {response, proxyUrl} = await executeFetch(url, options);
 
         // Non-retryable status → immediate success.
         if (!RETRYABLE_STATUS_CODES.has(response.status)) {
-            return { success: true, response };
+            return {success: true, response};
         }
 
         // Retryable status (408, 429, 5xx).
@@ -443,7 +451,7 @@ async function fetchWithRetry(url, options = {}) {
  * @returns {Promise<object|null>} Parsed JSON, or null for 404/204.
  * @throws {TrialFetchError} On HTTP error or JSON parse failure.
  */
-async function parseJsonResponse(response, url, { allow404 = false } = {}) {
+async function parseJsonResponse(response, url, {allow404 = false} = {}) {
     // 404 short-circuit
     if (response.status === 404) {
         logger.debug('HTTP 404 on %s | allow404=%s', url, allow404);
@@ -467,7 +475,7 @@ async function parseJsonResponse(response, url, { allow404 = false } = {}) {
             url,
             new Error(
                 `HTTP ${response.status}: ${response.statusText}. ` +
-                    `Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`,
+                `Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`,
             ),
             response.status,
             RETRYABLE_STATUS_CODES.has(response.status),
@@ -520,7 +528,7 @@ async function parseJsonResponse(response, url, { allow404 = false } = {}) {
  *   or 204 No Content.
  * @throws {TrialFetchError|TrialTimeoutError} On failure after all retries.
  */
-export async function fetchJson(url, { allow404 = false, ...requestOptions } = {}) {
+export async function fetchJson(url, {allow404 = false, ...requestOptions} = {}) {
     const response = await fetchWithRetry(url, requestOptions);
-    return parseJsonResponse(response, url, { allow404 });
+    return parseJsonResponse(response, url, {allow404});
 }

@@ -1,5 +1,6 @@
 import {performance} from 'node:perf_hooks';
 import {TokenBucketTimeoutError} from '../../error/errors.js';
+import {Limiter} from "./limiter.js";
 
 const EPS = 1e-9;
 
@@ -24,7 +25,7 @@ const EPS = 1e-9;
  *     is allowed immediately because credit is still in the bucket.
  *   - Once fully drained, the next token takes ~1500 ms to refill.
  */
-export class TokenBucket {
+export class TokenBucket extends Limiter {
     #capacity;
     #windowMs;
     #msPerToken;
@@ -45,6 +46,8 @@ export class TokenBucket {
      *   `windowMs` is not a positive finite number.
      */
     constructor(capacity, windowMs, now = () => performance.now()) {
+        super();
+
         if (!Number.isInteger(capacity) || capacity < 1) {
             throw new TypeError('capacity must be a positive integer');
         }
@@ -188,6 +191,10 @@ export class TokenBucket {
         return Math.ceil(neededCreditMs - availableCreditMs);
     }
 
+    timeUntilToken() {
+        return this.timeUntil(1);
+    }
+
     /**
      * Acquire one token, blocking until available or the timeout expires.
      *
@@ -229,7 +236,7 @@ export class TokenBucket {
             }
 
             await new Promise(resolve =>
-                setTimeout(resolve, Math.min(this.timeUntil(1), remaining)),
+                setTimeout(resolve, Math.min(this.timeUntilToken(), remaining)),
             );
         }
     }
