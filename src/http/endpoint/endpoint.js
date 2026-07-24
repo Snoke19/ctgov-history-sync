@@ -16,7 +16,7 @@ export class Endpoint {
     }
 
     timeUntilToken() {
-        return this.#limiter ? this.#limiter.timeUntil(1) : 0;
+        return this.#limiter ? this.#limiter.timeUntilToken() : 0;
     }
 
     getHandle() {

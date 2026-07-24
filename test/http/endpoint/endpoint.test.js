@@ -1,5 +1,6 @@
 import {describe, expect, jest, test} from '@jest/globals';
 import {Endpoint} from "../../../src/http/endpoint/endpoint.js";
+import {UnlimitedLimiter} from "../../../src/http/limiter/unlimitedLimiter.js";
 
 describe('Endpoint', () => {
     describe('url', () => {
@@ -21,7 +22,9 @@ describe('Endpoint', () => {
         });
 
         test('delegates to limiter.tryAcquire() when a limiter is provided', () => {
-            const limiter = {tryAcquire: jest.fn(() => false), timeUntil: jest.fn(() => 0)};
+            const limiter = {
+                tryAcquire: jest.fn(() => false),
+            };
             const endpoint = new Endpoint('url', limiter);
 
             expect(endpoint.tryAcquire()).toBe(false);
@@ -29,7 +32,9 @@ describe('Endpoint', () => {
         });
 
         test('propagates whatever the limiter returns, without transforming it', () => {
-            const limiter = {tryAcquire: jest.fn(() => true), timeUntil: jest.fn()};
+            const limiter = {
+                tryAcquire: jest.fn(() => true)
+            };
             const endpoint = new Endpoint('url', limiter);
             expect(endpoint.tryAcquire()).toBe(true);
         });
@@ -41,17 +46,20 @@ describe('Endpoint', () => {
             expect(endpoint.timeUntilToken()).toBe(0);
         });
 
-        test('delegates to limiter.timeUntil(1), not limiter.timeUntilToken()', () => {
+        test('delegates to limiter.timeUntilToken()', () => {
             const limiter = {
                 tryAcquire: jest.fn(),
-                timeUntil: jest.fn(() => 1234),
-                timeUntilToken: jest.fn(() => 9999),
+                timeUntilToken: jest.fn(() => 1234)
             };
             const endpoint = new Endpoint('url', limiter);
 
             expect(endpoint.timeUntilToken()).toBe(1234);
-            expect(limiter.timeUntil).toHaveBeenCalledWith(1);
-            expect(limiter.timeUntilToken).not.toHaveBeenCalled();
+            expect(limiter.timeUntilToken).toHaveBeenCalledTimes(1);
+        });
+
+        test('works with the real UnlimitedLimiter (regression)', () => {
+            const endpoint = new Endpoint('url', new UnlimitedLimiter());
+            expect(endpoint.timeUntilToken()).toBe(0);
         });
     });
 

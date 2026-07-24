@@ -73,7 +73,7 @@ describe('ProxyEndpoint', () => {
     test('tryAcquire()/timeUntilToken() delegate to the given limiter', () => {
         const limiter = {
             tryAcquire: jest.fn(() => false),
-            timeUntil: jest.fn(() => 99)
+            timeUntilToken: jest.fn(() => 99)
         };
         const endpoint = new ProxyEndpoint('http://u:p@1.2.3.4:80', limiter);
 

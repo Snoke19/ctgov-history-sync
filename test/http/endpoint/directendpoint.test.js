@@ -40,7 +40,10 @@ describe('DirectEndpoint', () => {
     });
 
     test('tryAcquire()/timeUntilToken() still delegate to the given limiter', () => {
-        const limiter = {tryAcquire: jest.fn(() => false), timeUntil: jest.fn(() => 42)};
+        const limiter = {
+            tryAcquire: jest.fn(() => false),
+            timeUntilToken: jest.fn(() => 42)
+        };
         const endpoint = new DirectEndpoint('direct', limiter);
 
         expect(endpoint.tryAcquire()).toBe(false);
