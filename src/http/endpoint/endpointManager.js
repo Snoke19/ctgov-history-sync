@@ -7,10 +7,26 @@ import {performance} from "node:perf_hooks";
 import {TokenBucket} from "../limiter/tokenBucket.js";
 import {UnlimitedLimiter} from "../limiter/unlimitedLimiter.js";
 
-const PROXY_REGEX = /^(https?):\/\/([^:@/]+):([^:@/]+)@([^:@/]+):(\d+)$/;
+/**
+ * Supported format:
+ *
+ *   http://user:password@host:port
+ *   https://user:password@host:port
+ *
+ * Intentionally rejected:
+ *
+ * - socks proxies
+ * - trailing slash
+ * - usernames/passwords containing ':' or '@'
+ * - missing credentials
+ */
+const PROXY_URL_REGEX = /^(https?):\/\/([^:@/]+):([^:@/]+)@([^:@/]+):(\d+)$/;
 
 const now = () => performance.now();
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 export class EndpointManager {
 
@@ -33,7 +49,7 @@ export class EndpointManager {
 
                 const url = raw.trim();
 
-                if (!PROXY_REGEX.test(url)) {
+                if (!PROXY_URL_REGEX.test(url)) {
                     logger.warn('[Proxy] Skipping invalid proxy URL: "%s"', url);
 
                     continue;
@@ -51,7 +67,7 @@ export class EndpointManager {
     }
 
 
-    async acquireProxy(timeoutMs = ACQUIRE_TIMEOUT) {
+    async acquireEndpoint(timeoutMs = ACQUIRE_TIMEOUT) {
 
         const deadline = now() + timeoutMs;
 
@@ -60,16 +76,16 @@ export class EndpointManager {
 
             for (let i = 0; i < this.#endpoints.length; i++) {
                 const index = (this.#nextIndex + i) % this.#endpoints.length;
-                const proxy = this.#endpoints[index];
+                const endpoint = this.#endpoints[index];
 
-                if (proxy.tryAcquire()) {
+                if (endpoint.tryAcquire()) {
                     this.#nextIndex = (index + 1) % this.#endpoints.length;
-                    return proxy.getHandle();
+                    return endpoint.getHandle();
                 }
 
                 shortestWait = Math.min(
                     shortestWait,
-                    proxy.timeUntilToken(),
+                    endpoint.timeUntilToken(),
                 );
             }
 

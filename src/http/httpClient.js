@@ -190,7 +190,7 @@ async function executeFetch(url, options = {}) {
         rateLimitCapacity: RATE_LIMIT_CAPACITY,
         rateLimitWindow: RATE_LIMIT_WINDOW
     });
-    const proxyEntry = await endpointManager.acquireProxy(timeoutMs);
+    const proxyEntry = await endpointManager.acquireEndpoint(timeoutMs);
     const proxyUrl = proxyEntry?.url ?? 'direct';
 
     // Step 2: Calculate how much time is left for the actual HTTP request.

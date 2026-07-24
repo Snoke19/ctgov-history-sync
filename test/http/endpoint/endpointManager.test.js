@@ -267,7 +267,7 @@ describe('EndpointManager#acquireProxy', () => {
         const manager = new EndpointManager({useProxy: true, useRateLimit: false});
         const [endpoint] = proxyInstances();
 
-        const handle = await manager.acquireProxy(1000);
+        const handle = await manager.acquireEndpoint(1000);
 
         expect(handle).toEqual({url: 'http://u:p@1.2.3.4:80', dispatcher: 'proxy-dispatcher'});
         expect(endpoint.tryAcquire).toHaveBeenCalledTimes(1);
@@ -279,10 +279,10 @@ describe('EndpointManager#acquireProxy', () => {
         const manager = new EndpointManager({useProxy: true, useRateLimit: false});
         const [e0, e1, e2] = proxyInstances();
 
-        const h0 = await manager.acquireProxy(1000);
-        const h1 = await manager.acquireProxy(1000);
-        const h2 = await manager.acquireProxy(1000);
-        const h3 = await manager.acquireProxy(1000); // wraps back to e0
+        const h0 = await manager.acquireEndpoint(1000);
+        const h1 = await manager.acquireEndpoint(1000);
+        const h2 = await manager.acquireEndpoint(1000);
+        const h3 = await manager.acquireEndpoint(1000); // wraps back to e0
 
         expect(h0.url).toBe(e0.url);
         expect(h1.url).toBe(e1.url);
@@ -303,7 +303,7 @@ describe('EndpointManager#acquireProxy', () => {
         e0.tryAcquire.mockReturnValue(false);
         e1.tryAcquire.mockReturnValue(true);
 
-        const handle = await manager.acquireProxy(1000);
+        const handle = await manager.acquireEndpoint(1000);
 
         expect(handle.url).toBe(e1.url);
         expect(e0.tryAcquire).toHaveBeenCalledTimes(1);
@@ -313,7 +313,7 @@ describe('EndpointManager#acquireProxy', () => {
         // next call should resume searching from e2, not restart at e0
         e1.tryAcquire.mockReturnValue(false);
         e2.tryAcquire.mockReturnValue(true);
-        const secondHandle = await manager.acquireProxy(1000);
+        const secondHandle = await manager.acquireEndpoint(1000);
         expect(secondHandle.url).toBe(e2.url);
     });
 
@@ -329,7 +329,7 @@ describe('EndpointManager#acquireProxy', () => {
         e1.tryAcquire.mockReturnValue(false);
         e1.timeUntilToken.mockReturnValue(2000);
 
-        const acquiring = manager.acquireProxy(10000);
+        const acquiring = manager.acquireEndpoint(10000);
 
         // let the microtask queue run so the first (failing) pass completes
         // and the code reaches `await sleep(...)`
@@ -356,7 +356,7 @@ describe('EndpointManager#acquireProxy', () => {
         endpoint.tryAcquire.mockReturnValue(false);
         endpoint.timeUntilToken.mockReturnValue(1000);
 
-        const acquiring = manager.acquireProxy().catch(err => err); // no explicit timeoutMs
+        const acquiring = manager.acquireEndpoint().catch(err => err); // no explicit timeoutMs
 
         await Promise.resolve();
         await Promise.resolve();
@@ -381,7 +381,7 @@ describe('EndpointManager#acquireProxy', () => {
         e1.tryAcquire.mockReturnValue(false);
         e1.timeUntilToken.mockReturnValue(200);
 
-        const acquiring = manager.acquireProxy(100).catch(err => err);
+        const acquiring = manager.acquireEndpoint(100).catch(err => err);
 
         await Promise.resolve();
         await Promise.resolve();
@@ -401,7 +401,7 @@ describe('EndpointManager#acquireProxy', () => {
         const manager = new EndpointManager({useProxy: true, useRateLimit: false});
         const [direct] = directInstances();
 
-        const handle = await manager.acquireProxy(1000);
+        const handle = await manager.acquireEndpoint(1000);
 
         expect(handle).toEqual({url: 'direct', dispatcher: undefined});
         expect(direct.tryAcquire).toHaveBeenCalledTimes(1);
