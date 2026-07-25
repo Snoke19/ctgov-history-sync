@@ -2,7 +2,7 @@ import {ACQUIRE_TIMEOUT, PROXY_IPS} from "../../config/config.js";
 import {logger} from "../../config/logging.js";
 import {ProxyEndpoint} from "./proxyEndpoint.js";
 import {DirectEndpoint} from "./directEndpoint.js";
-import {ProxyAcquisitionTimeoutError} from "../../error/errors.js";
+import {EndpointAcquisitionTimeoutError} from "../../error/errors.js";
 import {performance} from "node:perf_hooks";
 import {TokenBucket} from "../limiter/tokenBucket.js";
 import {UnlimitedLimiter} from "../limiter/unlimitedLimiter.js";
@@ -43,9 +43,8 @@ export class EndpointManager {
             return new TokenBucket(rateLimitCapacity, rateLimitWindow);
         };
 
-        if (useProxy && PROXY_IPS.length > 0) {
-
-            for (const raw of PROXY_IPS.split(',')) {
+        if (useProxy && PROXY_IPS && PROXY_IPS.length > 0) {
+            for (const raw of String(PROXY_IPS).split(',')) {
 
                 const url = raw.trim();
 
@@ -91,7 +90,7 @@ export class EndpointManager {
 
             const remaining = deadline - now();
             if (remaining <= 0) {
-                throw new ProxyAcquisitionTimeoutError(timeoutMs, this.#endpoints.length,);
+                throw new EndpointAcquisitionTimeoutError(timeoutMs, this.#endpoints.length,);
             }
 
             await sleep(Math.min(shortestWait, remaining));
