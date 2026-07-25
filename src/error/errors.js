@@ -55,7 +55,7 @@ export class TokenBucketTimeoutError extends Error {
 export class EndpointAcquisitionTimeoutError extends Error {
     constructor(timeoutMs, proxyCount) {
         super(`Proxy acquisition timeout: no proxy available within ${timeoutMs}ms (pool size: ${proxyCount})`);
-        this.name = 'ProxyAcquisitionTimeoutError';
+        this.name = 'EndpointAcquisitionTimeoutError';
         this.timeoutMs = timeoutMs;
         this.proxyCount = proxyCount;
     }
