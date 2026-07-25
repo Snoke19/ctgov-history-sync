@@ -79,7 +79,7 @@ jest.unstable_mockModule('../../../src/http/limiter/unlimitedLimiter.js', () => 
     UnlimitedLimiter: UnlimitedLimiterMock,
 }));
 
-class MockProxyAcquisitionTimeoutError extends Error {
+class MockEndpointAcquisitionTimeoutError extends Error {
     constructor(timeoutMs, endpointCount) {
         super(`timed out after ${timeoutMs}ms across ${endpointCount} endpoints`);
         this.name = 'ProxyAcquisitionTimeoutError';
@@ -89,7 +89,7 @@ class MockProxyAcquisitionTimeoutError extends Error {
 }
 
 jest.unstable_mockModule('../../../src/error/errors.js', () => ({
-    ProxyAcquisitionTimeoutError: MockProxyAcquisitionTimeoutError,
+    EndpointAcquisitionTimeoutError: MockEndpointAcquisitionTimeoutError,
 }));
 
 // Every test that needs different PROXY_IPS/ACQUIRE_TIMEOUT must get a FRESH
@@ -365,7 +365,7 @@ describe('EndpointManager#acquireProxy', () => {
         await jest.advanceTimersByTimeAsync(60);
 
         const err = await acquiring;
-        expect(err).toBeInstanceOf(MockProxyAcquisitionTimeoutError);
+        expect(err).toBeInstanceOf(MockEndpointAcquisitionTimeoutError);
         expect(err.timeoutMs).toBe(60);
     });
 
@@ -390,7 +390,7 @@ describe('EndpointManager#acquireProxy', () => {
         await jest.advanceTimersByTimeAsync(50);
 
         const err = await acquiring;
-        expect(err).toBeInstanceOf(MockProxyAcquisitionTimeoutError);
+        expect(err).toBeInstanceOf(MockEndpointAcquisitionTimeoutError);
         expect(err.timeoutMs).toBe(100);
         expect(err.endpointCount).toBe(2);
     });
