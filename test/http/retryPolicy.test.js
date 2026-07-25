@@ -1,24 +1,24 @@
-import {afterEach, beforeEach, describe, expect, jest, test} from "@jest/globals";
+import {afterEach, beforeEach, describe, expect, jest, test} from '@jest/globals';
 import {
     buildRetryableError,
     calculateBackoff,
     classifyError,
     isIdempotent,
-    parseRetryAfterHeader
-} from "../../src/http/retry/retryPolicy.js";
-import {BACKOFF_CAP_MS, DEFAULT_RETRY_AFTER_MS} from "../../src/config/config.js";
-import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError} from "../../src/error/errors.js";
+    parseRetryAfterHeader,
+} from '../../src/http/retry/retryPolicy.js';
+import {BACKOFF_CAP_MS, DEFAULT_RETRY_AFTER_MS} from '../../src/config/config.js';
+import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError,} from '../../src/error/errors.js';
 
 describe('isIdempotent', () => {
     test.each([
-        {method: 'GET', expected: true},
-        {method: 'HEAD', expected: true},
-        {method: 'PUT', expected: true},
-        {method: 'DELETE', expected: true},
-        {method: 'OPTIONS', expected: true},
-        {method: 'POST', expected: false},
-        {method: 'PATCH', expected: false},
-    ])('returns $expected for $method requests', ({method, expected}) => {
+        { method: 'GET', expected: true },
+        { method: 'HEAD', expected: true },
+        { method: 'PUT', expected: true },
+        { method: 'DELETE', expected: true },
+        { method: 'OPTIONS', expected: true },
+        { method: 'POST', expected: false },
+        { method: 'PATCH', expected: false },
+    ])('returns $expected for $method requests', ({ method, expected }) => {
         expect(isIdempotent(method)).toBe(expected);
     });
 
@@ -110,9 +110,7 @@ describe('parseRetryAfterHeader', () => {
 
         const date = new Date('2025-01-01T00:00:10Z');
 
-        expect(
-            parseRetryAfterHeader(response(date.toUTCString()))
-        ).toBe(10000);
+        expect(parseRetryAfterHeader(response(date.toUTCString()))).toBe(10000);
 
         jest.useRealTimers();
     });
@@ -124,16 +122,13 @@ describe('parseRetryAfterHeader', () => {
 
         const date = new Date('2025-01-01T00:00:00Z');
 
-        expect(
-            parseRetryAfterHeader(response(date.toUTCString()))
-        ).toBe(DEFAULT_RETRY_AFTER_MS);
+        expect(parseRetryAfterHeader(response(date.toUTCString()))).toBe(DEFAULT_RETRY_AFTER_MS);
 
         jest.useRealTimers();
     });
 
     test('returns the default delay for invalid Retry-After values', () => {
-        expect(parseRetryAfterHeader(response('invalid')))
-            .toBe(DEFAULT_RETRY_AFTER_MS);
+        expect(parseRetryAfterHeader(response('invalid'))).toBe(DEFAULT_RETRY_AFTER_MS);
     });
 });
 
@@ -153,11 +148,7 @@ describe('buildRetryableError', () => {
     };
 
     test('creates a transient TrialFetchError', () => {
-        const error = buildRetryableError(
-            'https://example.com',
-            response(429),
-            'proxy-a'
-        );
+        const error = buildRetryableError('https://example.com', response(429), 'proxy-a');
 
         expect(error).toBeInstanceOf(TrialFetchError);
         expect(error.url).toBe('https://example.com');
@@ -167,41 +158,25 @@ describe('buildRetryableError', () => {
     });
 
     test('stores the proxy that produced the response', () => {
-        const error = buildRetryableError(
-            'url',
-            response(500),
-            'proxy-a'
-        );
+        const error = buildRetryableError('url', response(500), 'proxy-a');
 
         expect(error.proxyUrl).toBe('proxy-a');
     });
 
     test('stores parsed Retry-After for supported status codes', () => {
-        const error = buildRetryableError(
-            'url',
-            response(429, '10'),
-            'proxy'
-        );
+        const error = buildRetryableError('url', response(429, '10'), 'proxy');
 
         expect(error.retryAfterMs).toBe(10000);
     });
 
     test('uses the default Retry-After when the header is missing', () => {
-        const error = buildRetryableError(
-            'url',
-            response(429),
-            'proxy'
-        );
+        const error = buildRetryableError('url', response(429), 'proxy');
 
         expect(error.retryAfterMs).toBe(DEFAULT_RETRY_AFTER_MS);
     });
 
     test('does not attach Retry-After for unsupported status codes', () => {
-        const error = buildRetryableError(
-            'url',
-            response(500, '10'),
-            'proxy'
-        );
+        const error = buildRetryableError('url', response(500, '10'), 'proxy');
 
         expect(error.retryAfterMs).toBeNull();
     });
@@ -209,38 +184,28 @@ describe('buildRetryableError', () => {
 
 describe('classifyError', () => {
     test('recognizes endpoint acquisition timeouts', () => {
-        expect(
-            classifyError(new EndpointAcquisitionTimeoutError())
-        ).toEqual({
+        expect(classifyError(new EndpointAcquisitionTimeoutError())).toEqual({
             isTimeout: true,
             reason: 'Endpoint acquisition timeout',
         });
     });
 
     test('recognizes request timeouts', () => {
-        expect(
-            classifyError(new TrialTimeoutError())
-        ).toEqual({
+        expect(classifyError(new TrialTimeoutError())).toEqual({
             isTimeout: true,
             reason: 'Request timeout',
         });
     });
 
     test('classifies all other errors as transient', () => {
-        expect(
-            classifyError(new Error('network error'))
-        ).toEqual({
+        expect(classifyError(new Error('network error'))).toEqual({
             isTimeout: false,
             reason: 'Transient error',
         });
     });
 
     test('does not rely on the error message', () => {
-        expect(
-            classifyError(
-                new Error('Endpoint acquisition timeout')
-            )
-        ).toEqual({
+        expect(classifyError(new Error('Endpoint acquisition timeout'))).toEqual({
             isTimeout: false,
             reason: 'Transient error',
         });

@@ -43,7 +43,7 @@ export async function drainBody(response) {
  * @returns {Promise<object|null>} Parsed JSON, or null for 404/204.
  * @throws {TrialFetchError} On HTTP error or JSON parse failure.
  */
-export async function parseJsonResponse(response, url, {allow404 = false} = {}) {
+export async function parseJsonResponse(response, url, { allow404 = false } = {}) {
     // 404 short-circuit
     if (response.status === 404) {
         logger.debug('HTTP 404 on %s | allow404=%s', url, allow404);
@@ -67,7 +67,7 @@ export async function parseJsonResponse(response, url, {allow404 = false} = {}) 
             url,
             new Error(
                 `HTTP ${response.status}: ${response.statusText}. ` +
-                `Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`,
+                    `Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`,
             ),
             response.status,
             RETRYABLE_STATUS_CODES.has(response.status),

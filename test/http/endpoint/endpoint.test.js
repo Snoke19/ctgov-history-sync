@@ -4,7 +4,7 @@ import {UnlimitedLimiter} from '../../../src/http/limiter/unlimitedLimiter.js';
 
 class ConcreteEndpoint extends Endpoint {
     getHandle() {
-        return {url: this.url, dispatcher: undefined};
+        return { url: this.url, dispatcher: undefined };
     }
 }
 

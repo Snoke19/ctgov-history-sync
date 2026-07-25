@@ -4,7 +4,7 @@ import {
     RETRY_AFTER_STATUS_CODES,
     RETRY_BASE_DELAY_MS,
 } from '../../config/config.js';
-import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError} from '../../error/errors.js';
+import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError,} from '../../error/errors.js';
 
 /**
  * HTTP methods considered safe to retry automatically.
@@ -126,10 +126,10 @@ export function buildRetryableError(url, response, proxyUrl) {
  */
 export function classifyError(error) {
     if (error instanceof EndpointAcquisitionTimeoutError) {
-        return {isTimeout: true, reason: 'Endpoint acquisition timeout'};
+        return { isTimeout: true, reason: 'Endpoint acquisition timeout' };
     }
     if (error instanceof TrialTimeoutError) {
-        return {isTimeout: true, reason: 'Request timeout'};
+        return { isTimeout: true, reason: 'Request timeout' };
     }
-    return {isTimeout: false, reason: 'Transient error'};
+    return { isTimeout: false, reason: 'Transient error' };
 }

@@ -23,7 +23,7 @@ jest.unstable_mockModule('../../../src/config/logging.js', () => ({
 }));
 
 jest.unstable_mockModule('node:perf_hooks', () => ({
-    performance: {now: () => currentTime},
+    performance: { now: () => currentTime },
 }));
 
 const ProxyEndpointMock = jest.fn(function ProxyEndpoint(url, limiter) {
@@ -31,7 +31,7 @@ const ProxyEndpointMock = jest.fn(function ProxyEndpoint(url, limiter) {
     this.limiter = limiter;
     this.tryAcquire = jest.fn(() => true);
     this.timeUntilToken = jest.fn(() => 0);
-    this.getHandle = jest.fn(() => ({url, dispatcher: 'proxy-dispatcher'}));
+    this.getHandle = jest.fn(() => ({ url, dispatcher: 'proxy-dispatcher' }));
 });
 
 const DirectEndpointMock = jest.fn(function DirectEndpoint(url = 'direct', limiter) {
@@ -39,7 +39,7 @@ const DirectEndpointMock = jest.fn(function DirectEndpoint(url = 'direct', limit
     this.limiter = limiter;
     this.tryAcquire = jest.fn(() => true);
     this.timeUntilToken = jest.fn(() => 0);
-    this.getHandle = jest.fn(() => ({url, dispatcher: undefined}));
+    this.getHandle = jest.fn(() => ({ url, dispatcher: undefined }));
 });
 
 jest.unstable_mockModule('../../../src/http/endpoint/proxyEndpoint.js', () => ({
@@ -80,7 +80,7 @@ jest.unstable_mockModule('../../../src/error/errors.js', () => ({
 
 async function loadEndpointManager() {
     jest.resetModules();
-    const {EndpointManager} = await import('../../../src/http/endpoint/endpointManager.js');
+    const { EndpointManager } = await import('../../../src/http/endpoint/endpointManager.js');
     return EndpointManager;
 }
 
@@ -130,7 +130,7 @@ describe('EndpointManager', () => {
         test('falls back to a single DirectEndpoint when PROXY_IPS is empty, even if useProxy is true', async () => {
             mockProxyIps = '';
             const EndpointManager = await loadEndpointManager();
-            new EndpointManager({useProxy: true, useRateLimit: false});
+            new EndpointManager({ useProxy: true, useRateLimit: false });
 
             expect(ProxyEndpointMock).not.toHaveBeenCalled();
             expect(DirectEndpointMock).toHaveBeenCalledTimes(1);
@@ -139,7 +139,7 @@ describe('EndpointManager', () => {
         test('creates one ProxyEndpoint per valid, comma-separated proxy URL', async () => {
             mockProxyIps = 'http://u1:p1@1.2.3.4:8080,http://u2:p2@5.6.7.8:8081';
             const EndpointManager = await loadEndpointManager();
-            new EndpointManager({useProxy: true, useRateLimit: false});
+            new EndpointManager({ useProxy: true, useRateLimit: false });
 
             expect(ProxyEndpointMock).toHaveBeenCalledTimes(2);
             expect(ProxyEndpointMock).toHaveBeenNthCalledWith(
@@ -158,7 +158,7 @@ describe('EndpointManager', () => {
         test('trims surrounding whitespace around each proxy URL', async () => {
             mockProxyIps = '  http://u:p@1.2.3.4:80 , http://u:p@5.6.7.8:81  ';
             const EndpointManager = await loadEndpointManager();
-            new EndpointManager({useProxy: true, useRateLimit: false});
+            new EndpointManager({ useProxy: true, useRateLimit: false });
 
             expect(ProxyEndpointMock).toHaveBeenNthCalledWith(
                 1,
@@ -175,20 +175,23 @@ describe('EndpointManager', () => {
         test('skips invalid proxy URLs, logs a warning, and builds valid ones', async () => {
             mockProxyIps = 'not-a-valid-url,http://u:p@1.2.3.4:80';
             const EndpointManager = await loadEndpointManager();
-            new EndpointManager({useProxy: true, useRateLimit: false});
+            new EndpointManager({ useProxy: true, useRateLimit: false });
 
             expect(mockLogger.warn).toHaveBeenCalledWith(
                 '[Proxy] Skipping invalid proxy URL: "%s"',
                 'not-a-valid-url',
             );
             expect(ProxyEndpointMock).toHaveBeenCalledTimes(1);
-            expect(ProxyEndpointMock).toHaveBeenCalledWith('http://u:p@1.2.3.4:80', expect.anything());
+            expect(ProxyEndpointMock).toHaveBeenCalledWith(
+                'http://u:p@1.2.3.4:80',
+                expect.anything(),
+            );
         });
 
         test('falls back to DirectEndpoint when every proxy URL is invalid', async () => {
             mockProxyIps = 'garbage,also-garbage';
             const EndpointManager = await loadEndpointManager();
-            new EndpointManager({useProxy: true, useRateLimit: false});
+            new EndpointManager({ useProxy: true, useRateLimit: false });
 
             expect(mockLogger.warn).toHaveBeenCalledTimes(2);
             expect(ProxyEndpointMock).not.toHaveBeenCalled();
@@ -198,7 +201,7 @@ describe('EndpointManager', () => {
         test('does not create a limiter for skipped or invalid proxy entries', async () => {
             mockProxyIps = 'garbage,http://u:p@1.2.3.4:80';
             const EndpointManager = await loadEndpointManager();
-            new EndpointManager({useProxy: true, useRateLimit: false});
+            new EndpointManager({ useProxy: true, useRateLimit: false });
 
             expect(UnlimitedLimiterMock).toHaveBeenCalledTimes(1);
         });
@@ -206,7 +209,7 @@ describe('EndpointManager', () => {
         test('logs final endpoint count once construction completes', async () => {
             mockProxyIps = 'http://u:p@1.2.3.4:80,http://u:p@5.6.7.8:81,http://u:p@9.9.9.9:82';
             const EndpointManager = await loadEndpointManager();
-            new EndpointManager({useProxy: true, useRateLimit: false});
+            new EndpointManager({ useProxy: true, useRateLimit: false });
 
             expect(mockLogger.info).toHaveBeenCalledWith(
                 'Endpoint manager initialized | Endpoints: %d',
@@ -228,7 +231,7 @@ describe('EndpointManager', () => {
             ])('%s -> valid=%s', async (url, valid) => {
                 mockProxyIps = url;
                 const EndpointManager = await loadEndpointManager();
-                new EndpointManager({useProxy: true, useRateLimit: false});
+                new EndpointManager({ useProxy: true, useRateLimit: false });
 
                 if (valid) {
                     expect(ProxyEndpointMock).toHaveBeenCalledTimes(1);
@@ -245,7 +248,7 @@ describe('EndpointManager', () => {
         test('uses UnlimitedLimiter for every endpoint when useRateLimit is false', async () => {
             mockProxyIps = 'http://u:p@1.2.3.4:80,http://u:p@5.6.7.8:81';
             const EndpointManager = await loadEndpointManager();
-            new EndpointManager({useProxy: true, useRateLimit: false});
+            new EndpointManager({ useProxy: true, useRateLimit: false });
 
             expect(UnlimitedLimiterMock).toHaveBeenCalledTimes(2);
             expect(TokenBucketMock).not.toHaveBeenCalled();
@@ -286,19 +289,22 @@ describe('EndpointManager', () => {
         test('returns the handle of the first endpoint that can acquire immediately', async () => {
             mockProxyIps = 'http://u:p@1.2.3.4:80';
             const EndpointManager = await loadEndpointManager();
-            const manager = new EndpointManager({useProxy: true, useRateLimit: false});
+            const manager = new EndpointManager({ useProxy: true, useRateLimit: false });
             const [endpoint] = proxyInstances();
 
             const handle = await manager.acquireEndpoint(1000);
 
-            expect(handle).toEqual({url: 'http://u:p@1.2.3.4:80', dispatcher: 'proxy-dispatcher'});
+            expect(handle).toEqual({
+                url: 'http://u:p@1.2.3.4:80',
+                dispatcher: 'proxy-dispatcher',
+            });
             expect(endpoint.tryAcquire).toHaveBeenCalledTimes(1);
         });
 
         test('round-robins across endpoints on successive acquisition calls', async () => {
             mockProxyIps = 'http://u:p@1.1.1.1:80,http://u:p@2.2.2.2:80,http://u:p@3.3.3.3:80';
             const EndpointManager = await loadEndpointManager();
-            const manager = new EndpointManager({useProxy: true, useRateLimit: false});
+            const manager = new EndpointManager({ useProxy: true, useRateLimit: false });
             const [e0, e1, e2] = proxyInstances();
 
             const h0 = await manager.acquireEndpoint(1000);
@@ -319,7 +325,7 @@ describe('EndpointManager', () => {
         test('skips endpoints that cannot acquire and picks the next available one', async () => {
             mockProxyIps = 'http://u:p@1.1.1.1:80,http://u:p@2.2.2.2:80,http://u:p@3.3.3.3:80';
             const EndpointManager = await loadEndpointManager();
-            const manager = new EndpointManager({useProxy: true, useRateLimit: false});
+            const manager = new EndpointManager({ useProxy: true, useRateLimit: false });
             const [e0, e1, e2] = proxyInstances();
 
             e0.tryAcquire.mockReturnValue(false);
@@ -342,7 +348,7 @@ describe('EndpointManager', () => {
             jest.useFakeTimers();
             mockProxyIps = 'http://u:p@1.1.1.1:80,http://u:p@2.2.2.2:80';
             const EndpointManager = await loadEndpointManager();
-            const manager = new EndpointManager({useProxy: true, useRateLimit: false});
+            const manager = new EndpointManager({ useProxy: true, useRateLimit: false });
             const [e0, e1] = proxyInstances();
 
             e0.tryAcquire.mockReturnValueOnce(false).mockReturnValueOnce(true);
@@ -369,7 +375,7 @@ describe('EndpointManager', () => {
             mockAcquireTimeout = 60;
             mockProxyIps = 'http://u:p@1.1.1.1:80';
             const EndpointManager = await loadEndpointManager();
-            const manager = new EndpointManager({useProxy: true, useRateLimit: false});
+            const manager = new EndpointManager({ useProxy: true, useRateLimit: false });
             const [endpoint] = proxyInstances();
 
             endpoint.tryAcquire.mockReturnValue(false);
@@ -392,7 +398,7 @@ describe('EndpointManager', () => {
             jest.useFakeTimers();
             mockProxyIps = 'http://u:p@1.1.1.1:80,http://u:p@2.2.2.2:80';
             const EndpointManager = await loadEndpointManager();
-            const manager = new EndpointManager({useProxy: true, useRateLimit: false});
+            const manager = new EndpointManager({ useProxy: true, useRateLimit: false });
             const [e0, e1] = proxyInstances();
 
             e0.tryAcquire.mockReturnValue(false);
@@ -417,12 +423,12 @@ describe('EndpointManager', () => {
         test('resolves immediately with DirectEndpoint fallback when it can acquire', async () => {
             mockProxyIps = '';
             const EndpointManager = await loadEndpointManager();
-            const manager = new EndpointManager({useProxy: true, useRateLimit: false});
+            const manager = new EndpointManager({ useProxy: true, useRateLimit: false });
             const [direct] = directInstances();
 
             const handle = await manager.acquireEndpoint(1000);
 
-            expect(handle).toEqual({url: 'direct', dispatcher: undefined});
+            expect(handle).toEqual({ url: 'direct', dispatcher: undefined });
             expect(direct.tryAcquire).toHaveBeenCalledTimes(1);
         });
     });

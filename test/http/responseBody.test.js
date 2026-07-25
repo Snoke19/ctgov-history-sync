@@ -21,7 +21,7 @@ describe('responseBody.js', () => {
 
     describe('drainBody', () => {
         test('cancels a readable body stream', async () => {
-            const response = new Response('body', {status: 200});
+            const response = new Response('body', { status: 200 });
             const cancelSpy = jest.spyOn(response.body, 'cancel');
 
             await drainBody(response);
@@ -30,19 +30,19 @@ describe('responseBody.js', () => {
         });
 
         test('is a no-op when response body is null', async () => {
-            const response = new Response(null, {status: 204});
+            const response = new Response(null, { status: 204 });
 
             await expect(drainBody(response)).resolves.toBeUndefined();
         });
 
         test('is a no-op when response body is undefined', async () => {
-            const response = {body: undefined};
+            const response = { body: undefined };
 
             await expect(drainBody(response)).resolves.toBeUndefined();
         });
 
         test('swallows errors when response.body.cancel() succeeds on closed body', async () => {
-            const response = new Response('body', {status: 200});
+            const response = new Response('body', { status: 200 });
             await response.body.cancel(); // close first
 
             await expect(drainBody(response)).resolves.toBeUndefined();
@@ -63,10 +63,10 @@ describe('responseBody.js', () => {
     describe('parseJsonResponse', () => {
         describe('2xx Success Paths', () => {
             test('returns parsed JSON object on 200 OK with application/json', async () => {
-                const data = {id: 1, name: 'test'};
+                const data = { id: 1, name: 'test' };
                 const response = new Response(JSON.stringify(data), {
                     status: 200,
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                 });
 
                 const result = await parseJsonResponse(response, TEST_URL);
@@ -75,10 +75,10 @@ describe('responseBody.js', () => {
             });
 
             test('returns parsed JSON object on 201 Created', async () => {
-                const data = {created: true};
+                const data = { created: true };
                 const response = new Response(JSON.stringify(data), {
                     status: 201,
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                 });
 
                 const result = await parseJsonResponse(response, TEST_URL);
@@ -89,26 +89,26 @@ describe('responseBody.js', () => {
             test('handles JSON surrounded by leading and trailing whitespace', async () => {
                 const response = new Response('\n  {"id":1}\n', {
                     status: 200,
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                 });
 
-                await expect(parseJsonResponse(response, TEST_URL)).resolves.toEqual({id: 1});
+                await expect(parseJsonResponse(response, TEST_URL)).resolves.toEqual({ id: 1 });
             });
 
             test('handles empty JSON object body', async () => {
                 const response = new Response('{}', {
                     status: 200,
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                 });
 
                 await expect(parseJsonResponse(response, TEST_URL)).resolves.toEqual({});
             });
 
             test('handles JSON array body', async () => {
-                const data = [{id: 1}, {id: 2}];
+                const data = [{ id: 1 }, { id: 2 }];
                 const response = new Response(JSON.stringify(data), {
                     status: 200,
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                 });
 
                 const result = await parseJsonResponse(response, TEST_URL);
@@ -122,7 +122,7 @@ describe('responseBody.js', () => {
                 for (const value of primitives) {
                     const response = new Response(JSON.stringify(value), {
                         status: 200,
-                        headers: {'Content-Type': 'application/json'},
+                        headers: { 'Content-Type': 'application/json' },
                     });
                     const result = await parseJsonResponse(response, TEST_URL);
 
@@ -133,7 +133,7 @@ describe('responseBody.js', () => {
 
         describe('204 No Content', () => {
             test('returns null on 204 responses', async () => {
-                const response = new Response(null, {status: 204});
+                const response = new Response(null, { status: 204 });
 
                 await expect(parseJsonResponse(response, TEST_URL)).resolves.toBeNull();
             });
@@ -155,26 +155,26 @@ describe('responseBody.js', () => {
 
         describe('404 Handling & allow404 Option', () => {
             test('returns null on 404 when allow404 is true', async () => {
-                const response = new Response('Not Found', {status: 404});
+                const response = new Response('Not Found', { status: 404 });
 
-                const result = await parseJsonResponse(response, TEST_URL, {allow404: true});
+                const result = await parseJsonResponse(response, TEST_URL, { allow404: true });
 
                 expect(result).toBeNull();
             });
 
             test('drains body stream on 404 when allow404 is true', async () => {
-                const response = new Response('Not Found', {status: 404});
+                const response = new Response('Not Found', { status: 404 });
                 const cancelSpy = jest.spyOn(response.body, 'cancel');
 
-                await parseJsonResponse(response, TEST_URL, {allow404: true});
+                await parseJsonResponse(response, TEST_URL, { allow404: true });
 
                 expect(cancelSpy).toHaveBeenCalledTimes(1);
             });
 
             test('logs debug message with allow404=true when enabled', async () => {
-                const response = new Response('Not Found', {status: 404});
+                const response = new Response('Not Found', { status: 404 });
 
-                await parseJsonResponse(response, TEST_URL, {allow404: true});
+                await parseJsonResponse(response, TEST_URL, { allow404: true });
 
                 expect(debugSpy).toHaveBeenCalledWith(
                     'HTTP 404 on %s | allow404=%s',
@@ -184,7 +184,7 @@ describe('responseBody.js', () => {
             });
 
             test('logs debug message with allow404=false when disabled', async () => {
-                const response = new Response('Not Found', {status: 404});
+                const response = new Response('Not Found', { status: 404 });
 
                 await expect(parseJsonResponse(response, TEST_URL)).rejects.toBeInstanceOf(
                     TrialFetchError,
@@ -198,9 +198,11 @@ describe('responseBody.js', () => {
             });
 
             test('throws non-transient TrialFetchError on 404 when allow404 is false', async () => {
-                const response = new Response('Not Found', {status: 404});
+                const response = new Response('Not Found', { status: 404 });
 
-                await expect(parseJsonResponse(response, TEST_URL, {allow404: false})).rejects.toMatchObject({
+                await expect(
+                    parseJsonResponse(response, TEST_URL, { allow404: false }),
+                ).rejects.toMatchObject({
                     name: 'TrialFetchError',
                     status: 404,
                     isTransient: false,
@@ -212,7 +214,7 @@ describe('responseBody.js', () => {
             });
 
             test('defaults allow404 to false when options parameter is omitted', async () => {
-                const response = new Response('Not Found', {status: 404});
+                const response = new Response('Not Found', { status: 404 });
 
                 await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
                     status: 404,
@@ -225,7 +227,7 @@ describe('responseBody.js', () => {
             test('does not log warning for application/json', async () => {
                 const response = new Response('{"id":1}', {
                     status: 200,
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                 });
 
                 await parseJsonResponse(response, TEST_URL);
@@ -236,7 +238,7 @@ describe('responseBody.js', () => {
             test('does not log warning for application/json with charset', async () => {
                 const response = new Response('{"id":1}', {
                     status: 200,
-                    headers: {'Content-Type': 'application/json; charset=utf-8'},
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' },
                 });
 
                 await parseJsonResponse(response, TEST_URL);
@@ -247,7 +249,7 @@ describe('responseBody.js', () => {
             test('logs warning for unexpected Content-Type text/plain', async () => {
                 const response = new Response('{"id":1}', {
                     status: 200,
-                    headers: {'Content-Type': 'text/plain'},
+                    headers: { 'Content-Type': 'text/plain' },
                 });
 
                 await parseJsonResponse(response, TEST_URL);
@@ -263,13 +265,13 @@ describe('responseBody.js', () => {
                 const response = {
                     status: 200,
                     ok: true,
-                    headers: {get: () => null},
-                    json: async () => ({id: 1}),
+                    headers: { get: () => null },
+                    json: async () => ({ id: 1 }),
                 };
 
                 const result = await parseJsonResponse(response, TEST_URL);
 
-                expect(result).toEqual({id: 1});
+                expect(result).toEqual({ id: 1 });
                 expect(warnSpy).toHaveBeenCalledWith(
                     'Unexpected Content-Type: %s | %s',
                     '',
@@ -282,7 +284,7 @@ describe('responseBody.js', () => {
             test.each([408, 429, 500, 502, 503, 504])(
                 'throws a transient TrialFetchError for retryable status HTTP %i',
                 async (status) => {
-                    const response = new Response('server error', {status});
+                    const response = new Response('server error', { status });
 
                     await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
                         name: 'TrialFetchError',
@@ -299,7 +301,7 @@ describe('responseBody.js', () => {
             test.each([400, 401, 403, 404, 410, 422])(
                 'throws a non-transient TrialFetchError for non-retryable status HTTP %i',
                 async (status) => {
-                    const response = new Response('client error', {status});
+                    const response = new Response('client error', { status });
 
                     await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
                         name: 'TrialFetchError',
@@ -312,18 +314,20 @@ describe('responseBody.js', () => {
 
             test('truncates error body preview to ERROR_BODY_PREVIEW_LENGTH', async () => {
                 const longBody = 'x'.repeat(ERROR_BODY_PREVIEW_LENGTH + 100);
-                const response = new Response(longBody, {status: 500});
+                const response = new Response(longBody, { status: 500 });
 
                 const error = await parseJsonResponse(response, TEST_URL).catch((err) => err);
 
                 expect(error).toBeInstanceOf(TrialFetchError);
                 const preview = 'x'.repeat(ERROR_BODY_PREVIEW_LENGTH);
                 expect(error.cause.message).toContain(preview);
-                expect(error.cause.message).not.toContain('x'.repeat(ERROR_BODY_PREVIEW_LENGTH + 1));
+                expect(error.cause.message).not.toContain(
+                    'x'.repeat(ERROR_BODY_PREVIEW_LENGTH + 1),
+                );
             });
 
             test('falls back to empty string when response.text() fails/rejects', async () => {
-                const response = new Response('error', {status: 500});
+                const response = new Response('error', { status: 500 });
                 response.text = () => Promise.reject(new Error('Stream read failed'));
 
                 const error = await parseJsonResponse(response, TEST_URL).catch((err) => err);
@@ -340,7 +344,7 @@ describe('responseBody.js', () => {
             test('throws non-transient TrialFetchError on invalid JSON syntax', async () => {
                 const response = new Response('{invalid json', {
                     status: 200,
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                 });
 
                 await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
@@ -355,7 +359,7 @@ describe('responseBody.js', () => {
             });
 
             test('throws non-transient TrialFetchError on empty body with status 200', async () => {
-                const response = new Response(null, {status: 200});
+                const response = new Response(null, { status: 200 });
 
                 await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
                     name: 'TrialFetchError',
@@ -368,7 +372,7 @@ describe('responseBody.js', () => {
             });
 
             test('throws non-transient TrialFetchError on plain text body with status 200', async () => {
-                const response = new Response('plain text string', {status: 200});
+                const response = new Response('plain text string', { status: 200 });
 
                 await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
                     name: 'TrialFetchError',

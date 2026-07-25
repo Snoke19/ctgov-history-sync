@@ -1,5 +1,5 @@
-import {fetch} from 'undici';
 import {performance} from 'node:perf_hooks';
+import {fetch} from 'undici';
 import {
     DEFAULT_USER_AGENT,
     FETCH_TIMEOUT_MS,
@@ -13,8 +13,8 @@ import {
 import {logger} from '../config/logging.js';
 import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
 import {EndpointManager} from './endpoint/endpointManager.js';
-import {buildRetryableError, calculateBackoff, classifyError, isIdempotent} from './retry/retryPolicy.js';
 import {drainBody, parseJsonResponse} from './responseBody.js';
+import {buildRetryableError, calculateBackoff, classifyError, isIdempotent,} from './retry/retryPolicy.js';
 
 // =============================================================================
 // HTTP CLIENT MODULE
@@ -102,13 +102,15 @@ function sleep(ms) {
  *   built from this module's config constants.
  * @returns {{fetchJson: (url: string, options?: object) => Promise<object|null>}}
  */
-export function createHttpClient({endpointManager} = {}) {
-    const manager = endpointManager ?? new EndpointManager({
-        useProxy: true,
-        useRateLimit: true,
-        rateLimitCapacity: RATE_LIMIT_CAPACITY,
-        rateLimitWindow: RATE_LIMIT_WINDOW,
-    });
+export function createHttpClient({ endpointManager } = {}) {
+    const manager =
+        endpointManager ??
+        new EndpointManager({
+            useProxy: true,
+            useRateLimit: true,
+            rateLimitCapacity: RATE_LIMIT_CAPACITY,
+            rateLimitWindow: RATE_LIMIT_WINDOW,
+        });
 
     /**
      * Executes a single HTTP request through the proxy pool.
@@ -173,10 +175,10 @@ export function createHttpClient({endpointManager} = {}) {
         // Step 4: Assemble fetch options.
         const fetchOptions = {
             signal,
-            headers: {...DEFAULT_HEADERS, ...options.headers},
-            ...(options.method && {method: options.method}),
-            ...(options.body !== undefined && {body: options.body}),
-            ...(proxyEntry?.dispatcher && {dispatcher: proxyEntry.dispatcher}),
+            headers: { ...DEFAULT_HEADERS, ...options.headers },
+            ...(options.method && { method: options.method }),
+            ...(options.body !== undefined && { body: options.body }),
+            ...(proxyEntry?.dispatcher && { dispatcher: proxyEntry.dispatcher }),
         };
 
         const startTime = performance.now();
@@ -194,7 +196,7 @@ export function createHttpClient({endpointManager} = {}) {
                 durationMs,
             );
 
-            return {response, proxyUrl};
+            return { response, proxyUrl };
         } catch (error) {
             const durationMs = Math.round(performance.now() - startTime);
 
@@ -248,11 +250,11 @@ export function createHttpClient({endpointManager} = {}) {
      */
     async function attemptFetch(url, options) {
         try {
-            const {response, proxyUrl} = await executeFetch(url, options);
+            const { response, proxyUrl } = await executeFetch(url, options);
 
             // Non-retryable status → immediate success.
             if (!RETRYABLE_STATUS_CODES.has(response.status)) {
-                return {success: true, response};
+                return { success: true, response };
             }
 
             // Retryable status (408, 429, 5xx).
@@ -269,7 +271,7 @@ export function createHttpClient({endpointManager} = {}) {
             };
         } catch (error) {
             // executeFetch threw — classify whether this failure is retryable.
-            const {isTimeout, reason} = classifyError(error);
+            const { isTimeout, reason } = classifyError(error);
 
             // Defensive: ensure proxyUrl is always present for logging.
             if (!error.proxyUrl) error.proxyUrl = 'unknown';
@@ -368,12 +370,12 @@ export function createHttpClient({endpointManager} = {}) {
      * @throws {TrialFetchError|TrialTimeoutError|EndpointAcquisitionTimeoutError}
      *   On failure after all retries.
      */
-    async function fetchJson(url, {allow404 = false, ...requestOptions} = {}) {
+    async function fetchJson(url, { allow404 = false, ...requestOptions } = {}) {
         const response = await fetchWithRetry(url, requestOptions);
-        return parseJsonResponse(response, url, {allow404});
+        return parseJsonResponse(response, url, { allow404 });
     }
 
-    return {fetchJson};
+    return { fetchJson };
 }
 
 const defaultClient = createHttpClient();

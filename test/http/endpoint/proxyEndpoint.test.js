@@ -14,8 +14,8 @@ jest.unstable_mockModule('../../../src/http/poolFactory.js', () => ({
     poolFactory: poolFactoryMock,
 }));
 
-const {ProxyEndpoint} = await import('../../../src/http/endpoint/proxyEndpoint.js');
-const {Endpoint} = await import('../../../src/http/endpoint/endpoint.js');
+const { ProxyEndpoint } = await import('../../../src/http/endpoint/proxyEndpoint.js');
+const { Endpoint } = await import('../../../src/http/endpoint/endpoint.js');
 
 describe('ProxyEndpoint', () => {
     beforeEach(() => {

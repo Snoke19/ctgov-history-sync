@@ -1,6 +1,6 @@
 import {performance} from 'node:perf_hooks';
 import {TokenBucketTimeoutError} from '../../error/errors.js';
-import {Limiter} from "./limiter.js";
+import {Limiter} from './limiter.js';
 
 const EPS = 1e-9;
 
@@ -235,9 +235,9 @@ export class TokenBucket extends Limiter {
                 throw new TokenBucketTimeoutError(timeoutMs);
             }
 
-            await new Promise(resolve =>
-                setTimeout(resolve, Math.min(this.timeUntilToken(), remaining)),
-            );
+            await new Promise((resolve) => {
+                setTimeout(resolve, Math.min(this.timeUntilToken(), remaining));
+            });
         }
     }
 }

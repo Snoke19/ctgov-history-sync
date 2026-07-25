@@ -1,11 +1,11 @@
-import {ACQUIRE_TIMEOUT, PROXY_IPS} from "../../config/config.js";
-import {logger} from "../../config/logging.js";
-import {ProxyEndpoint} from "./proxyEndpoint.js";
-import {DirectEndpoint} from "./directEndpoint.js";
-import {EndpointAcquisitionTimeoutError} from "../../error/errors.js";
-import {performance} from "node:perf_hooks";
-import {TokenBucket} from "../limiter/tokenBucket.js";
-import {UnlimitedLimiter} from "../limiter/unlimitedLimiter.js";
+import {performance} from 'node:perf_hooks';
+import {ACQUIRE_TIMEOUT, PROXY_IPS} from '../../config/config.js';
+import {logger} from '../../config/logging.js';
+import {EndpointAcquisitionTimeoutError} from '../../error/errors.js';
+import {TokenBucket} from '../limiter/tokenBucket.js';
+import {UnlimitedLimiter} from '../limiter/unlimitedLimiter.js';
+import {DirectEndpoint} from './directEndpoint.js';
+import {ProxyEndpoint} from './proxyEndpoint.js';
 
 /**
  * Supported format:
@@ -25,16 +25,16 @@ const PROXY_URL_REGEX = /^(https?):\/\/([^:@/]+):([^:@/]+)@([^:@/]+):(\d+)$/;
 const now = () => performance.now();
 
 function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
 }
 
 export class EndpointManager {
-
     #endpoints = [];
     #nextIndex = 0;
 
-    constructor({useProxy = true, useRateLimit = true, rateLimitCapacity, rateLimitWindow}) {
-
+    constructor({ useProxy = true, useRateLimit = true, rateLimitCapacity, rateLimitWindow }) {
         const createLimiter = () => {
             if (!useRateLimit) {
                 return new UnlimitedLimiter();
@@ -45,7 +45,6 @@ export class EndpointManager {
 
         if (useProxy && PROXY_IPS && PROXY_IPS.length > 0) {
             for (const raw of String(PROXY_IPS).split(',')) {
-
                 const url = raw.trim();
 
                 if (!PROXY_URL_REGEX.test(url)) {
@@ -65,9 +64,7 @@ export class EndpointManager {
         logger.info('Endpoint manager initialized | Endpoints: %d', this.#endpoints.length);
     }
 
-
     async acquireEndpoint(timeoutMs = ACQUIRE_TIMEOUT) {
-
         const deadline = now() + timeoutMs;
 
         while (true) {
@@ -82,15 +79,12 @@ export class EndpointManager {
                     return endpoint.getHandle();
                 }
 
-                shortestWait = Math.min(
-                    shortestWait,
-                    endpoint.timeUntilToken(),
-                );
+                shortestWait = Math.min(shortestWait, endpoint.timeUntilToken());
             }
 
             const remaining = deadline - now();
             if (remaining <= 0) {
-                throw new EndpointAcquisitionTimeoutError(timeoutMs, this.#endpoints.length,);
+                throw new EndpointAcquisitionTimeoutError(timeoutMs, this.#endpoints.length);
             }
 
             await sleep(Math.min(shortestWait, remaining));

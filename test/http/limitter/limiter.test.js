@@ -1,5 +1,5 @@
 import {describe, expect, test} from '@jest/globals';
-import {Limiter} from "../../../src/http/limiter/limiter.js";
+import {Limiter} from '../../../src/http/limiter/limiter.js';
 
 describe('Limiter', () => {
     test('tryAcquire() throws "Not implemented" by default', () => {

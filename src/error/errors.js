@@ -7,7 +7,6 @@ export class TrialNotFoundError extends Error {
 }
 
 export class TrialFetchError extends Error {
-
     /**
      * @type {number|null}
      */
@@ -54,7 +53,9 @@ export class TokenBucketTimeoutError extends Error {
 
 export class EndpointAcquisitionTimeoutError extends Error {
     constructor(timeoutMs, proxyCount) {
-        super(`Proxy acquisition timeout: no proxy available within ${timeoutMs}ms (pool size: ${proxyCount})`);
+        super(
+            `Proxy acquisition timeout: no proxy available within ${timeoutMs}ms (pool size: ${proxyCount})`,
+        );
         this.name = 'EndpointAcquisitionTimeoutError';
         this.timeoutMs = timeoutMs;
         this.proxyCount = proxyCount;

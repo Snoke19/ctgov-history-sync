@@ -3,7 +3,6 @@ import {poolFactory} from '../poolFactory.js';
 import {Endpoint} from './endpoint.js';
 
 export class ProxyEndpoint extends Endpoint {
-
     #handle;
 
     constructor(url, limiter = null) {

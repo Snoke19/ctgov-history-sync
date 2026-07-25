@@ -49,8 +49,8 @@ describe('TokenBucket', () => {
             expect(bucket.peekTokens()).toBe(4);
 
             time = 500; // clock moves backward — shouldn't happen with
-                        // performance.now(), but a broken injected clock
-                        // shouldn't be able to drain credit as a side effect
+            // performance.now(), but a broken injected clock
+            // shouldn't be able to drain credit as a side effect
             expect(bucket.peekTokens()).toBe(4);
 
             time = 1_000; // back to normal, unaffected
@@ -100,8 +100,8 @@ describe('TokenBucket', () => {
                 ['string', '10'],
                 ['null', null],
                 ['undefined', undefined],
-                ['non-integer greater than 1', 2.5],   // add
-                ['non-integer between 0 and 1', 0.5],  // add
+                ['non-integer greater than 1', 2.5], // add
+                ['non-integer between 0 and 1', 0.5], // add
             ])('throws TypeError for %s (%p)', (_label, value) => {
                 expect(() => new TokenBucket(value, 5_000)).toThrow(
                     new TypeError('capacity must be a positive integer'),
