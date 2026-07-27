@@ -64,6 +64,10 @@ export class EndpointManager {
         logger.info('Endpoint manager initialized | Endpoints: %d', this.#endpoints.length);
     }
 
+    get endpointCount() {
+        return this.#endpoints.length;
+    }
+
     async acquireEndpoint(timeoutMs = ACQUIRE_TIMEOUT) {
         const deadline = now() + timeoutMs;
 

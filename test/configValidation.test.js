@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it} from "@jest/globals";
-import {env, parseStatusCodes} from '../src/config/configValidation.js'
+import {env, parseStatusCodes, validateConfig} from '../src/config/configValidation.js'
 
 describe('env.int', () => {
     afterEach(() => {
@@ -222,5 +222,43 @@ describe('parseStatusCodes', () => {
                 'Invalid integer value for DB_POOL_SIZE: "5.5"'
             );
         });
+    });
+});
+
+describe('validateConfig', () => {
+    it('accepts valid API URLs', () => {
+        expect(() =>
+            validateConfig({
+                apiBaseUrl: 'https://clinicaltrials.gov/api/v2/studies',
+                apiDetailUrl: 'https://clinicaltrials.gov/api/int/studies',
+            }),
+        ).not.toThrow();
+    });
+
+    it('throws when API_BASE_URL is missing', () => {
+        expect(() =>
+            validateConfig({
+                apiBaseUrl: '',
+                apiDetailUrl: 'https://clinicaltrials.gov/api/int/studies',
+            }),
+        ).toThrow('Missing required config: API_BASE_URL');
+    });
+
+    it('throws when API_DETAIL_URL is missing', () => {
+        expect(() =>
+            validateConfig({
+                apiBaseUrl: 'https://clinicaltrials.gov/api/v2/studies',
+                apiDetailUrl: '   ',
+            }),
+        ).toThrow('Missing required config: API_DETAIL_URL');
+    });
+
+    it('throws when a URL is invalid', () => {
+        expect(() =>
+            validateConfig({
+                apiBaseUrl: 'not-a-url',
+                apiDetailUrl: 'https://clinicaltrials.gov/api/int/studies',
+            }),
+        ).toThrow('Invalid URL for API_BASE_URL: "not-a-url"');
     });
 });

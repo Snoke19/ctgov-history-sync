@@ -115,14 +115,14 @@ describe('parseRetryAfterHeader', () => {
         jest.useRealTimers();
     });
 
-    test('returns the default delay when Retry-After date is in the past', () => {
+    test('returns zero when Retry-After date is in the past', () => {
         jest.useFakeTimers();
 
         jest.setSystemTime(new Date('2025-01-01T00:00:10Z'));
 
         const date = new Date('2025-01-01T00:00:00Z');
 
-        expect(parseRetryAfterHeader(response(date.toUTCString()))).toBe(DEFAULT_RETRY_AFTER_MS);
+        expect(parseRetryAfterHeader(response(date.toUTCString()))).toBe(0);
 
         jest.useRealTimers();
     });

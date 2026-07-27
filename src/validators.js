@@ -1,12 +1,19 @@
 import {TrialValidationError} from './error/errors.js';
 
+const nctIdPattern = /^NCT\d{8}$/i;
 const geoPattern = /^distance\(-?\d+(\.\d+)?,-?\d+(\.\d+)?,\d+(\.\d+)?(km|mi)?\)$/;
 const decayPattern =
     /^func:(gauss|exp|linear),scale:(\d+(\.\d+)?(km|mi)),offset:(\d+(\.\d+)?(km|mi)),decay:(\d+(\.\d+)?)$/;
 
 export function validateNctId(value) {
     if (typeof value !== 'string' || value.trim() === '') {
-        throw new TrialValidationError(`nctId must be a non-empty string`);
+        throw new TrialValidationError('nctId must be a non-empty string');
+    }
+
+    if (!nctIdPattern.test(value.trim())) {
+        throw new TrialValidationError(
+            `Invalid nctId format. Expected: NCT followed by 8 digits. Got: "${value}"`,
+        );
     }
 }
 

@@ -11,7 +11,7 @@ import {
     RETRYABLE_STATUS_CODES,
 } from '../config/config.js';
 import {logger} from '../config/logging.js';
-import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
+import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError} from '../error/errors.js';
 import {EndpointManager} from './endpoint/endpointManager.js';
 import {drainBody, parseJsonResponse} from './responseBody.js';
 import {buildRetryableError, calculateBackoff, classifyError, isIdempotent,} from './retry/retryPolicy.js';
@@ -162,7 +162,9 @@ export function createHttpClient({ endpointManager } = {}) {
         const remainingMs = deadline - Date.now();
         if (remainingMs <= 0) {
             // Proxy acquisition consumed the entire budget.
-            throw new TrialTimeoutError(url, timeoutMs);
+            throw new EndpointAcquisitionTimeoutError(timeoutMs, manager.endpointCount, {
+                budgetExhausted: true,
+            });
         }
 
         // Step 3: Build the abort signal.
@@ -218,7 +220,7 @@ export function createHttpClient({ endpointManager } = {}) {
 
             // Re-throw as domain-specific errors.
             if (isTimeout) {
-                const timeoutErr = new TrialTimeoutError(url, timeoutMs);
+                const timeoutErr = new TrialTimeoutError(url, remainingMs, { totalBudgetMs: timeoutMs });
                 timeoutErr.proxyUrl = proxyUrl;
                 throw timeoutErr;
             }

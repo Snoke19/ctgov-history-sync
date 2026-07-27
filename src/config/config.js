@@ -1,4 +1,4 @@
-import {env, parseStatusCodes} from "./configValidation.js";
+import {env, parseStatusCodes, validateConfig} from "./configValidation.js";
 
 export const API_BASE_URL = env.str('API_BASE_URL', '');
 export const API_DETAIL_URL = env.str('API_DETAIL_URL', '');
@@ -30,3 +30,5 @@ export const RATE_LIMIT_CAPACITY = env.int('PROXY_RATE_LIMIT_CAPACITY', 40);
 export const RATE_LIMIT_WINDOW = env.int('PROXY_RATE_LIMIT_WINDOW_MS', 60_000);
 
 export const ACQUIRE_TIMEOUT = env.int('PROXY_ACQUIRE_TIMEOUT_MS', 30_000);
+
+validateConfig({ apiBaseUrl: API_BASE_URL, apiDetailUrl: API_DETAIL_URL });

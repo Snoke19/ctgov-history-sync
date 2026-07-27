@@ -1,6 +1,43 @@
 import {describe, test} from '@jest/globals';
 import assert from 'node:assert/strict';
-import {validateGeoDecay, validateGeoFilter, validatePageSize} from '../src/validators.js';
+import {validateGeoDecay, validateGeoFilter, validateNctId, validatePageSize} from '../src/validators.js';
+
+describe('validateNctId', () => {
+    test('accepts valid NCT IDs', () => {
+        validateNctId('NCT00000001');
+        validateNctId('nct12345678');
+    });
+
+    test('rejects empty and non-string values', () => {
+        assert.throws(() => validateNctId(''), {
+            name: 'TrialValidationError',
+            message: 'nctId must be a non-empty string',
+        });
+        assert.throws(() => validateNctId('   '), {
+            name: 'TrialValidationError',
+            message: 'nctId must be a non-empty string',
+        });
+        assert.throws(() => validateNctId(null), {
+            name: 'TrialValidationError',
+            message: 'nctId must be a non-empty string',
+        });
+    });
+
+    test('rejects invalid NCT ID formats', () => {
+        assert.throws(() => validateNctId('NCT123'), {
+            name: 'TrialValidationError',
+            message: /Invalid nctId format/,
+        });
+        assert.throws(() => validateNctId('NCT123456789'), {
+            name: 'TrialValidationError',
+            message: /Invalid nctId format/,
+        });
+        assert.throws(() => validateNctId('ABC12345678'), {
+            name: 'TrialValidationError',
+            message: /Invalid nctId format/,
+        });
+    });
+});
 
 describe('validatePageSize', () => {
     test('should accept positive integers', () => {

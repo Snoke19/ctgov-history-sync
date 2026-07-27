@@ -76,7 +76,7 @@ export function parseRetryAfterHeader(response) {
 
     // Form 2: HTTP-date
     const dateMs = Date.parse(raw);
-    if (!Number.isNaN(dateMs)) return Math.max(dateMs - Date.now(), DEFAULT_RETRY_AFTER_MS);
+    if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
 
     // Unparseable — use safe default
     return DEFAULT_RETRY_AFTER_MS;

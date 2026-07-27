@@ -60,3 +60,22 @@ export const parseStatusCodes = (envVar, fallback) => {
 
     return new Set(codes);
 };
+
+export function validateConfig({ apiBaseUrl, apiDetailUrl }) {
+    const requiredUrls = [
+        ['API_BASE_URL', apiBaseUrl],
+        ['API_DETAIL_URL', apiDetailUrl],
+    ];
+
+    for (const [name, value] of requiredUrls) {
+        if (typeof value !== 'string' || value.trim() === '') {
+            throw new Error(`Missing required config: ${name}`);
+        }
+
+        try {
+            new URL(value);
+        } catch {
+            throw new Error(`Invalid URL for ${name}: "${value}"`);
+        }
+    }
+}
