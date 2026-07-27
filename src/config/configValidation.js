@@ -1,0 +1,62 @@
+const isValidInt = (n) => Number.isFinite(n) && Number.isInteger(n);
+
+const parseStrictInt = (raw, key) => {
+    const trimmed = raw.trim();
+    if (!/^-?\d+$/.test(trimmed)) {
+        throw new Error(`Invalid integer value for ${key}: "${raw}"`);
+    }
+    const parsed = Number(trimmed);
+    if (!isValidInt(parsed)) {
+        throw new Error(`Invalid integer value for ${key}: "${raw}"`);
+    }
+    return parsed;
+};
+
+export const env = {
+    int: (key, fallback) => {
+        const raw = process.env[key];
+        if (raw === undefined || raw === '') return fallback;
+        return parseStrictInt(raw, key);
+    },
+
+    str: (key, fallback) => {
+        const raw = process.env[key];
+        if (raw === undefined || raw === '') return fallback;
+        const trimmed = raw.trim();
+        if (trimmed === '') {
+            throw new Error(`Invalid string value for ${key}: whitespace-only`);
+        }
+        return trimmed;
+    },
+
+    bool: (key) => {
+        const raw = process.env[key];
+        if (raw === undefined || raw === '') return false;
+        const lower = raw.toLowerCase();
+        if (lower === 'true') return true;
+        if (lower === 'false') return false;
+        throw new Error(`Invalid boolean value for ${key}: "${raw}"`);
+    }
+};
+
+export const parseStatusCodes = (envVar, fallback) => {
+    const raw = process.env[envVar];
+    if (raw === undefined || raw === '') return new Set(fallback);
+
+    const codes = raw.split(',').map((s, i) => {
+        const trimmed = s.trim();
+        if (trimmed === '') {
+            throw new Error(`Empty status code in ${envVar} at position ${i}`);
+        }
+        if (!/^\d+$/.test(trimmed)) {
+            throw new Error(`Invalid status code in ${envVar}: "${trimmed}"`);
+        }
+        const parsed = Number(trimmed);
+        if (!isValidInt(parsed) || parsed < 100 || parsed > 599) {
+            throw new Error(`Invalid status code in ${envVar}: "${trimmed}"`);
+        }
+        return parsed;
+    });
+
+    return new Set(codes);
+};

@@ -1,27 +1,9 @@
-const env = {
-    int: (key, fallback) => {
-        const val = process.env[key];
-        return val ? parseInt(val, 10) : fallback;
-    },
-    str: (key, fallback) => process.env[key] || fallback,
-    bool: (key) => process.env[key]?.toLowerCase() === 'true',
-};
-
-const parseStatusCodes = (envVar, fallback) => {
-    const raw = process.env[envVar];
-    if (!raw) return new Set(fallback);
-    return new Set(
-        raw
-            .split(',')
-            .map((s) => parseInt(s.trim(), 10))
-            .filter((n) => !isNaN(n)),
-    );
-};
+import {env, parseStatusCodes} from "./configValidation.js";
 
 export const API_BASE_URL = env.str('API_BASE_URL', '');
 export const API_DETAIL_URL = env.str('API_DETAIL_URL', '');
 export const CONCURRENCY = env.int('CONCURRENCY', 10);
-export const PAGE_SIZE = env.int('PAGE_SIZE', 1000);
+export const PAGE_SIZE = env.int('PAGE_SIZE', 10);
 export const FETCH_TIMEOUT_MS = env.int('FETCH_TIMEOUT_MS', 15000);
 export const DEFAULT_RETRY_AFTER_MS = env.int('DEFAULT_RETRY_AFTER_MS', 5000);
 export const RETRY_BASE_DELAY_MS = env.int('RETRY_BASE_DELAY_MS', 1000);
