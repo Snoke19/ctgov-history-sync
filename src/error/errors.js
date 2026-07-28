@@ -1,4 +1,15 @@
-export class TrialNotFoundError extends Error {
+export class TrialError extends Error {
+    constructor(message, options = {}) {
+        super(message);
+        this.name = 'TrialError';
+
+        if (options.cause !== undefined) {
+            this.cause = options.cause;
+        }
+    }
+}
+
+export class TrialNotFoundError extends TrialError {
     constructor(code) {
         super(`Trial not found: ${code}`);
         this.name = 'TrialNotFoundError';
@@ -6,7 +17,7 @@ export class TrialNotFoundError extends Error {
     }
 }
 
-export class TrialFetchError extends Error {
+export class TrialFetchError extends TrialError {
     /**
      * @type {number|null}
      */
@@ -18,22 +29,21 @@ export class TrialFetchError extends Error {
     proxyUrl = null;
 
     constructor(url, cause, status, isTransient = false) {
-        super(`Failed to fetch: ${url}`);
+        super(`Failed to fetch: ${url}`, {cause});
         this.name = 'TrialFetchError';
         this.url = url;
-        this.cause = cause;
         this.status = status ?? null;
         this.isTransient = isTransient;
     }
 }
 
-export class TrialTimeoutError extends Error {
+export class TrialTimeoutError extends TrialError {
     /**
      * @param {string} url
      * @param {number} timeoutMs - Time budget for the phase that timed out (fetch).
      * @param {{ totalBudgetMs?: number|null }} [options]
      */
-    constructor(url, timeoutMs, { totalBudgetMs = null } = {}) {
+    constructor(url, timeoutMs, {totalBudgetMs = null} = {}) {
         const budgetNote =
             totalBudgetMs !== null && totalBudgetMs !== timeoutMs
                 ? ` (total budget ${totalBudgetMs}ms)`
@@ -46,14 +56,14 @@ export class TrialTimeoutError extends Error {
     }
 }
 
-export class TrialValidationError extends Error {
+export class TrialValidationError extends TrialError {
     constructor(message) {
         super(message);
         this.name = 'TrialValidationError';
     }
 }
 
-export class TokenBucketTimeoutError extends Error {
+export class TokenBucketTimeoutError extends TrialError {
     constructor(timeoutMs) {
         super(`TokenBucket timeout: no token available within ${timeoutMs}ms`);
         this.name = 'TokenBucketTimeoutError';
@@ -61,13 +71,13 @@ export class TokenBucketTimeoutError extends Error {
     }
 }
 
-export class EndpointAcquisitionTimeoutError extends Error {
+export class EndpointAcquisitionTimeoutError extends TrialError {
     /**
      * @param {number} timeoutMs
      * @param {number} proxyCount
      * @param {{ budgetExhausted?: boolean }} [options]
      */
-    constructor(timeoutMs, proxyCount, { budgetExhausted = false } = {}) {
+    constructor(timeoutMs, proxyCount, {budgetExhausted = false} = {}) {
         const message = budgetExhausted
             ? `Proxy acquisition consumed the full ${timeoutMs}ms budget before fetch could start (pool size: ${proxyCount})`
             : `Proxy acquisition timeout: no proxy available within ${timeoutMs}ms (pool size: ${proxyCount})`;

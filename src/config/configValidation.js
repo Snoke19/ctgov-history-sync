@@ -1,4 +1,4 @@
-const isValidInt = (n) => Number.isFinite(n) && Number.isInteger(n);
+const isInteger = (n) => Number.isFinite(n) && Number.isInteger(n);
 
 const parseStrictInt = (raw, key) => {
     const trimmed = raw.trim();
@@ -6,22 +6,27 @@ const parseStrictInt = (raw, key) => {
         throw new Error(`Invalid integer value for ${key}: "${raw}"`);
     }
     const parsed = Number(trimmed);
-    if (!isValidInt(parsed)) {
+    if (!isInteger(parsed)) {
         throw new Error(`Invalid integer value for ${key}: "${raw}"`);
     }
     return parsed;
 };
 
+const getEnv = (key) => {
+    const value = process.env[key];
+    return value === undefined || value === '' ? undefined : value;
+};
+
 export const env = {
     int: (key, fallback) => {
-        const raw = process.env[key];
-        if (raw === undefined || raw === '') return fallback;
+        const raw = getEnv(key);
+        if (raw === undefined) return fallback;
         return parseStrictInt(raw, key);
     },
 
     str: (key, fallback) => {
-        const raw = process.env[key];
-        if (raw === undefined || raw === '') return fallback;
+        const raw = getEnv(key);
+        if (raw === undefined) return fallback;
         const trimmed = raw.trim();
         if (trimmed === '') {
             throw new Error(`Invalid string value for ${key}: whitespace-only`);
@@ -29,10 +34,10 @@ export const env = {
         return trimmed;
     },
 
-    bool: (key) => {
-        const raw = process.env[key];
-        if (raw === undefined || raw === '') return false;
-        const lower = raw.toLowerCase();
+    bool: (key, fallback = false) => {
+        const raw = getEnv(key);
+        if (raw === undefined) return fallback;
+        const lower = raw.trim().toLowerCase();
         if (lower === 'true') return true;
         if (lower === 'false') return false;
         throw new Error(`Invalid boolean value for ${key}: "${raw}"`);
@@ -52,7 +57,7 @@ export const parseStatusCodes = (envVar, fallback) => {
             throw new Error(`Invalid status code in ${envVar}: "${trimmed}"`);
         }
         const parsed = Number(trimmed);
-        if (!isValidInt(parsed) || parsed < 100 || parsed > 599) {
+        if (!isInteger(parsed) || parsed < 100 || parsed > 599) {
             throw new Error(`Invalid status code in ${envVar}: "${trimmed}"`);
         }
         return parsed;
@@ -61,7 +66,7 @@ export const parseStatusCodes = (envVar, fallback) => {
     return new Set(codes);
 };
 
-export function validateConfig({ apiBaseUrl, apiDetailUrl }) {
+export function validateConfig({apiBaseUrl, apiDetailUrl}) {
     const requiredUrls = [
         ['API_BASE_URL', apiBaseUrl],
         ['API_DETAIL_URL', apiDetailUrl],

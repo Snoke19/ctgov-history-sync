@@ -15,4 +15,14 @@ export class DirectEndpoint extends Endpoint {
     getHandle() {
         return this.#handle;
     }
+
+    /**
+     * No-op: DirectEndpoint uses Node's default dispatcher which is managed
+     * globally and must not be closed here.
+     *
+     * @returns {Promise<void>}
+     */
+    close() {
+        return Promise.resolve();
+    }
 }

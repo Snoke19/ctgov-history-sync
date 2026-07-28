@@ -2,6 +2,7 @@ import {performance} from 'node:perf_hooks';
 import {ACQUIRE_TIMEOUT, PROXY_IPS} from '../../config/config.js';
 import {logger} from '../../config/logging.js';
 import {EndpointAcquisitionTimeoutError} from '../../error/errors.js';
+import {sleep} from '../../utils/sleep.js';
 import {TokenBucket} from '../limiter/tokenBucket.js';
 import {UnlimitedLimiter} from '../limiter/unlimitedLimiter.js';
 import {DirectEndpoint} from './directEndpoint.js';
@@ -23,12 +24,6 @@ import {ProxyEndpoint} from './proxyEndpoint.js';
 const PROXY_URL_REGEX = /^(https?):\/\/([^:@/]+):([^:@/]+)@([^:@/]+):(\d+)$/;
 
 const now = () => performance.now();
-
-function sleep(ms) {
-    return new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
-}
 
 export class EndpointManager {
     #endpoints = [];
@@ -68,6 +63,25 @@ export class EndpointManager {
         return this.#endpoints.length;
     }
 
+    /**
+     * Acquires a ready endpoint using a round-robin polling loop.
+     *
+     * WHY a polling loop rather than TokenBucket.acquire():
+     *   The manager arbitrates across *multiple* endpoints simultaneously.
+     *   Each iteration scans all endpoints and picks the first one whose
+     *   TokenBucket has a token ready (tryAcquire). It also tracks the
+     *   shortest wait across all buckets so it can sleep only as long as
+     *   needed before re-checking.
+     *
+     *   TokenBucket.acquire() is single-bucket and blocking; using it would
+     *   require acquiring each endpoint sequentially, which breaks the
+     *   round-robin rotation and can stall behind a slow proxy when a fast
+     *   one is available. The polling loop is the correct design here.
+     *
+     * @param {number} [timeoutMs]
+     * @returns {Promise<{url: string, dispatcher: *}>}
+     * @throws {EndpointAcquisitionTimeoutError}
+     */
     async acquireEndpoint(timeoutMs = ACQUIRE_TIMEOUT) {
         const deadline = now() + timeoutMs;
 
@@ -93,5 +107,16 @@ export class EndpointManager {
 
             await sleep(Math.min(shortestWait, remaining));
         }
+    }
+
+    /**
+     * Closes all endpoint dispatchers, releasing connection pools.
+     * Call this on process shutdown (SIGTERM/SIGINT) to avoid connection leaks.
+     *
+     * @returns {Promise<void>}
+     */
+    async close() {
+        await Promise.all(this.#endpoints.map((ep) => ep.close()));
+        logger.info('Endpoint manager closed | Endpoints released: %d', this.#endpoints.length);
     }
 }

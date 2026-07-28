@@ -22,4 +22,14 @@ export class ProxyEndpoint extends Endpoint {
     getHandle() {
         return this.#handle;
     }
+
+    /**
+     * Closes the underlying ProxyAgent and its connection pool.
+     * Call this during process shutdown to avoid connection leaks.
+     *
+     * @returns {Promise<void>}
+     */
+    close() {
+        return this.#handle.dispatcher.close();
+    }
 }

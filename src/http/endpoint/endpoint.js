@@ -29,6 +29,17 @@ export class Endpoint {
      * @returns {{url: string, dispatcher: *}}
      */
     getHandle() {
-        throw new Error('getHandle() must be implemented');
+        throw new TypeError('Abstract method getHandle() must be implemented');
+    }
+
+    /**
+     * Releases any resources held by this endpoint (e.g. connection pool).
+     * Subclasses with a dispatcher MUST override this and call dispatcher.close().
+     * Subclasses without a dispatcher may leave this as a no-op.
+     *
+     * @returns {Promise<void>}
+     */
+    close() {
+        throw new Error('close() must be implemented');
     }
 }

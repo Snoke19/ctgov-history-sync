@@ -15,6 +15,7 @@ import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError} fro
 import {EndpointManager} from './endpoint/endpointManager.js';
 import {drainBody, parseJsonResponse} from './responseBody.js';
 import {buildRetryableError, calculateBackoff, classifyError, isIdempotent,} from './retry/retryPolicy.js';
+import {sleep} from '../utils/sleep.js';
 
 // =============================================================================
 // HTTP CLIENT MODULE
@@ -74,19 +75,6 @@ const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',
     'User-Agent': DEFAULT_USER_AGENT,
 });
-
-/**
- * Returns a Promise that resolves after `ms` milliseconds.
- * Used between retry attempts to implement backoff delays.
- *
- * @param {number} ms - Sleep duration in milliseconds.
- * @returns {Promise<void>}
- */
-function sleep(ms) {
-    return new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
-}
 
 /**
  * Creates an independent HTTP client with its own endpoint pool.
@@ -377,9 +365,20 @@ export function createHttpClient({ endpointManager } = {}) {
         return parseJsonResponse(response, url, { allow404 });
     }
 
-    return { fetchJson };
+    /**
+     * Closes the underlying EndpointManager, releasing all connection pools.
+     * Call this on process shutdown (SIGTERM/SIGINT).
+     *
+     * @returns {Promise<void>}
+     */
+    function close() {
+        return manager.close();
+    }
+
+    return { fetchJson, close };
 }
 
 const defaultClient = createHttpClient();
 
 export const fetchJson = defaultClient.fetchJson;
+export const closeHttpClient = defaultClient.close;

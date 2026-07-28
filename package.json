@@ -17,7 +17,6 @@
     "license": "ISC",
     "type": "module",
     "dependencies": {
-        "p-queue": "^9.3.1",
         "pino": "^10.3.1",
         "undici": "^8.7.0"
     },
