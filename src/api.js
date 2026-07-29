@@ -1,7 +1,6 @@
 import {API_BASE_URL, API_DETAIL_URL, PAGE_SIZE} from './config/config.js';
 import {TrialNotFoundError} from './error/errors.js';
 import {cleanParams} from './http/cleanParams.js';
-import {fetchJson as defaultFetchJson} from './http/httpClient.js';
 import {UrlBuilder} from './http/urlPrepare.js';
 import {validateNctId, validateSearchParams} from './validators.js';
 
@@ -9,13 +8,13 @@ import {validateNctId, validateSearchParams} from './validators.js';
  * Creates an API client with injectable dependencies for testability.
  *
  * @param {object} [deps={}]
- * @param {(url: string, options?: object) => Promise<object|null>} [deps.fetchJson]
+ * @param {(url: string, options?: object) => Promise<object|null>} [httpClient]
  *   HTTP fetch function. Defaults to the shared production client. Inject a
  *   mock in tests to avoid touching the real HTTP stack.
  * @returns {{ fetchStudiesPage: Function, fetchTrialDetail: Function }}
  */
-export function createApiClient({ fetchJson } = {}) {
-    fetchJson = fetchJson ?? defaultFetchJson;
+export function createApiClient(httpClient) {
+    const { fetchJson } = httpClient;
 
     /**
      * Fetches a paginated list of clinical studies matching the given params.
@@ -56,12 +55,8 @@ export function createApiClient({ fetchJson } = {}) {
         return data;
     }
 
-    return {fetchStudiesPage, fetchTrialDetail};
+    return {
+        fetchStudiesPage,
+        fetchTrialDetail
+    };
 }
-
-// Module-level default client — shares the production HTTP stack.
-// index.js and other consumers import these directly without needing the factory.
-const defaultClient = createApiClient();
-
-export const fetchStudiesPage = defaultClient.fetchStudiesPage;
-export const fetchTrialDetail = defaultClient.fetchTrialDetail;

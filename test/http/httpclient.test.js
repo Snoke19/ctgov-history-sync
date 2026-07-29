@@ -1,7 +1,9 @@
 import {beforeEach, describe, test} from '@jest/globals';
 import assert from 'node:assert/strict';
 import {MockAgent, setGlobalDispatcher} from 'undici';
-import {RETRYABLE_STATUS_CODES} from '../../src/config/config.js';
+import {RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW, RETRYABLE_STATUS_CODES} from '../../src/config/config.js';
+import {EndpointManager} from "../../src/http/endpoint/endpointManager.js";
+import {createHttpClient} from "../../src/http/httpClient.js";
 
 let mockAgent;
 
@@ -29,7 +31,19 @@ function intercept({ origin, path, method = 'GET', times = 1, status, body, head
     interceptor.times(times);
 }
 
-const { fetchJson, createHttpClient } = await import('../../src/http/httpClient.js');
+const endpointManager = new EndpointManager({
+    useProxy: true,
+    useRateLimit: true,
+    rateLimitCapacity: RATE_LIMIT_CAPACITY,
+    rateLimitWindow: RATE_LIMIT_WINDOW,
+});
+
+const httpClient = createHttpClient({
+    endpointManager,
+});
+
+const { fetchJson } = httpClient;
+
 const { calculateBackoff, parseRetryAfterHeader } =
     await import('../../src/http/retry/retryPolicy.js');
 

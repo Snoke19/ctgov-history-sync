@@ -4,8 +4,6 @@ import {
     DEFAULT_USER_AGENT,
     FETCH_TIMEOUT_MS,
     MAX_RETRIES,
-    RATE_LIMIT_CAPACITY,
-    RATE_LIMIT_WINDOW,
     RETRY_ON_NETWORK_ERROR,
     RETRY_ON_TIMEOUT,
     RETRYABLE_STATUS_CODES,
@@ -86,19 +84,11 @@ const DEFAULT_HEADERS = Object.freeze({
  *
  * @param {object} [dependencies={}]
  * @param {EndpointManager} [dependencies.endpointManager] - Inject a
- *   pre-built (or mock) manager, primarily for tests. Defaults to a manager
+ *   pre-built (or mock) endpointManager, primarily for tests. Defaults to a endpointManager
  *   built from this module's config constants.
  * @returns {{fetchJson: (url: string, options?: object) => Promise<object|null>}}
  */
-export function createHttpClient({ endpointManager } = {}) {
-    const manager =
-        endpointManager ??
-        new EndpointManager({
-            useProxy: true,
-            useRateLimit: true,
-            rateLimitCapacity: RATE_LIMIT_CAPACITY,
-            rateLimitWindow: RATE_LIMIT_WINDOW,
-        });
+export function createHttpClient({endpointManager} = {}) {
 
     /**
      * Executes a single HTTP request through the proxy pool.
@@ -136,7 +126,7 @@ export function createHttpClient({ endpointManager } = {}) {
         // This may wait if the proxy's TokenBucket is empty.
         let proxyEntry;
         try {
-            proxyEntry = await manager.acquireEndpoint(timeoutMs);
+            proxyEntry = await endpointManager.acquireEndpoint(timeoutMs);
         } catch (error) {
             // Acquisition failures (every proxy busy/rate-limited) previously
             // vanished silently — only the fetch step below was logged.
@@ -150,7 +140,7 @@ export function createHttpClient({ endpointManager } = {}) {
         const remainingMs = deadline - Date.now();
         if (remainingMs <= 0) {
             // Proxy acquisition consumed the entire budget.
-            throw new EndpointAcquisitionTimeoutError(timeoutMs, manager.endpointCount, {
+            throw new EndpointAcquisitionTimeoutError(timeoutMs, endpointManager.endpointCount, {
                 budgetExhausted: true,
             });
         }
@@ -165,10 +155,10 @@ export function createHttpClient({ endpointManager } = {}) {
         // Step 4: Assemble fetch options.
         const fetchOptions = {
             signal,
-            headers: { ...DEFAULT_HEADERS, ...options.headers },
-            ...(options.method && { method: options.method }),
-            ...(options.body !== undefined && { body: options.body }),
-            ...(proxyEntry?.dispatcher && { dispatcher: proxyEntry.dispatcher }),
+            headers: {...DEFAULT_HEADERS, ...options.headers},
+            ...(options.method && {method: options.method}),
+            ...(options.body !== undefined && {body: options.body}),
+            ...(proxyEntry?.dispatcher && {dispatcher: proxyEntry.dispatcher}),
         };
 
         const startTime = performance.now();
@@ -186,7 +176,7 @@ export function createHttpClient({ endpointManager } = {}) {
                 durationMs,
             );
 
-            return { response, proxyUrl };
+            return {response, proxyUrl};
         } catch (error) {
             const durationMs = Math.round(performance.now() - startTime);
 
@@ -208,7 +198,7 @@ export function createHttpClient({ endpointManager } = {}) {
 
             // Re-throw as domain-specific errors.
             if (isTimeout) {
-                const timeoutErr = new TrialTimeoutError(url, remainingMs, { totalBudgetMs: timeoutMs });
+                const timeoutErr = new TrialTimeoutError(url, remainingMs, {totalBudgetMs: timeoutMs});
                 timeoutErr.proxyUrl = proxyUrl;
                 throw timeoutErr;
             }
@@ -240,11 +230,11 @@ export function createHttpClient({ endpointManager } = {}) {
      */
     async function attemptFetch(url, options) {
         try {
-            const { response, proxyUrl } = await executeFetch(url, options);
+            const {response, proxyUrl} = await executeFetch(url, options);
 
             // Non-retryable status → immediate success.
             if (!RETRYABLE_STATUS_CODES.has(response.status)) {
-                return { success: true, response };
+                return {success: true, response};
             }
 
             // Retryable status (408, 429, 5xx).
@@ -261,7 +251,7 @@ export function createHttpClient({ endpointManager } = {}) {
             };
         } catch (error) {
             // executeFetch threw — classify whether this failure is retryable.
-            const { isTimeout, reason } = classifyError(error);
+            const {isTimeout, reason} = classifyError(error);
 
             // Defensive: ensure proxyUrl is always present for logging.
             if (!error.proxyUrl) error.proxyUrl = 'unknown';
@@ -360,9 +350,9 @@ export function createHttpClient({ endpointManager } = {}) {
      * @throws {TrialFetchError|TrialTimeoutError|EndpointAcquisitionTimeoutError}
      *   On failure after all retries.
      */
-    async function fetchJson(url, { allow404 = false, ...requestOptions } = {}) {
+    async function fetchJson(url, {allow404 = false, ...requestOptions} = {}) {
         const response = await fetchWithRetry(url, requestOptions);
-        return parseJsonResponse(response, url, { allow404 });
+        return parseJsonResponse(response, url, {allow404});
     }
 
     /**
@@ -372,13 +362,8 @@ export function createHttpClient({ endpointManager } = {}) {
      * @returns {Promise<void>}
      */
     function close() {
-        return manager.close();
+        return endpointManager.close();
     }
 
-    return { fetchJson, close };
+    return {fetchJson, close};
 }
-
-const defaultClient = createHttpClient();
-
-export const fetchJson = defaultClient.fetchJson;
-export const closeHttpClient = defaultClient.close;
