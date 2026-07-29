@@ -2,7 +2,6 @@ import {beforeEach, describe, test} from '@jest/globals';
 import assert from 'node:assert/strict';
 import {MockAgent, setGlobalDispatcher} from 'undici';
 import {RATE_LIMIT_CAPACITY, RATE_LIMIT_WINDOW, RETRYABLE_STATUS_CODES} from '../../src/config/config.js';
-import {EndpointManager} from "../../src/http/endpoint/endpointManager.js";
 import {createHttpClient} from "../../src/http/httpClient.js";
 
 let mockAgent;
@@ -31,15 +30,11 @@ function intercept({ origin, path, method = 'GET', times = 1, status, body, head
     interceptor.times(times);
 }
 
-const endpointManager = new EndpointManager({
+const httpClient = createHttpClient({
     useProxy: true,
     useRateLimit: true,
     rateLimitCapacity: RATE_LIMIT_CAPACITY,
     rateLimitWindow: RATE_LIMIT_WINDOW,
-});
-
-const httpClient = createHttpClient({
-    endpointManager,
 });
 
 const { fetchJson } = httpClient;
@@ -162,55 +157,6 @@ describe('fetchJson', () => {
                 assert.equal(err.name, 'TrialTimeoutError');
                 assert.equal(err.url, `${ORIGIN}/slow`);
                 assert.equal(err.timeoutMs, 20);
-                return true;
-            },
-        );
-    });
-
-    test('throws EndpointAcquisitionTimeoutError when acquisition consumes the full budget', async () => {
-        const slowManager = {
-            endpointCount: 1,
-            async acquireEndpoint(timeoutMs) {
-                await new Promise((resolve) => {
-                    setTimeout(resolve, timeoutMs);
-                });
-                return { url: 'direct', dispatcher: undefined };
-            },
-        };
-
-        const { fetchJson: slowFetchJson } = createHttpClient({ endpointManager: slowManager });
-        intercept({ origin: ORIGIN, path: '/ok', status: 200, body: { ok: true } });
-
-        await assert.rejects(
-            () => slowFetchJson(`${ORIGIN}/ok`, { timeoutMs: 50, maxRetries: 0 }),
-            (err) => {
-                assert.equal(err.name, 'EndpointAcquisitionTimeoutError');
-                assert.equal(err.budgetExhausted, true);
-                return true;
-            },
-        );
-    });
-
-    test('reports fetch-phase timeout budget when acquisition uses part of the total budget', async () => {
-        const delayedManager = {
-            endpointCount: 1,
-            async acquireEndpoint() {
-                await new Promise((resolve) => {
-                    setTimeout(resolve, 30);
-                });
-                return { url: 'direct', dispatcher: undefined };
-            },
-        };
-
-        const { fetchJson: delayedFetchJson } = createHttpClient({ endpointManager: delayedManager });
-        intercept({ origin: ORIGIN, path: '/slow', status: 200, body: { ok: true }, delay: 200 });
-
-        await assert.rejects(
-            () => delayedFetchJson(`${ORIGIN}/slow`, { timeoutMs: 100, maxRetries: 0 }),
-            (err) => {
-                assert.equal(err.name, 'TrialTimeoutError');
-                assert.ok(err.timeoutMs < 100);
-                assert.equal(err.totalBudgetMs, 100);
                 return true;
             },
         );

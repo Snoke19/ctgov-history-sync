@@ -10,7 +10,7 @@ const mockLogger = {
 };
 
 jest.unstable_mockModule('../../../src/config/config.js', () => ({
-    get PROXY_IPS() {
+    get PROXY_URLS() {
         return mockProxyIps;
     },
     get ACQUIRE_TIMEOUT() {
@@ -65,6 +65,13 @@ jest.unstable_mockModule('../../../src/http/limiter/unlimitedLimiter.js', () => 
     UnlimitedLimiter: UnlimitedLimiterMock,
 }));
 
+class MockConfigurationError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'ConfigurationError';
+    }
+}
+
 class MockEndpointAcquisitionTimeoutError extends Error {
     constructor(timeoutMs, endpointCount) {
         super(`timed out after ${timeoutMs}ms across ${endpointCount} endpoints`);
@@ -75,6 +82,7 @@ class MockEndpointAcquisitionTimeoutError extends Error {
 }
 
 jest.unstable_mockModule('../../../src/error/errors.js', () => ({
+    ConfigurationError: MockConfigurationError,
     EndpointAcquisitionTimeoutError: MockEndpointAcquisitionTimeoutError,
 }));
 
@@ -105,9 +113,12 @@ describe('EndpointManager', () => {
     });
 
     describe('Constructor & Endpoint Initialization', () => {
-        test('initializes default configuration when empty options object {} is provided', async () => {
+        test('initializes a direct endpoint when no proxies are configured', async () => {
             const EndpointManager = await loadEndpointManager();
-            const manager = new EndpointManager({});
+
+            const manager = new EndpointManager({
+                useRateLimit: false,
+            });
 
             expect(manager).toBeInstanceOf(EndpointManager);
             expect(DirectEndpointMock).toHaveBeenCalledTimes(1);
@@ -127,7 +138,7 @@ describe('EndpointManager', () => {
             expect(DirectEndpointMock).toHaveBeenCalledWith('direct', expect.any(TokenBucketMock));
         });
 
-        test('falls back to a single DirectEndpoint when PROXY_IPS is empty, even if useProxy is true', async () => {
+        test('falls back to a single DirectEndpoint when PROXY_URLS is empty, even if useProxy is true', async () => {
             mockProxyIps = '';
             const EndpointManager = await loadEndpointManager();
             new EndpointManager({ useProxy: true, useRateLimit: false });
@@ -217,7 +228,7 @@ describe('EndpointManager', () => {
             );
         });
 
-        describe('PROXY_IPS regex validation', () => {
+        describe('PROXY_URLS regex validation', () => {
             test.each([
                 ['http://user:pass@127.0.0.1:8080', true],
                 ['https://user:pass@proxy.example.com:3128', true],

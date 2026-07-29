@@ -27,7 +27,7 @@ export const RETRY_ON_NETWORK_ERROR = env.bool('RETRY_ON_NETWORK_ERROR', default
 // ---------------------------------------------------------------------------
 // proxy
 // ---------------------------------------------------------------------------
-export const PROXY_IPS = env.str('PROXY_IPS', defaults.PROXY_IPS);
+export const PROXY_URLS = env.str('PROXY_URLS', defaults.PROXY_URLS);
 export const POOL_CONNECTIONS = env.int('PROXY_POOL_CONNECTIONS', defaults.POOL_CONNECTIONS);
 export const POOL_PIPELINING = env.int('PROXY_POOL_PIPELINING', defaults.POOL_PIPELINING);
 export const POOL_KEEP_ALIVE_TIMEOUT = env.int('PROXY_POOL_KEEP_ALIVE_TIMEOUT_MS', defaults.POOL_KEEP_ALIVE_TIMEOUT);

@@ -9,6 +9,13 @@ export class TrialError extends Error {
     }
 }
 
+export class ConfigurationError extends TrialError {
+    constructor(message) {
+        super(message);
+        this.name = 'ConfigurationError';
+    }
+}
+
 export class TrialNotFoundError extends TrialError {
     constructor(code) {
         super(`Trial not found: ${code}`);

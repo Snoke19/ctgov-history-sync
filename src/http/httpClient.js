@@ -52,17 +52,6 @@ import {sleep} from '../utils/sleep.js';
 // 4. CONNECTION HYGIENE
 //    Every response body is fully consumed or explicitly canceled before the
 //    Response object is discarded, via responseBody.js.
-//
-// PUBLIC API
-// ----------
-//   fetchJson(url, options)     →  Default client. Fetches JSON with all
-//                                   resilience layers active, sharing one
-//                                   EndpointManager for the process.
-//   createHttpClient(deps)      →  Builds an independent client with its own
-//                                   (or an injected) EndpointManager. Use
-//                                   this in tests instead of mocking the
-//                                   whole module.
-//
 // =============================================================================
 
 /**
@@ -82,13 +71,16 @@ const DEFAULT_HEADERS = Object.freeze({
  * limiting, round-robin rotation, and proxy connection pooling actually
  * working across concurrent and sequential requests alike.
  *
- * @param {object} [dependencies={}]
- * @param {EndpointManager} [dependencies.endpointManager] - Inject a
- *   pre-built (or mock) endpointManager, primarily for tests. Defaults to a endpointManager
- *   built from this module's config constants.
+ * @param {object} [options]
+ * @param {boolean} [options.useProxy=true]
+ * @param {boolean} [options.useRateLimit=true]
+ * @param {number} [options.rateLimitCapacity]
+ * @param {number} [options.rateLimitWindow]
  * @returns {{fetchJson: (url: string, options?: object) => Promise<object|null>}}
  */
-export function createHttpClient({endpointManager} = {}) {
+export function createHttpClient(options = {}) {
+
+    const endpointManager = new EndpointManager(options);
 
     /**
      * Executes a single HTTP request through the proxy pool.

@@ -1,27 +1,12 @@
 import {performance} from 'node:perf_hooks';
-import {ACQUIRE_TIMEOUT, PROXY_IPS} from '../../config/config.js';
+import {ACQUIRE_TIMEOUT, PROXY_URLS} from '../../config/config.js';
 import {logger} from '../../config/logging.js';
-import {EndpointAcquisitionTimeoutError} from '../../error/errors.js';
+import {ConfigurationError, EndpointAcquisitionTimeoutError} from '../../error/errors.js';
 import {sleep} from '../../utils/sleep.js';
 import {TokenBucket} from '../limiter/tokenBucket.js';
 import {UnlimitedLimiter} from '../limiter/unlimitedLimiter.js';
 import {DirectEndpoint} from './directEndpoint.js';
-import {ProxyEndpoint} from './proxyEndpoint.js';
-
-/**
- * Supported format:
- *
- *   http://user:password@host:port
- *   https://user:password@host:port
- *
- * Intentionally rejected:
- *
- * - socks proxies
- * - trailing slash
- * - usernames/passwords containing ':' or '@'
- * - missing credentials
- */
-const PROXY_URL_REGEX = /^(https?):\/\/([^:@/]+):([^:@/]+)@([^:@/]+):(\d+)$/;
+import {createProxyEndpoints} from './proxyEndpoints.js';
 
 const now = () => performance.now();
 
@@ -29,7 +14,21 @@ export class EndpointManager {
     #endpoints = [];
     #nextIndex = 0;
 
-    constructor({ useProxy = true, useRateLimit = true, rateLimitCapacity, rateLimitWindow }) {
+    constructor({useProxy = true, useRateLimit = true, rateLimitCapacity, rateLimitWindow}) {
+        if (useRateLimit) {
+            if (!Number.isInteger(rateLimitCapacity) || rateLimitCapacity <= 0) {
+                throw new ConfigurationError(
+                    'rateLimitCapacity must be a positive integer when rate limiting is enabled.',
+                );
+            }
+
+            if (!Number.isInteger(rateLimitWindow) || rateLimitWindow <= 0) {
+                throw new ConfigurationError(
+                    'rateLimitWindow must be a positive integer when rate limiting is enabled.',
+                );
+            }
+        }
+
         const createLimiter = () => {
             if (!useRateLimit) {
                 return new UnlimitedLimiter();
@@ -38,18 +37,8 @@ export class EndpointManager {
             return new TokenBucket(rateLimitCapacity, rateLimitWindow);
         };
 
-        if (useProxy && PROXY_IPS && PROXY_IPS.length > 0) {
-            for (const raw of String(PROXY_IPS).split(',')) {
-                const url = raw.trim();
-
-                if (!PROXY_URL_REGEX.test(url)) {
-                    logger.warn('[Proxy] Skipping invalid proxy URL: "%s"', url);
-
-                    continue;
-                }
-
-                this.#endpoints.push(new ProxyEndpoint(url, createLimiter()));
-            }
+        if (useProxy) {
+            this.#endpoints.push(...createProxyEndpoints(PROXY_URLS, createLimiter));
         }
 
         if (this.#endpoints.length === 0) {

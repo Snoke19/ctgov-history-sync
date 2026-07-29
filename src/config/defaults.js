@@ -19,7 +19,7 @@ export const defaults = Object.freeze({
     RETRY_ON_NETWORK_ERROR: true,
 
     // proxy
-    PROXY_IPS: '',
+    PROXY_URLS: '',
     POOL_CONNECTIONS: 10,
     POOL_PIPELINING: 1,
     POOL_KEEP_ALIVE_TIMEOUT: 300_000,
