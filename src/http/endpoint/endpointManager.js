@@ -1,5 +1,4 @@
 import {performance} from 'node:perf_hooks';
-import {ACQUIRE_TIMEOUT, PROXY_URLS} from '../../config/config.js';
 import {logger} from '../../config/logging.js';
 import {ConfigurationError, EndpointAcquisitionTimeoutError} from '../../error/errors.js';
 import {sleep} from '../../utils/sleep.js';
@@ -7,26 +6,33 @@ import {TokenBucket} from '../limiter/tokenBucket.js';
 import {UnlimitedLimiter} from '../limiter/unlimitedLimiter.js';
 import {DirectEndpoint} from './directEndpoint.js';
 import {createProxyEndpoints} from './proxyEndpoints.js';
+import {assertPositiveInt} from "../../utils/validation.js";
 
 const now = () => performance.now();
 
 export class EndpointManager {
     #endpoints = [];
     #nextIndex = 0;
+    #acquireTimeout = 0;
 
-    constructor({useProxy = true, useRateLimit = true, rateLimitCapacity, rateLimitWindow}) {
+    constructor({
+                    useProxy = true,
+                    proxyUrls,
+                    useRateLimit = true,
+                    rateLimitCapacity,
+                    rateLimitWindow,
+                    acquireTimeout
+                }) {
+
+        if (useProxy && proxyUrls.trim() === '') {
+            throw new ConfigurationError('proxyUrls cannot be empty when proxying is enabled.');
+        }
+
+        assertPositiveInt(acquireTimeout, 'acquireTimeout');
+
         if (useRateLimit) {
-            if (!Number.isInteger(rateLimitCapacity) || rateLimitCapacity <= 0) {
-                throw new ConfigurationError(
-                    'rateLimitCapacity must be a positive integer when rate limiting is enabled.',
-                );
-            }
-
-            if (!Number.isInteger(rateLimitWindow) || rateLimitWindow <= 0) {
-                throw new ConfigurationError(
-                    'rateLimitWindow must be a positive integer when rate limiting is enabled.',
-                );
-            }
+            assertPositiveInt(rateLimitCapacity, 'rateLimitCapacity');
+            assertPositiveInt(rateLimitWindow, 'rateLimitWindow');
         }
 
         const createLimiter = () => {
@@ -38,12 +44,14 @@ export class EndpointManager {
         };
 
         if (useProxy) {
-            this.#endpoints.push(...createProxyEndpoints(PROXY_URLS, createLimiter));
+            this.#endpoints.push(...createProxyEndpoints(proxyUrls, createLimiter));
         }
 
         if (this.#endpoints.length === 0) {
             this.#endpoints.push(new DirectEndpoint('direct', createLimiter()));
         }
+
+        this.#acquireTimeout = acquireTimeout;
 
         logger.info('Endpoint manager initialized | Endpoints: %d', this.#endpoints.length);
     }
@@ -71,7 +79,7 @@ export class EndpointManager {
      * @returns {Promise<{url: string, dispatcher: *}>}
      * @throws {EndpointAcquisitionTimeoutError}
      */
-    async acquireEndpoint(timeoutMs = ACQUIRE_TIMEOUT) {
+    async acquireEndpoint(timeoutMs = this.#acquireTimeout) {
         const deadline = now() + timeoutMs;
 
         while (true) {

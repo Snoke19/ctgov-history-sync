@@ -73,6 +73,8 @@ const DEFAULT_HEADERS = Object.freeze({
  *
  * @param {object} [options]
  * @param {boolean} [options.useProxy=true]
+ * @param {string} [options.proxyUrls]
+ * @param {number} [options.acquireTimeout]
  * @param {boolean} [options.useRateLimit=true]
  * @param {number} [options.rateLimitCapacity]
  * @param {number} [options.rateLimitWindow]
