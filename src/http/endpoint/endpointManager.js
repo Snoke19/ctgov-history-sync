@@ -24,10 +24,6 @@ export class EndpointManager {
                     acquireTimeout
                 }) {
 
-        if (useProxy && proxyUrls.trim() === '') {
-            throw new ConfigurationError('proxyUrls cannot be empty when proxying is enabled.');
-        }
-
         assertPositiveInt(acquireTimeout, 'acquireTimeout');
 
         if (useRateLimit) {
@@ -36,18 +32,24 @@ export class EndpointManager {
         }
 
         const createLimiter = () => {
-            if (!useRateLimit) {
-                return new UnlimitedLimiter();
-            }
-
-            return new TokenBucket(rateLimitCapacity, rateLimitWindow);
+            return useRateLimit
+                ? new TokenBucket(rateLimitCapacity, rateLimitWindow)
+                : new UnlimitedLimiter();
         };
 
         if (useProxy) {
-            this.#endpoints.push(...createProxyEndpoints(proxyUrls, createLimiter));
-        }
+            if (typeof proxyUrls !== 'string' || proxyUrls.trim() === '') {
+                throw new ConfigurationError('proxyUrls must be a non-empty string when useProxy is enabled.');
+            }
 
-        if (this.#endpoints.length === 0) {
+            const endpoints = createProxyEndpoints(proxyUrls, createLimiter);
+
+            if (endpoints.length === 0) {
+                throw new ConfigurationError('useProxy is enabled, but no valid proxy URLs were configured.');
+            }
+
+            this.#endpoints.push(...endpoints);
+        } else {
             this.#endpoints.push(new DirectEndpoint('direct', createLimiter()));
         }
 
