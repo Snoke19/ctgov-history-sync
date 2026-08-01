@@ -2,7 +2,9 @@ import {performance} from 'node:perf_hooks';
 import {TokenBucketTimeoutError} from '../../error/errors.js';
 import {Limiter} from './limiter.js';
 
-const EPS = 1e-9;
+// Tolerance used to compensate for IEEE-754 floating-point rounding errors
+// when comparing or converting token bucket credit.
+const FLOATING_POINT_TOLERANCE = 1e-9;
 
 /**
  * Token bucket rate limiter using credit-milliseconds.
@@ -86,7 +88,7 @@ export class TokenBucket extends Limiter {
         const now = this.#clock();
         const availableCreditMs = this.#availableCreditMs(now);
 
-        if (availableCreditMs + EPS < this.#msPerToken) {
+        if (availableCreditMs + FLOATING_POINT_TOLERANCE < this.#msPerToken) {
             return false;
         }
 
@@ -122,7 +124,7 @@ export class TokenBucket extends Limiter {
         // causing floor() to undercount by 1.
         const tokens = creditMs / this.#msPerToken;
 
-        return Math.floor(Math.min(tokens + EPS, this.#capacity));
+        return Math.floor(Math.min(tokens + FLOATING_POINT_TOLERANCE, this.#capacity));
     }
 
     /**
@@ -182,9 +184,9 @@ export class TokenBucket extends Limiter {
 
         const neededCreditMs = count * this.#msPerToken;
 
-        // EPS tolerance mirrors tryAcquire(), so timeUntil() and tryAcquire()
+        // FLOATING_POINT_EPSILON tolerance mirrors tryAcquire(), so timeUntil() and tryAcquire()
         // never disagree about whether a token is available right now.
-        if (availableCreditMs + EPS >= neededCreditMs) {
+        if (availableCreditMs + FLOATING_POINT_TOLERANCE >= neededCreditMs) {
             return 0;
         }
 
