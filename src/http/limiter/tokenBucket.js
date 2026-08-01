@@ -200,10 +200,12 @@ export class TokenBucket extends Limiter {
     /**
      * Acquire one token, blocking until available or the timeout expires.
      *
-     * @deprecated Not used by EndpointManager, which runs a multi-endpoint
-     *   round-robin polling loop that cannot delegate to a single-bucket
-     *   blocking call. This method is retained for external callers who need
-     *   to await a single TokenBucket directly.
+     * This is a convenience API for callers that work with a single
+     * TokenBucket directly.
+     *
+     * EndpointManager intentionally does not use this method because it
+     * coordinates multiple limiters simultaneously using tryAcquire() and
+     * timeUntilToken().
      *
      * Algorithm:
      *   1. Compute elapsed time since last refill.
