@@ -201,3 +201,62 @@ describe('fetchJson', () => {
         );
     });
 });
+
+test('attaches proxyUrl to TrialTimeoutError', async () => {
+    intercept({
+        origin: ORIGIN,
+        path: '/slow',
+        status: 200,
+        body: { ok: true },
+        delay: 200,
+    });
+
+    await assert.rejects(
+        () => fetchJson(`${ORIGIN}/slow`, {
+            timeoutMs: 20,
+            maxRetries: 0,
+        }),
+        (err) => {
+            assert.equal(err.name, 'TrialTimeoutError');
+            assert.equal(err.proxyUrl, 'direct');
+            return true;
+        },
+    );
+});
+
+test('attaches proxyUrl to TrialFetchError', async () => {
+    intercept({
+        origin: ORIGIN,
+        path: '/fail',
+        status: 500,
+        body: 'error',
+    });
+
+    await assert.rejects(
+        () => fetchJson(`${ORIGIN}/fail`, {
+            maxRetries: 0,
+        }),
+        (err) => {
+            assert.equal(err.name, 'TrialFetchError');
+            assert.equal(err.proxyUrl, 'direct');
+            return true;
+        },
+    );
+});
+
+test('does not mutate AbortError with proxy metadata', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await assert.rejects(
+        () => fetchJson(`${ORIGIN}/ok`, {
+            signal: controller.signal,
+            maxRetries: 0,
+        }),
+        (err) => {
+            assert.equal(err.name, 'AbortError');
+            assert.equal(err.proxyUrl, undefined);
+            return true;
+        },
+    );
+});

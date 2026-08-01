@@ -187,21 +187,16 @@ export function createHttpClient(options = {}) {
                 error.message,
             );
 
-            // Attach proxyUrl so upstream retry logic can log which proxy failed.
-            error.proxyUrl = proxyUrl;
-
-            // Re-throw as domain-specific errors.
             if (isTimeout) {
                 const timeoutErr = new TrialTimeoutError(url, remainingMs, {totalBudgetMs: timeoutMs});
                 timeoutErr.proxyUrl = proxyUrl;
                 throw timeoutErr;
             }
+
             if (isExternalAbort) {
-                // Caller explicitly canceled — propagate as-is, never retry.
                 throw error;
             }
 
-            // Generic network error (DNS, TCP reset, TLS failure, etc.).
             const fetchErr = new TrialFetchError(url, error, null, true);
             fetchErr.proxyUrl = proxyUrl;
             throw fetchErr;
@@ -244,11 +239,7 @@ export function createHttpClient(options = {}) {
                 reason: `Retryable HTTP ${response.status}`,
             };
         } catch (error) {
-            // executeFetch threw — classify whether this failure is retryable.
             const {isTimeout, reason} = classifyError(error);
-
-            // Defensive: ensure proxyUrl is always present for logging.
-            if (!error.proxyUrl) error.proxyUrl = 'unknown';
 
             return {
                 success: false,
@@ -308,7 +299,7 @@ export function createHttpClient(options = {}) {
                 Math.round(delay),
                 attempt + 1,
                 maxRetries,
-                outcome.error.proxyUrl,
+                outcome.error.proxyUrl ?? 'n/a',
                 url,
             );
 
