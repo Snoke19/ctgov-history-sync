@@ -260,3 +260,78 @@ test('does not mutate AbortError with proxy metadata', async () => {
         },
     );
 });
+
+test('drains retryable response bodies before retrying', async () => {
+    intercept({
+        origin: ORIGIN,
+        path: '/drain-retry',
+        status: 503,
+        body: 'temporary failure',
+        times: 1,
+    });
+
+    intercept({
+        origin: ORIGIN,
+        path: '/drain-retry',
+        status: 200,
+        body: {ok: true},
+        times: 1,
+    });
+
+    const data = await fetchJson(`${ORIGIN}/drain-retry`, {
+        maxRetries: 1,
+    });
+
+    assert.deepEqual(data, {ok: true});
+    mockAgent.assertNoPendingInterceptors();
+});
+
+test('consumes non-retryable error response bodies', async () => {
+    intercept({
+        origin: ORIGIN,
+        path: '/bad-body',
+        status: 400,
+        body: 'bad request details',
+    });
+
+    await assert.rejects(
+        () => fetchJson(`${ORIGIN}/bad-body`, {
+            maxRetries: 0,
+        }),
+        (err) => {
+            assert.equal(err.name, 'TrialFetchError');
+            assert.match(err.cause.message, /bad request details/);
+            return true;
+        },
+    );
+
+    mockAgent.assertNoPendingInterceptors();
+});
+
+test('allows a new request after timeout without leaking connection', async () => {
+    intercept({
+        origin: ORIGIN,
+        path: '/timeout',
+        status: 200,
+        body: {ok: true},
+        delay: 200,
+    });
+
+    await assert.rejects(
+        () => fetchJson(`${ORIGIN}/timeout`, {
+            timeoutMs: 20,
+            maxRetries: 0,
+        }),
+    );
+
+    intercept({
+        origin: ORIGIN,
+        path: '/after-timeout',
+        status: 200,
+        body: {ok: true},
+    });
+
+    const result = await fetchJson(`${ORIGIN}/after-timeout`);
+
+    assert.deepEqual(result, {ok: true});
+});
