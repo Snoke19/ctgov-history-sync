@@ -174,32 +174,28 @@ export function createHttpClient(options = {}) {
         } catch (error) {
             const durationMs = Math.round(performance.now() - startTime);
 
-            // Distinguish three classes of fetch failure:
-            const isTimeout = error.name === 'TimeoutError';
-            const isExternalAbort = !isTimeout && options.signal?.aborted;
+            const transformed = transformFetchError(error, {
+                url,
+                proxyUrl,
+                remainingMs,
+                timeoutMs,
+                signal: options.signal,
+            });
+
+            const logMessage = transformed.cause?.message ?? transformed.message;
+            const failureType =
+                transformed instanceof TrialTimeoutError ? 'Timeout' : transformed === error ? 'Cancelled' : 'Network Error';
 
             logger.warn(
                 'Failed %s | Type: %s | Proxy: %s | Took: %dms | Error: %s',
                 url,
-                isTimeout ? 'Timeout' : isExternalAbort ? 'Cancelled' : 'Network Error',
+                failureType,
                 proxyUrl,
                 durationMs,
-                error.message,
+                logMessage,
             );
 
-            if (isTimeout) {
-                const timeoutErr = new TrialTimeoutError(url, remainingMs, {totalBudgetMs: timeoutMs});
-                timeoutErr.proxyUrl = proxyUrl;
-                throw timeoutErr;
-            }
-
-            if (isExternalAbort) {
-                throw error;
-            }
-
-            const fetchErr = new TrialFetchError(url, error, null, true);
-            fetchErr.proxyUrl = proxyUrl;
-            throw fetchErr;
+            throw transformed;
         }
     }
 
@@ -214,7 +210,12 @@ export function createHttpClient(options = {}) {
      * @param {object} options - Passed through to executeFetch.
      * @returns {Promise<
      *   | {success: true, response: Response}
-     *   | {success: false, error: Error, retryable: boolean, reason: string}
+     *   | {
+     *       success: false,
+     *       error: TrialFetchError | TrialTimeoutError | EndpointAcquisitionTimeoutError | Error,
+     *       retryable: boolean,
+     *       reason: string,
+     *     }
      * >}
      */
     async function attemptFetch(url, options) {
@@ -290,8 +291,18 @@ export function createHttpClient(options = {}) {
             // Non-retryable failure or final attempt → propagate the error.
             if (!outcome.retryable || isLastAttempt) throw outcome.error;
 
-            // Wait before the next attempt.
-            const delay = calculateBackoff(attempt, outcome.error.retryAfterMs);
+            const delay = calculateBackoff(
+                attempt,
+                outcome.error instanceof TrialFetchError
+                    ? outcome.error.retryAfterMs
+                    : null,
+            );
+
+            const proxyUrl =
+                outcome.error instanceof TrialFetchError ||
+                outcome.error instanceof TrialTimeoutError
+                    ? outcome.error.proxyUrl
+                    : 'n/a';
 
             logger.warn(
                 '%s - retrying in %dms (attempt %d/%d) | Proxy: %s | URL: %s',
@@ -299,7 +310,7 @@ export function createHttpClient(options = {}) {
                 Math.round(delay),
                 attempt + 1,
                 maxRetries,
-                outcome.error.proxyUrl ?? 'n/a',
+                proxyUrl,
                 url,
             );
 
@@ -351,4 +362,35 @@ export function createHttpClient(options = {}) {
     }
 
     return {fetchJson, close};
+}
+
+function transformFetchError(error, {
+    url,
+    proxyUrl,
+    remainingMs,
+    timeoutMs,
+    signal,
+},) {
+    const isTimeout = error.name === 'TimeoutError';
+    const isExternalAbort = !isTimeout && signal?.aborted;
+
+    if (isTimeout) {
+        const timeoutErr = new TrialTimeoutError(
+            url,
+            remainingMs,
+            {totalBudgetMs: timeoutMs},
+        );
+
+        timeoutErr.proxyUrl = proxyUrl;
+        return timeoutErr;
+    }
+
+    if (isExternalAbort) {
+        return error;
+    }
+
+    const fetchErr = new TrialFetchError(url, error, null, true,);
+
+    fetchErr.proxyUrl = proxyUrl;
+    return fetchErr;
 }
