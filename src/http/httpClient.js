@@ -281,15 +281,28 @@ export function createHttpClient(options = {}) {
         const canRetry = isIdempotent(method, options.idempotent);
         const maxRetries = canRetry ? Math.max(0, options.maxRetries ?? MAX_RETRIES) : 0;
 
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            const outcome = await attemptFetch(url, options);
+        const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
+        const deadline = Date.now() + timeoutMs;
 
-            if (outcome.success) return outcome.response;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            // Recalculate the remaining budget before EVERY attempt.
+            const remainingMs = getRemainingTime(deadline, url, timeoutMs);
+
+            const outcome = await attemptFetch(url, {
+                ...options,
+                timeoutMs: remainingMs,
+            });
+
+            if (outcome.success) {
+                return outcome.response;
+            }
 
             const isLastAttempt = attempt === maxRetries;
 
             // Non-retryable failure or final attempt → propagate the error.
-            if (!outcome.retryable || isLastAttempt) throw outcome.error;
+            if (!outcome.retryable || isLastAttempt) {
+                throw outcome.error;
+            }
 
             const delay = calculateBackoff(
                 attempt,
@@ -313,6 +326,19 @@ export function createHttpClient(options = {}) {
                 proxyUrl,
                 url,
             );
+
+            // Recalculate again because the fetch itself consumed time.
+            const remainingBeforeSleep = getRemainingTime(
+                deadline,
+                url,
+                timeoutMs,
+            );
+
+            if (delay >= remainingBeforeSleep) {
+                throw new TrialTimeoutError(url, 0, {
+                    totalBudgetMs: timeoutMs,
+                });
+            }
 
             await sleep(delay);
         }
@@ -393,4 +419,16 @@ function transformFetchError(error, {
 
     fetchErr.proxyUrl = proxyUrl;
     return fetchErr;
+}
+
+function getRemainingTime(deadline, url, timeoutMs) {
+    const remainingMs = deadline - Date.now();
+
+    if (remainingMs <= 0) {
+        throw new TrialTimeoutError(url, 0, {
+            totalBudgetMs: timeoutMs,
+        });
+    }
+
+    return remainingMs;
 }
