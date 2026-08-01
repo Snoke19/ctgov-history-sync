@@ -1,4 +1,4 @@
-import {TrialValidationError} from './error/errors.js';
+import {TrialValidationError} from '../error/errors.js';
 
 const nctIdPattern = /^NCT\d{8}$/i;
 const geoPattern = /^distance\(-?\d+(\.\d+)?,-?\d+(\.\d+)?,\d+(\.\d+)?(km|mi)?\)$/;

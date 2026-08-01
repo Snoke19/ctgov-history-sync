@@ -2,7 +2,7 @@ import {API_BASE_URL, API_DETAIL_URL, PAGE_SIZE} from './config/config.js';
 import {TrialNotFoundError} from './error/errors.js';
 import {cleanParams} from './http/cleanParams.js';
 import {UrlBuilder} from './http/urlPrepare.js';
-import {validateNctId, validateSearchParams} from './validators.js';
+import {validateNctId, validateSearchParams} from './utils/validators.js';
 
 /**
  * Creates an API client with injectable dependencies.

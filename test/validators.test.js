@@ -1,6 +1,6 @@
 import {describe, test} from '@jest/globals';
 import assert from 'node:assert/strict';
-import {validateGeoDecay, validateGeoFilter, validateNctId, validatePageSize} from '../src/validators.js';
+import {validateGeoDecay, validateGeoFilter, validateNctId, validatePageSize} from '../src/utils/validators.js';
 
 describe('validateNctId', () => {
     test('accepts valid NCT IDs', () => {
