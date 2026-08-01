@@ -1,7 +1,7 @@
 import {performance} from 'node:perf_hooks';
 import {logger} from '../../config/logging.js';
 import {ConfigurationError, EndpointAcquisitionTimeoutError} from '../../error/errors.js';
-import {sleep} from '../../utils/sleep.js';
+import {setTimeout as sleep} from 'node:timers/promises';
 import {TokenBucket} from '../limiter/tokenBucket.js';
 import {UnlimitedLimiter} from '../limiter/unlimitedLimiter.js';
 import {DirectEndpoint} from './directEndpoint.js';

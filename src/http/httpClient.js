@@ -13,7 +13,7 @@ import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError} fro
 import {EndpointManager} from './endpoint/endpointManager.js';
 import {drainBody, parseJsonResponse} from './responseBody.js';
 import {buildRetryableError, calculateBackoff, classifyError, isIdempotent,} from './retry/retryPolicy.js';
-import {sleep} from '../utils/sleep.js';
+import {setTimeout as sleep} from 'node:timers/promises';
 
 // =============================================================================
 // HTTP CLIENT MODULE
