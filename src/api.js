@@ -5,16 +5,21 @@ import {UrlBuilder} from './http/urlPrepare.js';
 import {validateNctId, validateSearchParams} from './validators.js';
 
 /**
- * Creates an API client with injectable dependencies for testability.
+ * Creates an API client with injectable dependencies.
  *
- * @param {object} [deps={}]
- * @param {(url: string, options?: object) => Promise<object|null>} [httpClient]
- *   HTTP fetch function. Defaults to the shared production client. Inject a
- *   mock in tests to avoid touching the real HTTP stack.
- * @returns {{ fetchStudiesPage: Function, fetchTrialDetail: Function }}
+ * @param {object} deps
+ * @param {(url: string, options?: object) => Promise<object|null>} deps.fetchJson
+ *   Function used to perform HTTP requests.
+ * @returns {{
+ *   fetchStudiesPage: (params?: object) => Promise<object>,
+ *   fetchTrialDetail: (nctId: string, params?: object) => Promise<object>
+ * }}
  */
-export function createApiClient(httpClient) {
-    const { fetchJson } = httpClient;
+export function createApiClient({fetchJson}) {
+
+    if (typeof fetchJson !== 'function') {
+        throw new TypeError('fetchJson must be a function');
+    }
 
     /**
      * Fetches a paginated list of clinical studies matching the given params.
