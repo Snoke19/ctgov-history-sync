@@ -3,21 +3,19 @@ import {logger} from '../config/logging.js';
 import {TrialFetchError} from '../error/errors.js';
 
 /**
- * Cancels the response body stream to release the underlying TCP connection.
- *
- * undici (and Node's built-in fetch, which uses undici) requires that every
- * Response body be either fully read or explicitly canceled before the
- * connection can be returned to the Pool. Skipping this step leaks
- * connections and eventually exhausts the pool.
- *
- * This is a no-op if the body is already closed or errored.
+ * Cancels an unused response body stream so undici can clean up
+ * the underlying connection resources.
  *
  * @param {Response} response
  * @returns {Promise<void>}
  */
 export async function drainBody(response) {
+    if (!response?.body) {
+        return;
+    }
+
     try {
-        await response.body?.cancel();
+        await response.body.cancel();
     } catch {
         // Already closed or errored — safe to ignore.
     }
@@ -27,24 +25,22 @@ export async function drainBody(response) {
  * Consumes a Response body and parses it as JSON.
  *
  * Special cases:
- *   - 404 + allow404=true → returns null (caller handles missing resource).
- *   - 204 No Content        → returns null.
- *   - Non-2xx status        → throws TrialFetchError with body preview.
- *   - Invalid JSON body       → throws TrialFetchError (non-retryable).
+ *   - 404 + allow404=true → returns null.
+ *   - 204 No Content     → returns null.
+ *   - Non-2xx status     → throws TrialFetchError with body preview.
+ *   - Invalid JSON       → throws TrialFetchError.
  *
- * The response body is always drained or consumed, satisfying undici's
- * connection-pool requirements.
+ * The response body is always consumed or canceled before the response
+ * is discarded, satisfying undici connection-pool requirements.
  *
  * @param {Response} response
- * @param {string} url - For error messages.
+ * @param {string} url
  * @param {object} [opts={}]
- * @param {boolean} [opts.allow404=false] - When true, 404 returns null
- *   instead of throwing.
- * @returns {Promise<object|null>} Parsed JSON, or null for 404/204.
- * @throws {TrialFetchError} On HTTP error or JSON parse failure.
+ * @param {boolean} [opts.allow404=false]
+ * @returns {Promise<object|null>}
+ * @throws {TrialFetchError}
  */
-export async function parseJsonResponse(response, url, { allow404 = false } = {}) {
-    // 404 short-circuit
+export async function parseJsonResponse(response, url, {allow404 = false} = {}) {
     if (response.status === 404) {
         logger.debug('HTTP 404 on %s | allow404=%s', url, allow404);
     }
@@ -54,40 +50,40 @@ export async function parseJsonResponse(response, url, { allow404 = false } = {}
         return null;
     }
 
-    // 204 No Content
     if (response.status === 204) {
         await drainBody(response);
         return null;
     }
 
-    // Any non-2xx status → error with body preview for debugging.
     if (!response.ok) {
         const text = await response.text().catch(() => '');
         throw new TrialFetchError(
             url,
             new Error(
                 `HTTP ${response.status}: ${response.statusText}. ` +
-                    `Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`,
+                `Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`,
             ),
             response.status,
             RETRYABLE_STATUS_CODES.has(response.status),
         );
     }
 
-    // Warn about unexpected Content-Type, but still attempt to parse.
     const contentType = response.headers.get('Content-Type') ?? '';
+
     if (!contentType.includes('application/json')) {
         logger.warn('Unexpected Content-Type: %s | %s', contentType, url);
     }
 
     try {
         return await response.json();
-    } catch (parseError) {
+    } catch (error) {
+        await drainBody(response);
+
         throw new TrialFetchError(
             url,
-            new Error(`Invalid JSON: ${parseError.message}`),
+            new Error(`Invalid JSON: ${error.message}`),
             response.status,
-            false, // non-retryable: the server responded, but body is garbage
+            false,
         );
     }
 }
