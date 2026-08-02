@@ -102,7 +102,7 @@ export function buildRetryableError(url, response, proxyUrl) {
 
     const error = new TrialFetchError(
         url,
-        new Error(`HTTP ${response.status}: ${response.statusText}`),
+        {message: `HTTP ${response.status}: ${response.statusText}`},
         response.status,
         true, // isTransient = retryable
     );
