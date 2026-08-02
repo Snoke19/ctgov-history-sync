@@ -23,8 +23,14 @@ export class ProxyEndpoint extends Endpoint {
         if (!concurrency || !proxyCount) {
             return poolConfig.connections;
         }
-        const target = Math.ceil(concurrency / proxyCount);
-        return Math.min(poolConfig.maxConnections, Math.max(poolConfig.connections, target));
+
+        return Math.min(
+            poolConfig.maxConnections,
+            Math.max(
+                poolConfig.connections,
+                Math.ceil(concurrency / proxyCount),
+            ),
+        );
     }
 
     getHandle() {
@@ -33,7 +39,6 @@ export class ProxyEndpoint extends Endpoint {
 
     /**
      * Closes the underlying ProxyAgent and its connection pool.
-     * Call this during process shutdown to avoid connection leaks.
      *
      * @returns {Promise<void>}
      */

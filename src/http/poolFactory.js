@@ -1,7 +1,7 @@
 import {Pool} from 'undici';
 
 export const createPoolFactory = (poolConfig) => (url, opts = {}) => {
-    const {connections, connect, ...rest} = opts;
+    const {connections, connect = {}, ...rest} = opts;
 
     return new Pool(url, {
         ...rest,
@@ -11,7 +11,7 @@ export const createPoolFactory = (poolConfig) => (url, opts = {}) => {
         headersTimeout: poolConfig.headersTimeout,
         bodyTimeout: poolConfig.bodyTimeout,
         connect: {
-            timeout: poolConfig.connectTimeout,
+            timeout: connect.timeout ?? poolConfig.connectTimeout,
             ...connect,
         },
     });
