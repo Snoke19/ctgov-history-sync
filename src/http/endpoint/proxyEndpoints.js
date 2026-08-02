@@ -36,16 +36,6 @@ function hasExplicitPort(url) {
     return /:\d+$/.test(hostPort);
 }
 
-/**
- * Creates ProxyEndpoint instances from a comma-separated list of proxy URLs.
- *
- * @param {string} proxyUrls
- * @param {() => (TokenBucket|UnlimitedLimiter)} createLimiter
- * @param {object} [options]
- * @param {number} [options.concurrency]
- * @param {object} [options.poolConfig]
- * @returns {ProxyEndpoint[]}
- */
 export function createProxyEndpoints(proxyUrls, createLimiter, {concurrency, poolConfig} = {}) {
     if (!proxyUrls) {
         return [];

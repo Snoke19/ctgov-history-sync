@@ -1,7 +1,6 @@
 import {beforeEach, describe, expect, jest, test} from '@jest/globals';
 
 const ProxyAgentMock = jest.fn(function ProxyAgent(opts) {
-    this.opts = opts;
 });
 
 jest.unstable_mockModule('undici', () => ({
@@ -15,8 +14,8 @@ jest.unstable_mockModule('../../../src/http/poolFactory.js', () => ({
     createPoolFactory: createPoolFactoryMock,
 }));
 
-const { ProxyEndpoint } = await import('../../../src/http/endpoint/proxyEndpoint.js');
-const { Endpoint } = await import('../../../src/http/endpoint/endpoint.js');
+const {ProxyEndpoint} = await import('../../../src/http/endpoint/proxyEndpoint.js');
+const {Endpoint} = await import('../../../src/http/endpoint/endpoint.js');
 
 const samplePoolConfig = Object.freeze({
     connections: 10,

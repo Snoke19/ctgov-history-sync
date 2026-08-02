@@ -116,3 +116,35 @@ Implement a lightweight circuit breaker / backoff status per proxy. If an endpoi
 
 **Worth Added Complexity?**  
 YES (Critical for Rotating Proxies). Rotating proxy pools in production frequently contain dead or throttled nodes.
+
+---
+
+## TODO 1: Implement Proxy Health Monitoring
+
+### Description
+Implement health tracking for each proxy endpoint to prevent repeatedly selecting unhealthy proxies. The system should monitor request outcomes, identify unhealthy proxies based on consecutive failures, and temporarily exclude them from endpoint selection. Healthy proxies should automatically rejoin the rotation after recovery.
+
+### Acceptance Criteria
+- [ ] Track successful and failed requests for every proxy.
+- [ ] Maintain per-proxy health state.
+- [ ] Detect consecutive failures (e.g., connection refused, timeout, repeated 5xx responses).
+- [ ] Skip unhealthy proxies during endpoint acquisition.
+- [ ] Allow recovered proxies to re-enter rotation automatically.
+- [ ] Add logging for proxy health state transitions.
+
+---
+
+## TODO 2: Add Circuit Breaker for Proxy Endpoints
+
+### Description
+Implement a circuit breaker for each proxy endpoint to prevent continuously sending requests to failing proxies. When a proxy exceeds a configurable failure threshold, temporarily remove it from rotation. After a configurable cooldown period, allow a trial request to determine whether the proxy has recovered.
+
+### Acceptance Criteria
+- [ ] Maintain a circuit breaker for every endpoint.
+- [ ] Open the circuit after a configurable number of consecutive failures.
+- [ ] Exclude endpoints with an open circuit from `acquireEndpoint()`.
+- [ ] Support configurable failure threshold and cooldown duration.
+- [ ] Allow a single trial request after the cooldown expires.
+- [ ] Close the circuit after a successful trial request.
+- [ ] Reopen the circuit if the trial request fails.
+- [ ] Log circuit state transitions (closed → open → half-open → closed).

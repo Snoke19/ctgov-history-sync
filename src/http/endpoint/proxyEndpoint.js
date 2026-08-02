@@ -37,11 +37,6 @@ export class ProxyEndpoint extends Endpoint {
         return this.#handle;
     }
 
-    /**
-     * Closes the underlying ProxyAgent and its connection pool.
-     *
-     * @returns {Promise<void>}
-     */
     close() {
         return this.#handle.dispatcher.close();
     }

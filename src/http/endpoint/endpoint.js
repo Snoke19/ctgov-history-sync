@@ -29,21 +29,10 @@ export class Endpoint {
             : 0;
     }
 
-    /**
-     * @returns {{url: string, dispatcher: *}}
-     */
     getHandle() {
         throw new TypeError('Abstract method getHandle() must be implemented');
     }
 
-    /**
-     * Releases any resources held by this endpoint.
-     *
-     * Concrete subclasses must implement this method.
-     * Endpoints without resources should implement it as a no-op.
-     *
-     * @returns {Promise<void>}
-     */
     close() {
         throw new TypeError('Abstract method close() must be implemented');
     }

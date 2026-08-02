@@ -6,10 +6,7 @@ export class DirectEndpoint extends Endpoint {
     constructor(url = 'direct', limiter = null) {
         super(url, limiter);
 
-        this.#handle = Object.freeze({
-            url,
-            dispatcher: undefined,
-        });
+        this.#handle = Object.freeze({url, dispatcher: undefined});
     }
 
     getHandle() {
@@ -17,9 +14,6 @@ export class DirectEndpoint extends Endpoint {
     }
 
     /**
-     * No-op: DirectEndpoint uses Node's default dispatcher which is managed
-     * globally and must not be closed here.
-     *
      * @returns {Promise<void>}
      */
     close() {

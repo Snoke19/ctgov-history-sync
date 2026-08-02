@@ -70,7 +70,13 @@ export async function parseJsonResponse(response,
         const text = await readErrorPreview(
             response,
             errorBodyPreviewLength,
-        ).catch(() => '');
+        ).catch((error) => {
+            logger.debug(
+                'Failed to read error preview: %s',
+                error.message,
+            );
+            return '';
+        });
 
         throw new TrialFetchError(
             url,

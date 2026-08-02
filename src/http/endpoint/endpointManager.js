@@ -115,12 +115,6 @@ export class EndpointManager {
         }
     }
 
-    /**
-     * Closes all endpoint dispatchers, releasing connection pools.
-     * Call this on process shutdown (SIGTERM/SIGINT) to avoid connection leaks.
-     *
-     * @returns {Promise<void>}
-     */
     async close() {
         await Promise.all(this.#endpoints.map((ep) => ep.close()));
         logger.info('Endpoint manager closed | Endpoints released: %d', this.#endpoints.length);
