@@ -186,6 +186,7 @@ describe('classifyError', () => {
     test('recognizes endpoint acquisition timeouts', () => {
         expect(classifyError(new EndpointAcquisitionTimeoutError())).toEqual({
             isTimeout: true,
+            isCancelled: false,
             reason: 'Endpoint acquisition timeout',
         });
     });
@@ -193,6 +194,7 @@ describe('classifyError', () => {
     test('recognizes request timeouts', () => {
         expect(classifyError(new TrialTimeoutError())).toEqual({
             isTimeout: true,
+            isCancelled: false,
             reason: 'Request timeout',
         });
     });
@@ -200,6 +202,7 @@ describe('classifyError', () => {
     test('classifies all other errors as transient', () => {
         expect(classifyError(new Error('network error'))).toEqual({
             isTimeout: false,
+            isCancelled: false,
             reason: 'Transient error',
         });
     });
@@ -207,6 +210,7 @@ describe('classifyError', () => {
     test('does not rely on the error message', () => {
         expect(classifyError(new Error('Endpoint acquisition timeout'))).toEqual({
             isTimeout: false,
+            isCancelled: false,
             reason: 'Transient error',
         });
     });
@@ -214,16 +218,19 @@ describe('classifyError', () => {
     test('handles non-Error values', () => {
         expect(classifyError(null)).toEqual({
             isTimeout: false,
+            isCancelled: false,
             reason: 'Transient error',
         });
 
         expect(classifyError(undefined)).toEqual({
             isTimeout: false,
+            isCancelled: false,
             reason: 'Transient error',
         });
 
         expect(classifyError({})).toEqual({
             isTimeout: false,
+            isCancelled: false,
             reason: 'Transient error',
         });
     });

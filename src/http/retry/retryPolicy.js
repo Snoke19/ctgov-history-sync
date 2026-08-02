@@ -126,10 +126,32 @@ export function buildRetryableError(url, response, proxyUrl) {
  */
 export function classifyError(error) {
     if (error instanceof EndpointAcquisitionTimeoutError) {
-        return { isTimeout: true, reason: 'Endpoint acquisition timeout' };
+        return {
+            isTimeout: true,
+            isCancelled: false,
+            reason: 'Endpoint acquisition timeout',
+        };
     }
+
     if (error instanceof TrialTimeoutError) {
-        return { isTimeout: true, reason: 'Request timeout' };
+        return {
+            isTimeout: true,
+            isCancelled: false,
+            reason: 'Request timeout',
+        };
     }
-    return { isTimeout: false, reason: 'Transient error' };
+
+    if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR') {
+        return {
+            isTimeout: false,
+            isCancelled: true,
+            reason: 'Request cancelled',
+        };
+    }
+
+    return {
+        isTimeout: false,
+        isCancelled: false,
+        reason: 'Transient error',
+    };
 }

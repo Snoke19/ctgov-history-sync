@@ -142,10 +142,14 @@ export function createHttpClient(options = {}) {
 
         // Step 3: Build the abort signal.
         // The internal timeout must not outlive the overall deadline.
-        const timeoutSignal = AbortSignal.timeout(remainingMs);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            controller.abort(new DOMException('Request timed out', 'TimeoutError'));
+        }, remainingMs);
+
         const signal = options.signal
-            ? AbortSignal.any([timeoutSignal, options.signal])
-            : timeoutSignal;
+            ? AbortSignal.any([controller.signal, options.signal])
+            : controller.signal;
 
         // Step 4: Assemble fetch options.
         const fetchOptions = {
@@ -197,6 +201,8 @@ export function createHttpClient(options = {}) {
             );
 
             throw transformed;
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 
@@ -241,14 +247,18 @@ export function createHttpClient(options = {}) {
                 reason: `Retryable HTTP ${response.status}`,
             };
         } catch (error) {
-            const {isTimeout, reason} = classifyError(error);
+            const {
+                isTimeout,
+                isCancelled,
+                reason,
+            } = classifyError(error);
 
             return {
                 success: false,
                 error,
                 retryable:
-                    (isTimeout && RETRY_ON_TIMEOUT) ||
-                    (Boolean(error.isTransient) && RETRY_ON_NETWORK_ERROR),
+                    !isCancelled &&
+                    ((isTimeout && RETRY_ON_TIMEOUT) || (Boolean(error.isTransient) && RETRY_ON_NETWORK_ERROR)),
                 reason,
             };
         }
@@ -405,8 +415,14 @@ function transformFetchError(error, {
     timeoutMs,
     signal,
 },) {
-    const isTimeout = error.name === 'TimeoutError';
-    const isExternalAbort = !isTimeout && signal?.aborted;
+    const isTimeout = error?.name === 'TimeoutError';
+    const isAbort =
+        error?.name === 'AbortError' ||
+        error?.code === 'ABORT_ERR';
+
+    const isExternalAbort =
+        isAbort &&
+        signal?.aborted;
 
     if (isTimeout) {
         const timeoutErr = new TrialTimeoutError(
