@@ -148,16 +148,29 @@ export function createHttpClient(options = {}) {
             : controller.signal;
 
         // Step 4: Assemble fetch options.
-        const fetchOptions = {
-            signal,
-            headers: {
+        const headers = options.headers
+            ? {
                 ...DEFAULT_HEADERS,
                 ...options.headers,
-            },
-            ...(options.method && {method: options.method}),
-            ...(options.body !== undefined && {body: options.body}),
-            ...(proxyEntry?.dispatcher && {dispatcher: proxyEntry.dispatcher}),
+            }
+            : DEFAULT_HEADERS;
+
+        const fetchOptions = {
+            signal,
+            headers,
         };
+
+        if (options.method) {
+            fetchOptions.method = options.method;
+        }
+
+        if (options.body !== undefined) {
+            fetchOptions.body = options.body;
+        }
+
+        if (proxyEntry?.dispatcher) {
+            fetchOptions.dispatcher = proxyEntry.dispatcher;
+        }
 
         const startTime = performance.now();
 
