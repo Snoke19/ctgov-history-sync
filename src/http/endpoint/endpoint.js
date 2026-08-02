@@ -17,12 +17,16 @@ export class Endpoint {
         return this.#url;
     }
 
-    tryAcquire() {
-        return this.#limiter ? this.#limiter.tryAcquire() : true;
+    tryAcquire(now) {
+        return this.#limiter ?
+            this.#limiter.tryAcquire(now)
+            : true;
     }
 
-    timeUntilToken() {
-        return this.#limiter ? this.#limiter.timeUntilToken() : 0;
+    timeUntilToken(now) {
+        return this.#limiter ?
+            this.#limiter.timeUntilToken(now)
+            : 0;
     }
 
     /**

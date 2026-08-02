@@ -1,11 +1,11 @@
 import {Limiter} from './limiter.js';
 
 export class UnlimitedLimiter extends Limiter {
-    tryAcquire() {
+    tryAcquire(now) {
         return true;
     }
 
-    timeUntilToken() {
+    timeUntilToken(now) {
         return 0;
     }
 }

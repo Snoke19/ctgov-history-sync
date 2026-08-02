@@ -91,18 +91,19 @@ export class EndpointManager {
         const deadline = now() + timeoutMs;
 
         while (true) {
+            const currentTime = now();
             let shortestWait = Infinity;
 
             for (let i = 0; i < this.#endpoints.length; i++) {
                 const index = (this.#nextIndex + i) % this.#endpoints.length;
                 const endpoint = this.#endpoints[index];
 
-                if (endpoint.tryAcquire()) {
+                if (endpoint.tryAcquire(currentTime)) {
                     this.#nextIndex = (index + 1) % this.#endpoints.length;
                     return endpoint.getHandle();
                 }
 
-                shortestWait = Math.min(shortestWait, endpoint.timeUntilToken());
+                shortestWait = Math.min(shortestWait, endpoint.timeUntilToken(currentTime));
             }
 
             const remaining = deadline - now();

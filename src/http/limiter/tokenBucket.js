@@ -84,8 +84,7 @@ export class TokenBucket extends Limiter {
         return Math.min(this.#windowMs, this.#creditMs + elapsed);
     }
 
-    tryAcquire() {
-        const now = this.#clock();
+    tryAcquire(now = this.#clock()) {
         const availableCreditMs = this.#availableCreditMs(now);
 
         if (availableCreditMs + FLOATING_POINT_TOLERANCE < this.#msPerToken) {
@@ -161,12 +160,16 @@ export class TokenBucket extends Limiter {
      *
      * @param {number} [count=1] - Required number of tokens. Must be a
      *   positive finite number.
+     * @param {number} [now] - Monotonic timestamp to compute availability at.
+     *   Defaults to the injected clock. Intended to allow callers that perform
+     *   multiple limiter operations in a single pass to reuse the same timestamp
+     *   and avoid redundant clock reads.
      * @returns {number} Milliseconds until enough tokens exist, or
      *   `Infinity` if `count` exceeds the bucket's capacity and can never
      *   be satisfied.
      * @throws {TypeError} If `count` is not a positive finite number.
      */
-    timeUntil(count = 1) {
+    timeUntil(count = 1, now = this.#clock()) {
         if (!Number.isFinite(count) || count <= 0) {
             throw new TypeError('count must be a positive finite number');
         }
@@ -175,7 +178,7 @@ export class TokenBucket extends Limiter {
             return Infinity;
         }
 
-        const availableCreditMs = this.#availableCreditMs(this.#clock());
+        const availableCreditMs = this.#availableCreditMs(now);
 
         // Full bucket: any count ≤ capacity is satisfied immediately.
         if (availableCreditMs >= this.#windowMs) {
@@ -193,8 +196,8 @@ export class TokenBucket extends Limiter {
         return Math.ceil(neededCreditMs - availableCreditMs);
     }
 
-    timeUntilToken() {
-        return this.timeUntil(1);
+    timeUntilToken(now = this.#clock()) {
+        return this.timeUntil(1, now);
     }
 
     /**
