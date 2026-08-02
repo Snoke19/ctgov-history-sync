@@ -90,9 +90,18 @@ function directInstances() {
     return [...DirectEndpointMock.mock.instances];
 }
 
+const samplePoolConfig = Object.freeze({
+    connections: 10,
+    maxConnections: 50,
+    pipelining: 1,
+    keepAliveTimeout: 4_000,
+    headersTimeout: 30_000,
+    bodyTimeout: 30_000,
+    connectTimeout: 5_000,
+});
+
 describe('EndpointManager', () => {
     beforeEach(() => {
-        // mockAcquireTimeout = 30000;
         currentTime = 0;
         jest.clearAllMocks();
     });
@@ -127,6 +136,7 @@ describe('EndpointManager', () => {
                     proxyUrls: '',
                     useRateLimit: false,
                     acquireTimeout: 1000,
+                    poolConfig: samplePoolConfig,
                 });
             }).toThrow(MockConfigurationError);
 
@@ -158,11 +168,27 @@ describe('EndpointManager', () => {
                     proxyUrls: '',
                     useRateLimit: false,
                     acquireTimeout: 1000,
+                    poolConfig: samplePoolConfig,
                 });
             }).toThrow(MockConfigurationError);
 
             expect(ProxyEndpointMock).not.toHaveBeenCalled();
             expect(DirectEndpointMock).not.toHaveBeenCalled();
+        });
+
+        test('throws when useProxy is enabled but poolConfig is not provided', async () => {
+            const EndpointManager = await loadEndpointManager();
+
+            expect(() => {
+                new EndpointManager({
+                    useProxy: true,
+                    proxyUrls: 'http://u:p@1.2.3.4:80',
+                    useRateLimit: false,
+                    acquireTimeout: 1000,
+                });
+            }).toThrow(MockConfigurationError);
+
+            expect(ProxyEndpointMock).not.toHaveBeenCalled();
         });
 
         test('creates one ProxyEndpoint per valid, comma-separated proxy URL', async () => {
@@ -171,7 +197,8 @@ describe('EndpointManager', () => {
                 proxyUrls: 'http://u1:p1@1.2.3.4:8080,http://u2:p2@5.6.7.8:8081',
                 useProxy: true,
                 useRateLimit: false,
-                acquireTimeout: 1000
+                acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
 
             expect(ProxyEndpointMock).toHaveBeenCalledTimes(2);
@@ -179,11 +206,13 @@ describe('EndpointManager', () => {
                 1,
                 'http://u1:p1@1.2.3.4:8080',
                 expect.any(UnlimitedLimiterMock),
+                expect.objectContaining({poolConfig: samplePoolConfig}),
             );
             expect(ProxyEndpointMock).toHaveBeenNthCalledWith(
                 2,
                 'http://u2:p2@5.6.7.8:8081',
                 expect.any(UnlimitedLimiterMock),
+                expect.objectContaining({poolConfig: samplePoolConfig}),
             );
             expect(DirectEndpointMock).not.toHaveBeenCalled();
         });
@@ -196,14 +225,17 @@ describe('EndpointManager', () => {
                 proxyUrls: '  http://u:p@1.2.3.4:80 , http://u:p@5.6.7.8:81  ',
                 useRateLimit: false,
                 acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
 
             expect(ProxyEndpointMock).toHaveBeenNthCalledWith(
                 1, 'http://u:p@1.2.3.4:80', expect.any(UnlimitedLimiterMock),
+                expect.objectContaining({poolConfig: samplePoolConfig}),
             );
 
             expect(ProxyEndpointMock).toHaveBeenNthCalledWith(
                 2, 'http://u:p@5.6.7.8:81', expect.any(UnlimitedLimiterMock),
+                expect.objectContaining({poolConfig: samplePoolConfig}),
             );
 
             expect(DirectEndpointMock).not.toHaveBeenCalled();
@@ -216,6 +248,7 @@ describe('EndpointManager', () => {
                 proxyUrls: 'not-a-valid-url,http://u:p@1.2.3.4:80',
                 useRateLimit: false,
                 acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
 
             expect(mockLogger.warn).toHaveBeenCalledWith(
@@ -226,6 +259,7 @@ describe('EndpointManager', () => {
             expect(ProxyEndpointMock).toHaveBeenCalledWith(
                 'http://u:p@1.2.3.4:80',
                 expect.anything(),
+                expect.objectContaining({poolConfig: samplePoolConfig}),
             );
         });
 
@@ -238,6 +272,7 @@ describe('EndpointManager', () => {
                     proxyUrls: 'garbage,also-garbage',
                     useRateLimit: false,
                     acquireTimeout: 1000,
+                    poolConfig: samplePoolConfig,
                 });
             }).toThrow(MockConfigurationError);
 
@@ -263,6 +298,7 @@ describe('EndpointManager', () => {
                 proxyUrls: 'garbage,http://u:p@1.2.3.4:80',
                 useRateLimit: false,
                 acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
 
             expect(mockLogger.warn).toHaveBeenCalledWith(
@@ -281,6 +317,7 @@ describe('EndpointManager', () => {
                 proxyUrls: 'http://u:p@1.2.3.4:80,http://u:p@5.6.7.8:81,http://u:p@9.9.9.9:82',
                 useRateLimit: false,
                 acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
 
             expect(mockLogger.info).toHaveBeenCalledWith(
@@ -301,6 +338,7 @@ describe('EndpointManager', () => {
                     proxyUrls,
                     useRateLimit: false,
                     acquireTimeout: 1000,
+                    poolConfig: samplePoolConfig,
                 });
 
                 expect(ProxyEndpointMock).toHaveBeenCalledTimes(1);
@@ -323,6 +361,7 @@ describe('EndpointManager', () => {
                         proxyUrls,
                         useRateLimit: false,
                         acquireTimeout: 1000,
+                        poolConfig: samplePoolConfig,
                     });
                 }).toThrow(
                     'useProxy is enabled, but no valid proxy URLs were configured.',
@@ -338,6 +377,7 @@ describe('EndpointManager', () => {
                         proxyUrls: '',
                         useRateLimit: false,
                         acquireTimeout: 1000,
+                        poolConfig: samplePoolConfig,
                     });
                 }).toThrow(
                     'proxyUrls must be a non-empty string when useProxy is enabled.',
@@ -354,6 +394,7 @@ describe('EndpointManager', () => {
                 proxyUrls: 'http://u:p@1.2.3.4:80,http://u:p@5.6.7.8:81',
                 useRateLimit: false,
                 acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
 
             expect(UnlimitedLimiterMock).toHaveBeenCalledTimes(2);
@@ -369,6 +410,7 @@ describe('EndpointManager', () => {
                 rateLimitCapacity: 40,
                 rateLimitWindow: 60000,
                 acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
 
             expect(TokenBucketMock).toHaveBeenCalledTimes(2);
@@ -386,6 +428,7 @@ describe('EndpointManager', () => {
                 rateLimitCapacity: 10,
                 rateLimitWindow: 1000,
                 acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
 
             const [first, second] = TokenBucketMock.mock.instances;
@@ -401,6 +444,7 @@ describe('EndpointManager', () => {
                 proxyUrls: 'http://u:p@1.2.3.4:80,http://u:p@5.6.7.8:81',
                 useRateLimit: false,
                 acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
             const [endpoint] = proxyInstances();
 
@@ -421,6 +465,7 @@ describe('EndpointManager', () => {
                 proxyUrls: 'http://u:p@1.1.1.1:80,http://u:p@2.2.2.2:80,http://u:p@3.3.3.3:80',
                 useRateLimit: false,
                 acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
 
             const [e0, e1, e2] = proxyInstances();
@@ -447,6 +492,7 @@ describe('EndpointManager', () => {
                 proxyUrls: 'http://u:p@1.1.1.1:80,http://u:p@2.2.2.2:80,http://u:p@3.3.3.3:80',
                 useRateLimit: false,
                 acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
             const [e0, e1, e2] = proxyInstances();
 
@@ -474,6 +520,7 @@ describe('EndpointManager', () => {
                 proxyUrls: 'http://u:p@1.1.1.1:80,http://u:p@2.2.2.2:80',
                 useRateLimit: false,
                 acquireTimeout: 1000,
+                poolConfig: samplePoolConfig,
             });
             const [e0, e1] = proxyInstances();
 
@@ -506,6 +553,7 @@ describe('EndpointManager', () => {
                 proxyUrls: 'http://u:p@1.1.1.1:80,http://u:p@2.2.2.2:80',
                 useRateLimit: false,
                 acquireTimeout: 60,
+                poolConfig: samplePoolConfig,
             });
 
             const [e0, e1] = proxyInstances();
@@ -538,6 +586,7 @@ describe('EndpointManager', () => {
                 proxyUrls: 'http://u:p@1.1.1.1:80,http://u:p@2.2.2.2:80',
                 useRateLimit: false,
                 acquireTimeout: 60,
+                poolConfig: samplePoolConfig,
             });
             const [e0, e1] = proxyInstances();
 
@@ -568,6 +617,7 @@ describe('EndpointManager', () => {
                 proxyUrls: 'http://u:p@1.1.1.1:80,http://u:p@2.2.2.2:80',
                 useRateLimit: false,
                 acquireTimeout: 60,
+                poolConfig: samplePoolConfig,
             });
 
             const [proxy] = proxyInstances();

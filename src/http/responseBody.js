@@ -51,6 +51,7 @@ export async function parseJsonResponse(response, url, {allow404 = false} = {}) 
     }
 
     if (response.status === 204) {
+        await drainBody(response);
         return null;
     }
 

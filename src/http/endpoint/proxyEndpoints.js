@@ -21,14 +21,19 @@ const PROXY_URL_REGEX = /^(https?):\/\/([^:@/]+):([^:@/]+)@([^:@/]+):(\d+)$/;
  *
  * @param {string} proxyUrls
  * @param {() => (TokenBucket|UnlimitedLimiter)} createLimiter
+ * @param {object} [options]
+ * @param {number} [options.concurrency] - Global CONCURRENCY, used to size each
+ *   proxy's connection pool relative to the number of valid proxies.
+ * @param {object} [options.poolConfig] - PROXY_POOL_CONFIG (connections, maxConnections,
+ *   pipelining, keepAliveTimeout, headersTimeout, bodyTimeout, connectTimeout).
  * @returns {ProxyEndpoint[]}
  */
-export function createProxyEndpoints(proxyUrls, createLimiter) {
-    const endpoints = [];
-
+export function createProxyEndpoints(proxyUrls, createLimiter, {concurrency, poolConfig} = {}) {
     if (!proxyUrls) {
-        return endpoints;
+        return [];
     }
+
+    const validUrls = [];
 
     for (const raw of String(proxyUrls).split(',')) {
         const url = raw.trim();
@@ -38,8 +43,13 @@ export function createProxyEndpoints(proxyUrls, createLimiter) {
             continue;
         }
 
-        endpoints.push(new ProxyEndpoint(url, createLimiter()));
+        validUrls.push(url);
     }
 
-    return endpoints;
+    const proxyCount = validUrls.length;
+
+    return validUrls.map(
+        (url) =>
+            new ProxyEndpoint(url, createLimiter(), {proxyCount, concurrency, poolConfig}),
+    );
 }

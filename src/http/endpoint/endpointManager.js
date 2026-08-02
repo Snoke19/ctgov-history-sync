@@ -21,7 +21,9 @@ export class EndpointManager {
                     useRateLimit = true,
                     rateLimitCapacity,
                     rateLimitWindow,
-                    acquireTimeout
+                    acquireTimeout,
+                    concurrency,
+                    poolConfig,
                 }) {
 
         assertPositiveInt(acquireTimeout, 'acquireTimeout');
@@ -42,7 +44,11 @@ export class EndpointManager {
                 throw new ConfigurationError('proxyUrls must be a non-empty string when useProxy is enabled.');
             }
 
-            const endpoints = createProxyEndpoints(proxyUrls, createLimiter);
+            if (!poolConfig) {
+                throw new ConfigurationError('poolConfig is required when useProxy is enabled.');
+            }
+
+            const endpoints = createProxyEndpoints(proxyUrls, createLimiter, {concurrency, poolConfig});
 
             if (endpoints.length === 0) {
                 throw new ConfigurationError('useProxy is enabled, but no valid proxy URLs were configured.');
