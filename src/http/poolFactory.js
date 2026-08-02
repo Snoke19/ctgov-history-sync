@@ -1,19 +1,19 @@
 import {Pool} from 'undici';
 import {
-    POOL_BODY_TIMEOUT,
-    POOL_CONNECTIONS,
-    POOL_HEADERS_TIMEOUT,
-    POOL_KEEP_ALIVE_TIMEOUT,
-    POOL_PIPELINING,
+    PROXY_POOL_BODY_TIMEOUT,
+    PROXY_POOL_CONNECTIONS,
+    PROXY_POOL_HEADERS_TIMEOUT,
+    PROXY_POOL_KEEP_ALIVE_TIMEOUT,
+    PROXY_POOL_PIPELINING,
 } from '../config/config.js';
 
 export const poolFactory = (url, opts) => {
     return new Pool(url, {
         ...opts,
-        connections: POOL_CONNECTIONS,
-        pipelining: POOL_PIPELINING,
-        keepAliveTimeout: POOL_KEEP_ALIVE_TIMEOUT,
-        headersTimeout: POOL_HEADERS_TIMEOUT,
-        bodyTimeout: POOL_BODY_TIMEOUT,
+        connections: PROXY_POOL_CONNECTIONS,
+        pipelining: PROXY_POOL_PIPELINING,
+        keepAliveTimeout: PROXY_POOL_KEEP_ALIVE_TIMEOUT,
+        headersTimeout: PROXY_POOL_HEADERS_TIMEOUT,
+        bodyTimeout: PROXY_POOL_BODY_TIMEOUT,
     });
 };

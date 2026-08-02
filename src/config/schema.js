@@ -28,11 +28,11 @@ export const RETRY_ON_NETWORK_ERROR = env.bool('RETRY_ON_NETWORK_ERROR', default
 // proxy
 // ---------------------------------------------------------------------------
 export const PROXY_URLS = env.str('PROXY_URLS', defaults.PROXY_URLS);
-export const POOL_CONNECTIONS = env.int('PROXY_POOL_CONNECTIONS', defaults.POOL_CONNECTIONS);
-export const POOL_PIPELINING = env.int('PROXY_POOL_PIPELINING', defaults.POOL_PIPELINING);
-export const POOL_KEEP_ALIVE_TIMEOUT = env.int('PROXY_POOL_KEEP_ALIVE_TIMEOUT_MS', defaults.POOL_KEEP_ALIVE_TIMEOUT);
-export const POOL_HEADERS_TIMEOUT = env.int('PROXY_POOL_HEADERS_TIMEOUT_MS', defaults.POOL_HEADERS_TIMEOUT);
-export const POOL_BODY_TIMEOUT = env.int('PROXY_POOL_BODY_TIMEOUT_MS', defaults.POOL_BODY_TIMEOUT);
+export const PROXY_POOL_CONNECTIONS = env.int('PROXY_POOL_CONNECTIONS', defaults.PROXY_POOL_CONNECTIONS);
+export const PROXY_POOL_PIPELINING = env.int('PROXY_POOL_PIPELINING', defaults.PROXY_POOL_PIPELINING);
+export const PROXY_POOL_KEEP_ALIVE_TIMEOUT = env.int('PROXY_POOL_KEEP_ALIVE_TIMEOUT_MS', defaults.PROXY_POOL_KEEP_ALIVE_TIMEOUT);
+export const PROXY_POOL_HEADERS_TIMEOUT = env.int('PROXY_POOL_HEADERS_TIMEOUT_MS', defaults.PROXY_POOL_HEADERS_TIMEOUT);
+export const PROXY_POOL_BODY_TIMEOUT = env.int('PROXY_POOL_BODY_TIMEOUT_MS', defaults.PROXY_POOL_BODY_TIMEOUT);
 
 // ---------------------------------------------------------------------------
 // rateLimit
