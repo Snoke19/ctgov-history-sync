@@ -105,6 +105,7 @@ export function createHttpClient(options = {}) {
      * @param {string} [options.method='GET'] - HTTP method.
      * @param {BodyInit} [options.body] - Request body.
      * @param {number} [options.timeoutMs] - Total time budget for proxy
+     * @param {number} [options.deadline] - Absolute request deadline in milliseconds since the Unix epoch. Internal use only.
      *   acquisition + fetch. Defaults to FETCH_TIMEOUT_MS.
      * @param {object} [options.headers] - Additional headers merged with defaults.
      * @param {AbortSignal} [options.signal] - External cancellation signal.
@@ -115,37 +116,32 @@ export function createHttpClient(options = {}) {
     async function executeFetch(url, options = {}) {
         // Total time budget for the entire operation (acquire + fetch).
         const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
-        const deadline = Date.now() + timeoutMs;
+        const deadline = options.deadline ?? (Date.now() + timeoutMs);
 
         // Step 1: Acquire a rate-limited proxy dispatcher.
-        // This may wait if the proxy's TokenBucket is empty.
         let proxyEntry;
         try {
-            proxyEntry = await endpointManager.acquireEndpoint(timeoutMs);
+            const remainingBeforeAcquire = getRemainingTime(deadline, url, timeoutMs);
+            proxyEntry = await endpointManager.acquireEndpoint(remainingBeforeAcquire);
         } catch (error) {
-            // Acquisition failures (every proxy busy/rate-limited) previously
-            // vanished silently — only the fetch step below was logged.
-            logger.warn('Endpoint acquisition failed | URL: %s | Error: %s', url, error.message);
+            logger.warn(
+                'Endpoint acquisition failed | URL: %s | Error: %s',
+                url,
+                error.message,
+            );
             throw error;
         }
 
         const proxyUrl = proxyEntry?.url ?? 'direct';
 
-        // Step 2: Calculate how much time is left for the actual HTTP request.
-        const remainingMs = deadline - Date.now();
-        if (remainingMs <= 0) {
-            // Proxy acquisition consumed the entire budget.
-            throw new EndpointAcquisitionTimeoutError(timeoutMs, endpointManager.endpointCount, {
-                budgetExhausted: true,
-            });
-        }
+        // Step 2: Recalculate remaining time after acquisition.
+        const remainingBeforeFetch = getRemainingTime(deadline, url, timeoutMs);
 
         // Step 3: Build the abort signal.
-        // The internal timeout must not outlive the overall deadline.
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
             controller.abort(new DOMException('Request timed out', 'TimeoutError'));
-        }, remainingMs);
+        }, remainingBeforeFetch);
 
         const signal = options.signal
             ? AbortSignal.any([controller.signal, options.signal])
@@ -154,7 +150,10 @@ export function createHttpClient(options = {}) {
         // Step 4: Assemble fetch options.
         const fetchOptions = {
             signal,
-            headers: {...DEFAULT_HEADERS, ...options.headers},
+            headers: {
+                ...DEFAULT_HEADERS,
+                ...options.headers,
+            },
             ...(options.method && {method: options.method}),
             ...(options.body !== undefined && {body: options.body}),
             ...(proxyEntry?.dispatcher && {dispatcher: proxyEntry.dispatcher}),
@@ -162,7 +161,7 @@ export function createHttpClient(options = {}) {
 
         const startTime = performance.now();
 
-        // Step 5: Execute and classify the outcome.
+        // Step 5: Execute request.
         try {
             const response = await fetch(url, fetchOptions);
             const durationMs = Math.round(performance.now() - startTime);
@@ -182,7 +181,7 @@ export function createHttpClient(options = {}) {
             const transformed = transformFetchError(error, {
                 url,
                 proxyUrl,
-                remainingMs,
+                remainingMs: remainingBeforeFetch,
                 timeoutMs,
                 signal: options.signal,
             });
@@ -296,12 +295,10 @@ export function createHttpClient(options = {}) {
         const deadline = Date.now() + timeoutMs;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            // Recalculate the remaining budget before EVERY attempt.
-            const remainingMs = getRemainingTime(deadline, url, timeoutMs);
-
             const outcome = await attemptFetch(url, {
                 ...options,
-                timeoutMs: remainingMs,
+                timeoutMs,
+                deadline,
             });
 
             if (outcome.success) {
@@ -408,13 +405,14 @@ export function createHttpClient(options = {}) {
     return {fetchJson, close};
 }
 
-function transformFetchError(error, {
-    url,
-    proxyUrl,
-    remainingMs,
-    timeoutMs,
-    signal,
-},) {
+function transformFetchError(error,
+                             {
+                                 url,
+                                 proxyUrl,
+                                 remainingMs,
+                                 timeoutMs,
+                                 signal,
+                             }) {
     const isTimeout = error?.name === 'TimeoutError';
     const isAbort =
         error?.name === 'AbortError' ||

@@ -161,7 +161,8 @@ describe('fetchJson', () => {
             (err) => {
                 assert.equal(err.name, 'TrialTimeoutError');
                 assert.equal(err.url, `${ORIGIN}/slow`);
-                assert.equal(err.timeoutMs, 20);
+                assert.equal(err.totalBudgetMs, 20);
+                assert.ok(err.timeoutMs <= err.totalBudgetMs);
                 return true;
             },
         );
