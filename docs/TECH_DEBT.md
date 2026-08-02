@@ -95,3 +95,24 @@ Use standard task-pool patterns where workers pull work from a shared array or q
 ### Worth Added Complexity?
 
 **YES.** Replacing custom `Promise.race()` loops with a queue worker pattern simplifies state tracking and prevents V8 microtask bloat.
+
+---
+
+## Issue 6: Complete Absence of Proxy Circuit Breakers & Health Tracking
+
+**File:**  
+`endpointManager.js` & `proxyEndpoint.js`
+
+**Severity:** CRITICAL
+
+**Why It Matters:**  
+The system rotates requests round-robin across proxy endpoints, but has zero health tracking or circuit breaking. If 1 out of 10 proxies dies, crashes, or returns 502 Bad Gateway / 407 Proxy Auth Required, EndpointManager continues sending 10% of total traffic to that dead proxy forever.
+
+**Real Production Impact:**  
+A single dead proxy forces 10% of requests into expensive retry loops with exponential backoffs, causing severe overall throughput degradation and high error rates. If 50% of proxies degrade, the crawler effectively halts.
+
+**Suggested Solution:**  
+Implement a lightweight circuit breaker / backoff status per proxy. If an endpoint encounters consecutive network/5xx errors, temporarily mark it offline (e.g., 30s cool-down) and skip it during round-robin selection.
+
+**Worth Added Complexity?**  
+YES (Critical for Rotating Proxies). Rotating proxy pools in production frequently contain dead or throttled nodes.
