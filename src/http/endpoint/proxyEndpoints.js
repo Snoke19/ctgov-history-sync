@@ -9,15 +9,32 @@ import {logger} from '../../config/logging.js';
  *   https://host:port
  *   https://user:password@host:port
  *
- * Validation uses Node.js's built-in URL parser. Only HTTP and HTTPS proxy
- * URLs with an explicit host and port are accepted. Credentials are optional
- * (IP-whitelisted proxies are supported).
- *
- * Note: usernames/passwords containing reserved characters (@, :, #, ?, /, [, ])
- * must be percent-encoded in the source URL (e.g. encodeURIComponent on each
- * part before building the string) — the URL parser will otherwise misparse
- * or reject the authority section.
+ * Validation uses Node.js's built-in URL parser for everything except the
+ * port. The URL spec nulls out the port at parse time whenever it equals
+ * the scheme's default (80 for http, 443 for https) — parsed.port and
+ * parsed.host are indistinguishable from a URL with no port at all in that
+ * case. So an explicit port is detected separately, from the raw string's
+ * authority segment, before parsing.
  */
+
+/**
+ * @param {string} url
+ * @returns {boolean}
+ */
+function hasExplicitPort(url) {
+    const schemeEnd = url.indexOf('://');
+    if (schemeEnd === -1) {
+        return false;
+    }
+
+    const afterScheme = url.slice(schemeEnd + 3);
+    const authority = afterScheme.split(/[/?#]/, 1)[0];
+    const hostPort = authority.includes('@')
+        ? authority.slice(authority.lastIndexOf('@') + 1)
+        : authority;
+
+    return /:\d+$/.test(hostPort);
+}
 
 /**
  * Creates ProxyEndpoint instances from a comma-separated list of proxy URLs.
@@ -25,9 +42,8 @@ import {logger} from '../../config/logging.js';
  * @param {string} proxyUrls
  * @param {() => (TokenBucket|UnlimitedLimiter)} createLimiter
  * @param {object} [options]
- * @param {number} [options.concurrency] - Global concurrency used to size each
- *   proxy's connection pool.
- * @param {object} [options.poolConfig] - Pool configuration.
+ * @param {number} [options.concurrency]
+ * @param {object} [options.poolConfig]
  * @returns {ProxyEndpoint[]}
  */
 export function createProxyEndpoints(proxyUrls, createLimiter, {concurrency, poolConfig} = {}) {
@@ -44,14 +60,10 @@ export function createProxyEndpoints(proxyUrls, createLimiter, {concurrency, poo
             const parsed = new URL(url);
 
             const validProtocol = parsed.protocol === 'http:' || parsed.protocol === 'https:';
-            const hasHost = Boolean(parsed.hostname);
-            // parsed.port is '' both when no port was given AND when the port
-            // equals the scheme's default (80/443) — so it can't be used alone
-            // to detect an explicit port. Comparing host vs hostname works in
-            // both cases: host includes the port, hostname never does.
-            const hasExplicitPort = parsed.host !== parsed.hostname;
+            const validHost = Boolean(parsed.hostname);
+            const validPort = hasExplicitPort(url);
 
-            if (!validProtocol || !hasHost || !hasExplicitPort) {
+            if (!validProtocol || !validHost || !validPort) {
                 logger.warn('[Proxy] Skipping invalid proxy URL: "%s"', url);
                 continue;
             }

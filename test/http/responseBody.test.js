@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, describe, expect, jest, test} from '@jest/globals';
 import {drainBody, parseJsonResponse} from '../../src/http/responseBody.js';
-import {ERROR_BODY_PREVIEW_LENGTH} from '../../src/config/config.js';
+import {ERROR_BODY_PREVIEW_LENGTH, RETRYABLE_STATUS_CODES} from '../../src/config/config.js';
 import {TrialFetchError} from '../../src/error/errors.js';
 import {logger} from '../../src/config/logging.js';
 
@@ -69,7 +69,10 @@ describe('responseBody.js', () => {
                     headers: { 'Content-Type': 'application/json' },
                 });
 
-                const result = await parseJsonResponse(response, TEST_URL);
+                const result = await parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                });
 
                 expect(result).toEqual(data);
             });
@@ -81,7 +84,10 @@ describe('responseBody.js', () => {
                     headers: { 'Content-Type': 'application/json' },
                 });
 
-                const result = await parseJsonResponse(response, TEST_URL);
+                const result = await parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                });
 
                 expect(result).toEqual(data);
             });
@@ -92,7 +98,10 @@ describe('responseBody.js', () => {
                     headers: { 'Content-Type': 'application/json' },
                 });
 
-                await expect(parseJsonResponse(response, TEST_URL)).resolves.toEqual({ id: 1 });
+                await expect(parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                })).resolves.toEqual({ id: 1 });
             });
 
             test('handles empty JSON object body', async () => {
@@ -101,7 +110,10 @@ describe('responseBody.js', () => {
                     headers: { 'Content-Type': 'application/json' },
                 });
 
-                await expect(parseJsonResponse(response, TEST_URL)).resolves.toEqual({});
+                await expect(parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                })).resolves.toEqual({});
             });
 
             test('handles JSON array body', async () => {
@@ -111,7 +123,10 @@ describe('responseBody.js', () => {
                     headers: { 'Content-Type': 'application/json' },
                 });
 
-                const result = await parseJsonResponse(response, TEST_URL);
+                const result = await parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                });
 
                 expect(result).toEqual(data);
             });
@@ -124,7 +139,10 @@ describe('responseBody.js', () => {
                         status: 200,
                         headers: { 'Content-Type': 'application/json' },
                     });
-                    const result = await parseJsonResponse(response, TEST_URL);
+                    const result = await parseJsonResponse(response, TEST_URL, {
+                        errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                        retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                    });
 
                     expect(result).toEqual(value);
                 }
@@ -135,7 +153,10 @@ describe('responseBody.js', () => {
             test('returns null on 204 responses', async () => {
                 const response = new Response(null, { status: 204 });
 
-                await expect(parseJsonResponse(response, TEST_URL)).resolves.toBeNull();
+                await expect(parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                })).resolves.toBeNull();
             });
 
             test('drains body stream on 204 responses when body is present', async () => {
@@ -146,7 +167,10 @@ describe('responseBody.js', () => {
                     },
                 };
 
-                const result = await parseJsonResponse(response, TEST_URL);
+                const result = await parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                });
 
                 expect(result).toBeNull();
                 expect(response.body.cancel).toHaveBeenCalledTimes(1);
@@ -157,7 +181,11 @@ describe('responseBody.js', () => {
             test('returns null on 404 when allow404 is true', async () => {
                 const response = new Response('Not Found', { status: 404 });
 
-                const result = await parseJsonResponse(response, TEST_URL, { allow404: true });
+                const result = await parseJsonResponse(response, TEST_URL, {
+                    allow404: true,
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                });
 
                 expect(result).toBeNull();
             });
@@ -166,7 +194,11 @@ describe('responseBody.js', () => {
                 const response = new Response('Not Found', { status: 404 });
                 const cancelSpy = jest.spyOn(response.body, 'cancel');
 
-                await parseJsonResponse(response, TEST_URL, { allow404: true });
+                await parseJsonResponse(response, TEST_URL, {
+                    allow404: true,
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                });
 
                 expect(cancelSpy).toHaveBeenCalledTimes(1);
             });
@@ -174,7 +206,11 @@ describe('responseBody.js', () => {
             test('logs debug message with allow404=true when enabled', async () => {
                 const response = new Response('Not Found', { status: 404 });
 
-                await parseJsonResponse(response, TEST_URL, { allow404: true });
+                await parseJsonResponse(response, TEST_URL, {
+                    allow404: true,
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                });
 
                 expect(debugSpy).toHaveBeenCalledWith(
                     'HTTP 404 on %s | allow404=%s',
@@ -186,7 +222,10 @@ describe('responseBody.js', () => {
             test('logs debug message with allow404=false when disabled', async () => {
                 const response = new Response('Not Found', { status: 404 });
 
-                await expect(parseJsonResponse(response, TEST_URL)).rejects.toBeInstanceOf(
+                await expect(parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                })).rejects.toBeInstanceOf(
                     TrialFetchError,
                 );
 
@@ -201,7 +240,11 @@ describe('responseBody.js', () => {
                 const response = new Response('Not Found', { status: 404 });
 
                 await expect(
-                    parseJsonResponse(response, TEST_URL, { allow404: false }),
+                    parseJsonResponse(response, TEST_URL, {
+                        allow404: false,
+                        errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                        retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                    }),
                 ).rejects.toMatchObject({
                     name: 'TrialFetchError',
                     status: 404,
@@ -216,7 +259,10 @@ describe('responseBody.js', () => {
             test('defaults allow404 to false when options parameter is omitted', async () => {
                 const response = new Response('Not Found', { status: 404 });
 
-                await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
+                await expect(parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                })).rejects.toMatchObject({
                     status: 404,
                     isTransient: false,
                 });
@@ -230,7 +276,10 @@ describe('responseBody.js', () => {
                     headers: { 'Content-Type': 'application/json' },
                 });
 
-                await parseJsonResponse(response, TEST_URL);
+                await parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                });
 
                 expect(warnSpy).not.toHaveBeenCalled();
             });
@@ -241,7 +290,10 @@ describe('responseBody.js', () => {
                     headers: { 'Content-Type': 'application/json; charset=utf-8' },
                 });
 
-                await parseJsonResponse(response, TEST_URL);
+                await parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                });
 
                 expect(warnSpy).not.toHaveBeenCalled();
             });
@@ -252,7 +304,10 @@ describe('responseBody.js', () => {
                     headers: { 'Content-Type': 'text/plain' },
                 });
 
-                await parseJsonResponse(response, TEST_URL);
+                await parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                });
 
                 expect(warnSpy).toHaveBeenCalledWith(
                     'Unexpected Content-Type: %s | %s',
@@ -269,7 +324,10 @@ describe('responseBody.js', () => {
                     json: async () => ({ id: 1 }),
                 };
 
-                const result = await parseJsonResponse(response, TEST_URL);
+                const result = await parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                });
 
                 expect(result).toEqual({ id: 1 });
                 expect(warnSpy).toHaveBeenCalledWith(
@@ -286,7 +344,10 @@ describe('responseBody.js', () => {
                 async (status) => {
                     const response = new Response('server error', { status });
 
-                    await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
+                    await expect(parseJsonResponse(response, TEST_URL, {
+                        errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                        retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                    })).rejects.toMatchObject({
                         name: 'TrialFetchError',
                         status,
                         isTransient: true,
@@ -303,7 +364,10 @@ describe('responseBody.js', () => {
                 async (status) => {
                     const response = new Response('client error', { status });
 
-                    await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
+                    await expect(parseJsonResponse(response, TEST_URL, {
+                        errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                        retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                    })).rejects.toMatchObject({
                         name: 'TrialFetchError',
                         status,
                         isTransient: false,
@@ -316,7 +380,10 @@ describe('responseBody.js', () => {
                 const longBody = 'x'.repeat(ERROR_BODY_PREVIEW_LENGTH + 100);
                 const response = new Response(longBody, { status: 500 });
 
-                const error = await parseJsonResponse(response, TEST_URL).catch((err) => err);
+                const error = await parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                }).catch((err) => err);
 
                 expect(error).toBeInstanceOf(TrialFetchError);
                 const preview = 'x'.repeat(ERROR_BODY_PREVIEW_LENGTH);
@@ -326,11 +393,20 @@ describe('responseBody.js', () => {
                 );
             });
 
-            test('falls back to empty string when response.text() fails/rejects', async () => {
+            test('falls back to empty string when the error body stream fails to read', async () => {
                 const response = new Response('error', { status: 500 });
-                response.text = () => Promise.reject(new Error('Stream read failed'));
 
-                const error = await parseJsonResponse(response, TEST_URL).catch((err) => err);
+                const originalGetReader = response.body.getReader.bind(response.body);
+                jest.spyOn(response.body, 'getReader').mockImplementation(() => {
+                    const reader = originalGetReader();
+                    jest.spyOn(reader, 'read').mockRejectedValue(new Error('Stream read failed'));
+                    return reader;
+                });
+
+                const error = await parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                }).catch((err) => err);
 
                 expect(error).toBeInstanceOf(TrialFetchError);
                 expect(error.status).toBe(500);
@@ -347,7 +423,10 @@ describe('responseBody.js', () => {
                     headers: { 'Content-Type': 'application/json' },
                 });
 
-                await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
+                await expect(parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                })).rejects.toMatchObject({
                     name: 'TrialFetchError',
                     status: 200,
                     isTransient: false,
@@ -361,7 +440,10 @@ describe('responseBody.js', () => {
             test('throws non-transient TrialFetchError on empty body with status 200', async () => {
                 const response = new Response(null, { status: 200 });
 
-                await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
+                await expect(parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                })).rejects.toMatchObject({
                     name: 'TrialFetchError',
                     status: 200,
                     isTransient: false,
@@ -374,12 +456,50 @@ describe('responseBody.js', () => {
             test('throws non-transient TrialFetchError on plain text body with status 200', async () => {
                 const response = new Response('plain text string', { status: 200 });
 
-                await expect(parseJsonResponse(response, TEST_URL)).rejects.toMatchObject({
+                await expect(parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+                })).rejects.toMatchObject({
                     name: 'TrialFetchError',
                     status: 200,
                     isTransient: false,
                 });
             });
+        });
+    });
+
+    test('throws TypeError when retryableStatusCodes is omitted', async () => {
+        const response = new Response('server error', { status: 500 });
+
+        await expect(
+            parseJsonResponse(response, TEST_URL, {
+                errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+            }),
+        ).rejects.toThrow(TypeError);
+    });
+
+    test('throws TypeError when retryableStatusCodes is omitted, even for a 2xx response', async () => {
+        const response = new Response('{"ok":true}', {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        await expect(
+            parseJsonResponse(response, TEST_URL, {
+                errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+            }),
+        ).rejects.toThrow(TypeError);
+    });
+
+    describe('Required configuration validation', () => {
+        test('throws TypeError when retryableStatusCodes is omitted', async () => {
+            const response = new Response('server error', { status: 500 });
+
+            await expect(
+                parseJsonResponse(response, TEST_URL, {
+                    errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                }),
+            ).rejects.toThrow(TypeError);
         });
     });
 });

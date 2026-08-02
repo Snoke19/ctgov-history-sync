@@ -1,4 +1,3 @@
-import {ERROR_BODY_PREVIEW_LENGTH, RETRYABLE_STATUS_CODES} from '../config/config.js';
 import {logger} from '../config/logging.js';
 import {TrialFetchError} from '../error/errors.js';
 
@@ -17,7 +16,7 @@ export async function drainBody(response) {
     try {
         await response.body.cancel();
     } catch {
-        // Already closed or errored — safe to ignore.
+        // Already closed or errored - safe to ignore.
     }
 }
 
@@ -26,9 +25,9 @@ export async function drainBody(response) {
  *
  * Special cases:
  *   - 404 + allow404=true → returns null.
- *   - 204 No Content     → returns null.
- *   - Non-2xx status     → throws TrialFetchError with body preview.
- *   - Invalid JSON       → throws TrialFetchError.
+ *   - 204 No Content      → returns null.
+ *   - Non-2xx status      → throws TrialFetchError with body preview.
+ *   - Invalid JSON        → throws TrialFetchError.
  *
  * The response body is always consumed or canceled before the response
  * is discarded, satisfying undici connection-pool requirements.
@@ -37,10 +36,22 @@ export async function drainBody(response) {
  * @param {string} url
  * @param {object} [opts={}]
  * @param {boolean} [opts.allow404=false]
+ * @param {number} opts.errorBodyPreviewLength
+ * @param {Set<number>} opts.retryableStatusCodes
  * @returns {Promise<object|null>}
  * @throws {TrialFetchError}
  */
-export async function parseJsonResponse(response, url, {allow404 = false} = {}) {
+export async function parseJsonResponse(response,
+                                        url,
+                                        {
+                                            allow404 = false,
+                                            errorBodyPreviewLength,
+                                            retryableStatusCodes,
+                                        }) {
+    if (!retryableStatusCodes) {
+        throw new TypeError('parseJsonResponse: retryableStatusCodes is required');
+    }
+
     if (response.status === 404) {
         logger.debug('HTTP 404 on %s | allow404=%s', url, allow404);
     }
@@ -56,15 +67,19 @@ export async function parseJsonResponse(response, url, {allow404 = false} = {}) 
     }
 
     if (!response.ok) {
-        const text = await response.text().catch(() => '');
+        const text = await readErrorPreview(
+            response,
+            errorBodyPreviewLength,
+        ).catch(() => '');
+
         throw new TrialFetchError(
             url,
             new Error(
                 `HTTP ${response.status}: ${response.statusText}. ` +
-                `Body: ${text.slice(0, ERROR_BODY_PREVIEW_LENGTH)}`,
+                `Body: ${text}`,
             ),
             response.status,
-            RETRYABLE_STATUS_CODES.has(response.status),
+            retryableStatusCodes.has(response.status),
         );
     }
 
@@ -86,4 +101,56 @@ export async function parseJsonResponse(response, url, {allow404 = false} = {}) 
             false,
         );
     }
+}
+
+/**
+ * Reads only the first N bytes from a response body.
+ * The remainder of the stream is cancelled so the connection
+ * can be cleaned up by undici.
+ *
+ * @param {Response} response
+ * @param {number} maxBytes
+ * @returns {Promise<string>}
+ */
+async function readErrorPreview(response, maxBytes) {
+    if (!response.body || maxBytes <= 0) {
+        return '';
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    let preview = '';
+    let bytesRead = 0;
+
+    try {
+        while (bytesRead < maxBytes) {
+            const {done, value} = await reader.read();
+
+            if (done) {
+                break;
+            }
+
+            const remaining = maxBytes - bytesRead;
+            const chunk = value.subarray(0, remaining);
+
+            preview += decoder.decode(chunk, {
+                stream: true,
+            });
+
+            bytesRead += chunk.length;
+        }
+
+        preview += decoder.decode();
+    } finally {
+        try {
+            await reader.cancel();
+        } catch {
+            // Ignore cancellation errors.
+        }
+
+        reader.releaseLock();
+    }
+
+    return preview;
 }

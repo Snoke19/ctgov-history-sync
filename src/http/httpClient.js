@@ -2,6 +2,7 @@ import {performance} from 'node:perf_hooks';
 import {fetch} from 'undici';
 import {
     DEFAULT_USER_AGENT,
+    ERROR_BODY_PREVIEW_LENGTH,
     FETCH_TIMEOUT_MS,
     MAX_RETRIES,
     RETRY_ON_NETWORK_ERROR,
@@ -374,7 +375,14 @@ export function createHttpClient(options = {}) {
      */
     async function fetchJson(url, {allow404 = false, ...requestOptions} = {}) {
         const response = await fetchWithRetry(url, requestOptions);
-        return parseJsonResponse(response, url, {allow404});
+        return parseJsonResponse(
+            response,
+            url,
+            {
+                allow404,
+                errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+                retryableStatusCodes: RETRYABLE_STATUS_CODES,
+            });
     }
 
     /**

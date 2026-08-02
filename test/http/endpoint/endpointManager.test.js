@@ -326,10 +326,15 @@ describe('EndpointManager', () => {
             );
         });
 
-        describe('PROXY_URLS regex validation', () => {
+        describe('PROXY_URLS validation (URL-based)', () => {
             test.each([
                 ['http://user:pass@127.0.0.1:8080'],
                 ['https://user:pass@proxy.example.com:3128'],
+                ['http://1.2.3.4:8080'],                        // no-auth (IP-whitelisted) proxy — now allowed
+                ['http://user:pass@proxy.example.com:80'],       // explicit default HTTP port — regression test for the port bug
+                ['https://user:pass@proxy.example.com:443'],     // explicit default HTTPS port — same bug, other scheme
+                ['http://user:pass@1.2.3.4:8080/'],              // trailing slash — URL parser normalizes pathname, no longer rejected
+                ['http://[::1]:8080'],                           // IPv6 host, no auth
             ])('accepts %s', async (proxyUrls) => {
                 const EndpointManager = await loadEndpointManager();
 
@@ -346,12 +351,11 @@ describe('EndpointManager', () => {
             });
 
             test.each([
-                'socks5://user:pass@1.2.3.4:1080',
-                'ftp://user:pass@1.2.3.4:21',
-                'http://1.2.3.4:8080',
-                'http://user:pass@1.2.3.4',
-                'http://user:pass@1.2.3.4:8080/',
-                'http://user:pass@1.2.3.4:abcd',
+                'socks5://user:pass@1.2.3.4:1080',   // wrong protocol
+                'ftp://user:pass@1.2.3.4:21',        // wrong protocol
+                'http://user:pass@1.2.3.4',          // missing explicit port
+                'http://user:pass@1.2.3.4:abcd',     // non-numeric port — URL constructor throws
+                'not-a-valid-url',                   // unparseable
             ])('rejects invalid proxy URL %s', async (proxyUrls) => {
                 const EndpointManager = await loadEndpointManager();
 
