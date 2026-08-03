@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it} from "@jest/globals";
-import {env, parseStatusCodes, validateConfig} from '../src/config/configValidation.js'
+import {env, parseStatusCodes, validateConfig} from '../src/config/configValidation.ts'
 
 describe('env.int', () => {
     afterEach(() => {

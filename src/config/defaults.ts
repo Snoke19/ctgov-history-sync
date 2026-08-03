@@ -1,4 +1,4 @@
-export const defaults = Object.freeze({
+export const defaults = {
     // api
     API_BASE_URL: '',
     API_DETAIL_URL: '',
@@ -32,4 +32,4 @@ export const defaults = Object.freeze({
     RATE_LIMIT_CAPACITY: 40,
     RATE_LIMIT_WINDOW: 60_000,
     ACQUIRE_TIMEOUT: 30_000,
-});
+} as const;

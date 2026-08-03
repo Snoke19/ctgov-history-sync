@@ -8,7 +8,7 @@ import {
     RETRY_ON_NETWORK_ERROR,
     RETRY_ON_TIMEOUT,
     RETRYABLE_STATUS_CODES,
-} from '../config/config.js';
+} from '../config/config.ts';
 import {logger} from '../config/logging.js';
 import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError} from '../error/errors.js';
 import {EndpointManager} from './endpoint/endpointManager.js';

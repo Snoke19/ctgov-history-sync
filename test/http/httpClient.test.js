@@ -1,7 +1,7 @@
 import {beforeEach, describe, test} from '@jest/globals';
 import assert from 'node:assert/strict';
 import {MockAgent, setGlobalDispatcher} from 'undici';
-import {RETRYABLE_STATUS_CODES} from '../../src/config/config.js';
+import {RETRYABLE_STATUS_CODES} from '../../src/config/config.ts';
 import {createHttpClient} from "../../src/http/httpClient.js";
 
 let mockAgent;
@@ -93,7 +93,7 @@ describe('parseRetryAfterHeader', () => {
     });
 
     test('falls back to the default when the header is unparseable', async () => {
-        const {DEFAULT_RETRY_AFTER_MS} = await import('../../src/config/config.js');
+        const {DEFAULT_RETRY_AFTER_MS} = await import('../../src/config/config.ts');
         const response = new Response(null, {headers: {'Retry-After': 'not-a-date'}});
         assert.equal(parseRetryAfterHeader(response), DEFAULT_RETRY_AFTER_MS);
     });

@@ -3,7 +3,7 @@ import {
     DEFAULT_RETRY_AFTER_MS,
     RETRY_AFTER_STATUS_CODES,
     RETRY_BASE_DELAY_MS,
-} from '../../config/config.js';
+} from '../../config/config.ts';
 import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError,} from '../../error/errors.ts';
 
 /**
