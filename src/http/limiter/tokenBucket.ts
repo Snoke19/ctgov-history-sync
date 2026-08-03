@@ -6,6 +6,8 @@ import {Limiter} from './limiter.js';
 // when comparing or converting token bucket credit.
 const FLOATING_POINT_TOLERANCE = 1e-9;
 
+type Clock = () => number;
+
 /**
  * Token bucket rate limiter using credit-milliseconds.
  *
@@ -28,26 +30,26 @@ const FLOATING_POINT_TOLERANCE = 1e-9;
  *   - Once fully drained, the next token takes ~1500 ms to refill.
  */
 export class TokenBucket extends Limiter {
-    #capacity;
-    #windowMs;
-    #msPerToken;
-    #creditMs;
-    #lastUpdate;
-    #clock;
+    private readonly capacity;
+    private readonly windowMs;
+    private readonly msPerToken;
+    private creditMs;
+    private lastUpdate;
+    private readonly clock: Clock;
 
     /**
-     * @param {number} capacity - Maximum tokens the bucket can hold. Must be
+     * @param capacity - Maximum tokens the bucket can hold. Must be
      *   a positive integer — fractional capacities can make `timeUntil`
      *   permanently unsatisfiable since acquisition always consumes whole
      *   tokens.
-     * @param {number} windowMs - Time window over which `capacity`
+     * @param windowMs - Time window over which `capacity`
      *   tokens are replenished, in milliseconds.
-     * @param {() => number} [now=performance.now] - Function returning a
+     * @param now - Function returning a
      *   monotonic timestamp in milliseconds. Intended primarily for testing.
      * @throws {TypeError} If `capacity` is not a positive integer, or
      *   `windowMs` is not a positive finite number.
      */
-    constructor(capacity: number, windowMs: number, now = () => performance.now()) {
+    constructor(capacity: number, windowMs: number, now: Clock = () => performance.now()) {
         super();
 
         if (!Number.isInteger(capacity) || capacity < 1) {
@@ -58,13 +60,13 @@ export class TokenBucket extends Limiter {
             throw new TypeError('windowMs must be a positive finite number');
         }
 
-        this.#capacity = capacity;
-        this.#windowMs = windowMs;
-        this.#msPerToken = windowMs / capacity;
-        this.#creditMs = windowMs; // starts full: capacity tokens' worth of credit
+        this.capacity = capacity;
+        this.windowMs = windowMs;
+        this.msPerToken = windowMs / capacity;
+        this.creditMs = windowMs; // starts full: capacity tokens' worth of credit
 
-        this.#clock = now;
-        this.#lastUpdate = this.#clock();
+        this.clock = now;
+        this.lastUpdate = this.clock();
     }
 
     /**
@@ -75,24 +77,24 @@ export class TokenBucket extends Limiter {
      * non-monotonic clock (e.g. in tests) can't drain credit by going
      * backwards. This is a pure function: it does not mutate state.
      *
-     * @param {number} [now] - Timestamp to compute availability at.
+     * @param now - Timestamp to compute availability at.
      *   Defaults to the injected clock.
-     * @returns {number} Current credit in milliseconds, range [0, windowMs].
+     * @returns Current credit in milliseconds, range [0, windowMs].
      */
-    #availableCreditMs(now = this.#clock()) {
-        const elapsed = Math.max(0, now - this.#lastUpdate);
-        return Math.min(this.#windowMs, this.#creditMs + elapsed);
+    #availableCreditMs(now: number = this.clock()): number {
+        const elapsed = Math.max(0, now - this.lastUpdate);
+        return Math.min(this.windowMs, this.creditMs + elapsed);
     }
 
-    tryAcquire(now = this.#clock()) {
+    tryAcquire(now: number = this.clock()): boolean {
         const availableCreditMs = this.#availableCreditMs(now);
 
-        if (availableCreditMs + FLOATING_POINT_TOLERANCE < this.#msPerToken) {
+        if (availableCreditMs + FLOATING_POINT_TOLERANCE < this.msPerToken) {
             return false;
         }
 
-        this.#creditMs = availableCreditMs - this.#msPerToken;
-        this.#lastUpdate = now;
+        this.creditMs = availableCreditMs - this.msPerToken;
+        this.lastUpdate = now;
         return true;
     }
 
@@ -104,88 +106,59 @@ export class TokenBucket extends Limiter {
      * does NOT mutate the bucket state. Use this for selection/sorting;
      * use `acquire()` to actually consume a token.
      *
-     * @returns {number} Floored token count (e.g. 3.7 → 3). Returns
+     * @returns Floored token count (e.g. 3.7 → 3). Returns
      *   `#capacity` when the bucket is exactly full, bypassing a
      *   floating-point division edge case.
      */
-    peekTokens() {
+    peekTokens(): number {
         const creditMs = this.#availableCreditMs();
 
         // Guard against floating-point undershoot when the bucket is exactly
         // full. `windowMs / msPerToken` should equal `capacity`, but IEEE-754
         // division can produce `2.9999999999999996` instead of `3`.
-        if (creditMs >= this.#windowMs) {
-            return this.#capacity;
+        if (creditMs >= this.windowMs) {
+            return this.capacity;
         }
 
         // Guard against floating-point undershoot. After subtracting msPerToken,
         // creditMs can be epsilon-smaller than the exact mathematical value,
         // causing floor() to undercount by 1.
-        const tokens = creditMs / this.#msPerToken;
+        const tokens = creditMs / this.msPerToken;
 
-        return Math.floor(Math.min(tokens + FLOATING_POINT_TOLERANCE, this.#capacity));
-    }
-
-    /**
-     * Timestamp of the last state update.
-     *
-     * Updated whenever a token is consumed. Combined with the stored credit,
-     * it allows the bucket to lazily compute the current number of available
-     * tokens without running a background refill task.
-     *
-     * @returns {number} Monotonic timestamp from the injected clock.
-     */
-    get lastUpdate() {
-        return this.#lastUpdate;
-    }
-
-    /**
-     * Maximum tokens this bucket can hold.
-     * @returns {number}
-     */
-    get capacity() {
-        return this.#capacity;
-    }
-
-    /**
-     * Refill window in milliseconds.
-     * @returns {number}
-     */
-    get windowMs() {
-        return this.#windowMs;
+        return Math.floor(Math.min(tokens + FLOATING_POINT_TOLERANCE, this.capacity));
     }
 
     /**
      * Returns the time (ms) until `count` tokens are available.
      *
-     * @param {number} [count=1] - Required number of tokens. Must be a
+     * @param count - Required number of tokens. Must be a
      *   positive finite number.
-     * @param {number} [now] - Monotonic timestamp to compute availability at.
+     * @param now - Monotonic timestamp to compute availability at.
      *   Defaults to the injected clock. Intended to allow callers that perform
      *   multiple limiter operations in a single pass to reuse the same timestamp
      *   and avoid redundant clock reads.
-     * @returns {number} Milliseconds until enough tokens exist, or
+     * @returns Milliseconds until enough tokens exist, or
      *   `Infinity` if `count` exceeds the bucket's capacity and can never
      *   be satisfied.
      * @throws {TypeError} If `count` is not a positive finite number.
      */
-    timeUntil(count = 1, now = this.#clock()) {
+    timeUntil(count = 1, now: number = this.clock()) {
         if (!Number.isFinite(count) || count <= 0) {
             throw new TypeError('count must be a positive finite number');
         }
 
-        if (count > this.#capacity) {
+        if (count > this.capacity) {
             return Infinity;
         }
 
         const availableCreditMs = this.#availableCreditMs(now);
 
         // Full bucket: any count ≤ capacity is satisfied immediately.
-        if (availableCreditMs >= this.#windowMs) {
+        if (availableCreditMs >= this.windowMs) {
             return 0;
         }
 
-        const neededCreditMs = count * this.#msPerToken;
+        const neededCreditMs = count * this.msPerToken;
 
         // FLOATING_POINT_EPSILON tolerance mirrors tryAcquire(), so timeUntil() and tryAcquire()
         // never disagree about whether a token is available right now.
@@ -196,7 +169,7 @@ export class TokenBucket extends Limiter {
         return Math.ceil(neededCreditMs - availableCreditMs);
     }
 
-    timeUntilToken(now = this.#clock()) {
+    timeUntilToken(now = this.clock()) {
         return this.timeUntil(1, now);
     }
 
@@ -222,26 +195,26 @@ export class TokenBucket extends Limiter {
      * needed and the rate is 1 token per 1500 ms, it sleeps 750 ms.
      * This minimizes unnecessary waiting under high concurrency.
      *
-     * @param {number} [timeoutMs=30000] - Maximum time to wait for a token.
+     * @param timeoutMs - Maximum time to wait for a token.
      *   Must be a non-negative finite number.
-     * @returns {Promise<void>} Resolves when a token is consumed.
+     * @returns Resolves when a token is consumed.
      * @throws {TypeError} If `timeoutMs` is not a non-negative finite number.
      * @throws {TokenBucketTimeoutError} If no token becomes available
      *   within `timeoutMs`.
      */
-    async acquire(timeoutMs = 30000) {
+    async acquire(timeoutMs = 30000): Promise<void> {
         if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
             throw new TypeError('timeoutMs must be a non-negative finite number');
         }
 
-        const deadline = this.#clock() + timeoutMs;
+        const deadline = this.clock() + timeoutMs;
 
         while (true) {
             if (this.tryAcquire()) {
                 return;
             }
 
-            const remaining = deadline - this.#clock();
+            const remaining = deadline - this.clock();
 
             if (remaining <= 0) {
                 throw new TokenBucketTimeoutError(timeoutMs);
