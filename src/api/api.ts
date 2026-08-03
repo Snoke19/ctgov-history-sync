@@ -1,7 +1,7 @@
 import {API_BASE_URL, API_DETAIL_URL} from '../config/config.js';
 import {TrialNotFoundError} from '../error/errors.js';
 import {UrlBuilder} from '../http/urlPrepare.js';
-import {validateNctId, validateSearchParams} from '../utils/validation.js';
+import {validateNctId} from '../utils/validation.js';
 import {FetchStudiesPageParams, FetchTrialDetailParams, StudiesPageResponse} from "./types.js";
 
 export interface FetchJsonOptions {
@@ -21,7 +21,6 @@ export interface ApiClient {
 export function createApiClient({fetchJson}: ApiClientDependencies): ApiClient {
 
     async function fetchStudiesPage(params: FetchStudiesPageParams = {}): Promise<StudiesPageResponse> {
-        validateSearchParams(params);
 
         const url = new UrlBuilder(API_BASE_URL)
             .queryParams(params)
@@ -33,7 +32,6 @@ export function createApiClient({fetchJson}: ApiClientDependencies): ApiClient {
 
     async function fetchTrialDetail(nctId: string, params: FetchTrialDetailParams = {}): Promise<unknown> {
         validateNctId(nctId);
-        validateSearchParams(params);
 
         const url = new UrlBuilder(API_DETAIL_URL)
             .path(nctId)

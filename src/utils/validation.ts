@@ -67,11 +67,6 @@ const PATTERNS = {
 
 export function validateNctId(value: string): void {
     trialAssertions.assertNonEmptyString(value, 'nctId');
-
-    if (!value.trim().toUpperCase().startsWith('NCT', 0)) {
-        trialAssertions.fail(`id must start with NCT prefix! id: "${value}"`)
-    }
-
     trialAssertions.assertPattern(
         value,
         PATTERNS.nctId,
@@ -79,44 +74,6 @@ export function validateNctId(value: string): void {
     );
 }
 
-export function validateGeoFilter(value: string, paramName = 'filter.geo'): void {
-    trialAssertions.assertFormat(
-        value,
-        PATTERNS.geo,
-        `Invalid ${paramName} format. Expected: distance(lat,lon,dist)[km|mi]. Got: "${value}"`,
-    );
-}
-
-export function validateGeoDecay(value: string): void {
-    trialAssertions.assertFormat(
-        value,
-        PATTERNS.geoDecay,
-        `Invalid geoDecay format. Expected: func:(gauss|exp|linear),scale:<dist><km|mi>,offset:<dist><km|mi>,decay:<number>. Got: "${value}"`,
-    );
-}
-
 export function validatePageSize(value: number): void {
     trialAssertions.assertInteger(value, 'pageSize', {min: 1});
-}
-
-export interface SearchParams {
-    pageSize?: number;
-    'filter.geo'?: string;
-    'postFilter.geo'?: string;
-    geoDecay?: string;
-
-    [key: string]: unknown;
-}
-
-const searchParamValidators: Record<string, (params: SearchParams) => void> = {
-    pageSize: (p) => validatePageSize(p.pageSize as number),
-    'filter.geo': (p) => validateGeoFilter(p['filter.geo'] as string, 'filter.geo'),
-    'postFilter.geo': (p) => validateGeoFilter(p['postFilter.geo'] as string, 'postFilter.geo'),
-    geoDecay: (p) => validateGeoDecay(p.geoDecay as string),
-};
-
-export function validateSearchParams(params: SearchParams): void {
-    for (const [key, validate] of Object.entries(searchParamValidators)) {
-        if (params[key] !== undefined) validate(params);
-    }
 }
