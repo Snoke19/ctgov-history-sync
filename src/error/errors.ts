@@ -58,6 +58,7 @@ export class TrialTimeoutError extends TrialError {
     readonly url: string;
     readonly timeoutMs: number;
     readonly totalBudgetMs: number | null;
+    proxyUrl: string | null = null;
 
     constructor(url: string, timeoutMs: number, {totalBudgetMs = null}: TrialTimeoutOptions = {}) {
         const budgetNote =

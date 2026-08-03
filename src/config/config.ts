@@ -36,7 +36,7 @@ export const PROXY_POOL_HEADERS_TIMEOUT = env.int('PROXY_POOL_HEADERS_TIMEOUT_MS
 export const PROXY_POOL_BODY_TIMEOUT = env.int('PROXY_POOL_BODY_TIMEOUT_MS', defaults.PROXY_POOL_BODY_TIMEOUT);
 export const PROXY_POOL_CONNECT_TIMEOUT = env.int('PROXY_POOL_CONNECT_TIMEOUT_MS', defaults.PROXY_POOL_CONNECT_TIMEOUT);
 
-export const PROXY_POOL_CONFIG = Object.freeze({
+export const PROXY_POOL_CONFIG: ProxyPoolConfig = Object.freeze({
     connections: PROXY_POOL_CONNECTIONS,
     maxConnections: MAX_POOL_CONNECTIONS,
     pipelining: PROXY_POOL_PIPELINING,
@@ -45,6 +45,16 @@ export const PROXY_POOL_CONFIG = Object.freeze({
     bodyTimeout: PROXY_POOL_BODY_TIMEOUT,
     connectTimeout: PROXY_POOL_CONNECT_TIMEOUT,
 });
+
+export interface ProxyPoolConfig {
+    readonly connections: number;
+    readonly maxConnections: number;
+    readonly pipelining: number;
+    readonly keepAliveTimeout: number;
+    readonly headersTimeout: number;
+    readonly bodyTimeout: number;
+    readonly connectTimeout: number;
+}
 
 // ---------------------------------------------------------------------------
 // rateLimit

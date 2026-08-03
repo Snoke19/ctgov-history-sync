@@ -1,14 +1,14 @@
-import {logger} from '../config/logging.ts';
-import {TrialFetchError} from '../error/errors.ts';
+import {logger} from '../config/logging.js';
+import {TrialFetchError} from '../error/errors.js';
+import {Response} from "undici";
 
-/**
- * Cancels an unused response body stream so undici can clean up
- * the underlying connection resources.
- *
- * @param {Response} response
- * @returns {Promise<void>}
- */
-export async function drainBody(response) {
+interface ParseJsonResponseOptions {
+    allow404?: boolean;
+    errorBodyPreviewLength: number;
+    retryableStatusCodes: ReadonlySet<number>;
+}
+
+export async function drainBody(response: Response): Promise<void> {
     if (!response?.body) {
         return;
     }
@@ -20,34 +20,11 @@ export async function drainBody(response) {
     }
 }
 
-/**
- * Consumes a Response body and parses it as JSON.
- *
- * Special cases:
- *   - 404 + allow404=true → returns null.
- *   - 204 No Content      → returns null.
- *   - Non-2xx status      → throws TrialFetchError with body preview.
- *   - Invalid JSON        → throws TrialFetchError.
- *
- * The response body is always consumed or canceled before the response
- * is discarded, satisfying undici connection-pool requirements.
- *
- * @param {Response} response
- * @param {string} url
- * @param {object} [opts={}]
- * @param {boolean} [opts.allow404=false]
- * @param {number} opts.errorBodyPreviewLength
- * @param {Set<number>} opts.retryableStatusCodes
- * @returns {Promise<object|null>}
- * @throws {TrialFetchError}
- */
-export async function parseJsonResponse(response,
-                                        url,
-                                        {
-                                            allow404 = false,
-                                            errorBodyPreviewLength,
-                                            retryableStatusCodes,
-                                        }) {
+export async function parseJsonResponse(response: Response,
+                                        url: string,
+                                        options: ParseJsonResponseOptions) {
+    const {allow404 = false, errorBodyPreviewLength, retryableStatusCodes} = options;
+
     if (!retryableStatusCodes) {
         throw new TypeError('parseJsonResponse: retryableStatusCodes is required');
     }
@@ -97,7 +74,7 @@ export async function parseJsonResponse(response,
 
     try {
         return await response.json();
-    } catch (error) {
+    } catch (error: any) {
         await drainBody(response);
 
         throw new TrialFetchError(
@@ -109,16 +86,7 @@ export async function parseJsonResponse(response,
     }
 }
 
-/**
- * Reads only the first N bytes from a response body.
- * The remainder of the stream is cancelled so the connection
- * can be cleaned up by undici.
- *
- * @param {Response} response
- * @param {number} maxBytes
- * @returns {Promise<string>}
- */
-async function readErrorPreview(response, maxBytes) {
+async function readErrorPreview(response: Response, maxBytes: number) {
     if (!response.body || maxBytes <= 0) {
         return '';
     }

@@ -107,8 +107,8 @@ nano .env  # or use your preferred editor
 # Run the scraper
 npm start
 
-# Or run with custom date range (modify src/index.js)
-nano src/index.js  # Edit DATE_RANGE variable
+# Or run with custom date range (modify src/index.ts)
+nano src/index.ts  # Edit DATE_RANGE variable
 npm start
 ```
 
@@ -177,15 +177,15 @@ PROXY_ACQUIRE_TIMEOUT_MS=30000
 # Start scraping with default date range
 npm start
 
-# With custom date range (modify in src/index.js)
+# With custom date range (modify in src/index.ts)
 # DATE_RANGE='AREA[StartDate]RANGE[2026-01-01,2026-12-31]'
 ```
 
 ### Programmatic Usage
 
 ```javascript
-import { createApiClient } from './src/api.js';
-import { createHttpClient } from './src/http/httpClient.js';
+import {createApiClient} from './api.ts';
+import {createHttpClient} from './httpClient.ts';
 
 const httpClient = createHttpClient({
     useProxy: true,
@@ -195,7 +195,7 @@ const httpClient = createHttpClient({
     rateLimitWindow: 60000,
 });
 
-const api = createApiClient({ httpClient });
+const api = createApiClient({httpClient});
 
 // Fetch a page of studies
 const studies = await api.fetchStudiesPage({
@@ -204,7 +204,7 @@ const studies = await api.fetchStudiesPage({
 });
 
 // Fetch a single trial's details
-const trial = await api.fetchTrialDetail('NCT12345678', { history: true });
+const trial = await api.fetchTrialDetail('NCT12345678', {history: true});
 ```
 
 ---

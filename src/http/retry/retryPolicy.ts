@@ -3,8 +3,9 @@ import {
     DEFAULT_RETRY_AFTER_MS,
     RETRY_AFTER_STATUS_CODES,
     RETRY_BASE_DELAY_MS,
-} from '../../config/config.ts';
-import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError,} from '../../error/errors.ts';
+} from '../../config/config.js';
+import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError,} from '../../error/errors.js';
+import {Response} from "undici";
 
 /**
  * HTTP methods considered safe to retry automatically.
@@ -24,7 +25,7 @@ const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
  *   built-in idempotency list. Use with caution.
  * @returns {boolean}
  */
-export function isIdempotent(method, override) {
+export function isIdempotent(method: string, override: boolean) {
     if (typeof override === 'boolean') return override;
     return IDEMPOTENT_METHODS.has(method.toUpperCase());
 }
@@ -45,7 +46,7 @@ export function isIdempotent(method, override) {
  *   server, in milliseconds. Takes precedence over calculated backoff.
  * @returns {number} Delay in milliseconds.
  */
-export function calculateBackoff(attempt, retryAfterMs = null) {
+export function calculateBackoff(attempt: number, retryAfterMs = null) {
     if (retryAfterMs !== null && retryAfterMs > 0) return retryAfterMs;
 
     const base = RETRY_BASE_DELAY_MS * 2 ** attempt;
@@ -66,7 +67,7 @@ export function calculateBackoff(attempt, retryAfterMs = null) {
  * @returns {number|null} Delay in milliseconds, or null if the header
  *   is absent.
  */
-export function parseRetryAfterHeader(response) {
+export function parseRetryAfterHeader(response: Response) {
     const raw = response.headers.get('Retry-After');
     if (!raw) return null;
 
@@ -95,7 +96,7 @@ export function parseRetryAfterHeader(response) {
  * @param {string} proxyUrl - The proxy that produced this response.
  * @returns {TrialFetchError}
  */
-export function buildRetryableError(url, response, proxyUrl) {
+export function buildRetryableError(url: string, response: Response, proxyUrl: string) {
     const retryAfterMs = RETRY_AFTER_STATUS_CODES.has(response.status)
         ? (parseRetryAfterHeader(response) ?? DEFAULT_RETRY_AFTER_MS)
         : null;
@@ -124,7 +125,7 @@ export function buildRetryableError(url, response, proxyUrl) {
  * @param {unknown} error
  * @returns {{isTimeout: boolean, reason: string}}
  */
-export function classifyError(error) {
+export function classifyError(error: any) {
     if (error instanceof EndpointAcquisitionTimeoutError) {
         return {
             isTimeout: true,

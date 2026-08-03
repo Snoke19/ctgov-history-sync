@@ -1,5 +1,6 @@
 import {ProxyEndpoint} from './proxyEndpoint.js';
 import {logger} from '../../config/logging.js';
+import {ProxyPoolConfig} from "../../config/config.js";
 
 /**
  * Supported formats:
@@ -16,19 +17,14 @@ import {logger} from '../../config/logging.js';
  * case. So an explicit port is detected separately, from the raw string's
  * authority segment, before parsing.
  */
-
-/**
- * @param {string} url
- * @returns {boolean}
- */
-function hasExplicitPort(url) {
+function hasExplicitPort(url: string): boolean {
     const schemeEnd = url.indexOf('://');
     if (schemeEnd === -1) {
         return false;
     }
 
     const afterScheme = url.slice(schemeEnd + 3);
-    const authority = afterScheme.split(/[/?#]/, 1)[0];
+    const authority = afterScheme.split(/[/?#]/, 1)[0] ?? '';
     const hostPort = authority.includes('@')
         ? authority.slice(authority.lastIndexOf('@') + 1)
         : authority;
@@ -36,12 +32,15 @@ function hasExplicitPort(url) {
     return /:\d+$/.test(hostPort);
 }
 
-export function createProxyEndpoints(proxyUrls, createLimiter, {concurrency, poolConfig} = {}) {
+export function createProxyEndpoints(proxyUrls: string,
+                                     createLimiter: Function,
+                                     concurrency: number,
+                                     poolConfig: ProxyPoolConfig) {
     if (!proxyUrls) {
         return [];
     }
 
-    const validUrls = [];
+    const validUrls: string[] = [];
 
     for (const raw of String(proxyUrls).split(',')) {
         const url = raw.trim();
@@ -67,7 +66,7 @@ export function createProxyEndpoints(proxyUrls, createLimiter, {concurrency, poo
     const proxyCount = validUrls.length;
 
     return validUrls.map(
-        (url) =>
+        (url): ProxyEndpoint =>
             new ProxyEndpoint(url, createLimiter(), {
                 proxyCount,
                 concurrency,

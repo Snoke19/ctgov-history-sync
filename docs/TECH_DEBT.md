@@ -43,7 +43,7 @@ Replace polling with an async waiter queue (FIFO array of resolver callbacks). W
 
 ## Issue 2: Stop-and-Wait Sequential Pipeline Bottleneck & Tail Latency Stalls
 
-**File:** `index.js`
+**File:** `index.ts`
 
 **Severity:** HIGH
 
@@ -76,7 +76,7 @@ Decouple page fetching from detail fetching using a streaming queue (e.g., a sim
 
 ## Issue 3: Microtask Churn & Memory Allocation Leaks in `withConcurrency()` (`Promise.race`)
 
-**File:** `index.js`
+**File:** `index.ts`
 
 **Severity:** MEDIUM
 

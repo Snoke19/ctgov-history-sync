@@ -4,7 +4,7 @@
     "description": "",
     "main": "index.js",
     "scripts": {
-        "start": "node --env-file=.env src/index.js",
+        "start": "node --env-file=.env src/index.ts",
         "test": "node --env-file=.env.test --experimental-vm-modules node_modules/jest/bin/jest.js",
         "test:watch": "node --env-file=.env.test --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
         "lint": "eslint src/",

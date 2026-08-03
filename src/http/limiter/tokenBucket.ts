@@ -1,6 +1,6 @@
 import {performance} from 'node:perf_hooks';
-import {TokenBucketTimeoutError} from '../../error/errors.ts';
-import {Limiter} from './limiter.ts';
+import {TokenBucketTimeoutError} from '../../error/errors.js';
+import {Limiter} from './limiter.js';
 
 // Tolerance used to compensate for IEEE-754 floating-point rounding errors
 // when comparing or converting token bucket credit.
@@ -47,7 +47,7 @@ export class TokenBucket extends Limiter {
      * @throws {TypeError} If `capacity` is not a positive integer, or
      *   `windowMs` is not a positive finite number.
      */
-    constructor(capacity, windowMs, now = () => performance.now()) {
+    constructor(capacity: number, windowMs: number, now = () => performance.now()) {
         super();
 
         if (!Number.isInteger(capacity) || capacity < 1) {
