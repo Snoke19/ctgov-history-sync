@@ -1,7 +1,7 @@
 import {API_BASE_URL, API_DETAIL_URL} from '../config/config.js';
 import {TrialNotFoundError} from '../error/errors.js';
 import {UrlBuilder} from '../http/urlPrepare.js';
-import {validateNctId, validateSearchParams} from '../utils/validators.js';
+import {validateNctId, validateSearchParams} from '../utils/validation.js';
 import {FetchStudiesPageParams, FetchTrialDetailParams, StudiesPageResponse} from "./types.js";
 
 export interface FetchJsonOptions {
