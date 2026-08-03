@@ -2,7 +2,7 @@
 
 ## Issue 1: O(N_waiters × N_proxies) CPU Busy-Polling & Thundering Herd in Endpoint Manager
 
-**File:** `endpointManager.js`
+**File:** `endpointManager.ts`
 
 **Severity:** CRITICAL
 
@@ -101,7 +101,7 @@ Use standard task-pool patterns where workers pull work from a shared array or q
 ## Issue 6: Complete Absence of Proxy Circuit Breakers & Health Tracking
 
 **File:**  
-`endpointManager.js` & `proxyEndpoint.js`
+`endpointManager.ts` & `proxyEndpoint.ts`
 
 **Severity:** CRITICAL
 

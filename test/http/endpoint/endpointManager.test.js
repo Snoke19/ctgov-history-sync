@@ -71,7 +71,7 @@ class MockEndpointAcquisitionTimeoutError extends Error {
     }
 }
 
-jest.unstable_mockModule('../../../src/error/errors.js', () => ({
+jest.unstable_mockModule('../../../src/error/errors.ts', () => ({
     ConfigurationError: MockConfigurationError,
     EndpointAcquisitionTimeoutError: MockEndpointAcquisitionTimeoutError,
 }));

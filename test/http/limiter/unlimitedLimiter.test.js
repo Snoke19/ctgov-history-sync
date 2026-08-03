@@ -1,6 +1,6 @@
 import {describe, expect, test} from '@jest/globals';
 import {UnlimitedLimiter} from '../../../src/http/limiter/unlimitedLimiter.js';
-import {Limiter} from '../../../src/http/limiter/limiter.js';
+import {Limiter} from '../../../src/http/limiter/limiter.ts';
 
 describe('UnlimitedLimiter', () => {
     test('extends Limiter', () => {

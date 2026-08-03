@@ -1,6 +1,6 @@
 import {describe, test} from '@jest/globals';
 import assert from 'node:assert/strict';
-import {validateGeoDecay, validateGeoFilter, validateNctId, validatePageSize} from '../src/utils/validators.js';
+import {validateGeoDecay, validateGeoFilter, validateNctId, validatePageSize} from '../src/utils/validators.ts';
 
 describe('validateNctId', () => {
     test('accepts valid NCT IDs', () => {
@@ -202,17 +202,17 @@ describe('validateGeoDecay', () => {
     });
 
     test('should reject non-string values', () => {
-        assert.throws(() => validateGeoDecay(123), {
+        assert.throws(() => validateGeoDecay('123'), {
             name: 'TrialValidationError',
-            message: 'geoDecay must be a string',
+            message: 'Invalid geoDecay format. Expected: func:(gauss|exp|linear),scale:<dist><km|mi>,offset:<dist><km|mi>,decay:<number>. Got: "123"',
         });
         assert.throws(() => validateGeoDecay(null), {
             name: 'TrialValidationError',
-            message: 'geoDecay must be a string',
+            message: 'Invalid geoDecay format. Expected: func:(gauss|exp|linear),scale:<dist><km|mi>,offset:<dist><km|mi>,decay:<number>. Got: "null"',
         });
         assert.throws(() => validateGeoDecay(undefined), {
             name: 'TrialValidationError',
-            message: 'geoDecay must be a string',
+            message: 'Invalid geoDecay format. Expected: func:(gauss|exp|linear),scale:<dist><km|mi>,offset:<dist><km|mi>,decay:<number>. Got: "undefined"',
         });
     });
 

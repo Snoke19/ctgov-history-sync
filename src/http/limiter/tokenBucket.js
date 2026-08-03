@@ -1,6 +1,6 @@
 import {performance} from 'node:perf_hooks';
-import {TokenBucketTimeoutError} from '../../error/errors.js';
-import {Limiter} from './limiter.js';
+import {TokenBucketTimeoutError} from '../../error/errors.ts';
+import {Limiter} from './limiter.ts';
 
 // Tolerance used to compensate for IEEE-754 floating-point rounding errors
 // when comparing or converting token bucket credit.

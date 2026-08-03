@@ -1,7 +1,13 @@
+export interface TrialErrorOptions extends ErrorOptions {
+    cause?: unknown;
+}
+
 export class TrialError extends Error {
-    constructor(message, options = {}) {
+    override name: string = 'TrialError';
+    override cause?: unknown;
+
+    constructor(message: string, options: TrialErrorOptions = {}) {
         super(message);
-        this.name = 'TrialError';
 
         if (options.cause !== undefined) {
             this.cause = options.cause;
@@ -10,53 +16,55 @@ export class TrialError extends Error {
 }
 
 export class ConfigurationError extends TrialError {
-    constructor(message) {
+    override name: string = 'ConfigurationError';
+
+    constructor(message: string) {
         super(message);
-        this.name = 'ConfigurationError';
     }
 }
 
 export class TrialNotFoundError extends TrialError {
-    constructor(code) {
+    override name: string = 'TrialNotFoundError';
+    readonly code: string;
+
+    constructor(code: string) {
         super(`Trial not found: ${code}`);
-        this.name = 'TrialNotFoundError';
         this.code = code;
     }
 }
 
 export class TrialFetchError extends TrialError {
-    /**
-     * @type {number|null}
-     */
-    retryAfterMs = null;
+    override name: string = 'TrialFetchError';
+    retryAfterMs: number | null = null;
+    proxyUrl: string | null = null;
+    readonly url: string;
+    readonly status: number | null;
+    readonly isTransient: boolean;
 
-    /**
-     * @type {string|null}
-     */
-    proxyUrl = null;
-
-    constructor(url, cause, status, isTransient = false) {
+    constructor(url: string, cause?: unknown, status?: number | null, isTransient: boolean = false) {
         super(`Failed to fetch: ${url}`, {cause});
-        this.name = 'TrialFetchError';
         this.url = url;
         this.status = status ?? null;
         this.isTransient = isTransient;
     }
 }
 
+export interface TrialTimeoutOptions {
+    totalBudgetMs?: number | null;
+}
+
 export class TrialTimeoutError extends TrialError {
-    /**
-     * @param {string} url
-     * @param {number} timeoutMs - Time budget for the phase that timed out (fetch).
-     * @param {{ totalBudgetMs?: number|null }} [options]
-     */
-    constructor(url, timeoutMs, {totalBudgetMs = null} = {}) {
+    override name: string = 'TrialTimeoutError';
+    readonly url: string;
+    readonly timeoutMs: number;
+    readonly totalBudgetMs: number | null;
+
+    constructor(url: string, timeoutMs: number, {totalBudgetMs = null}: TrialTimeoutOptions = {}) {
         const budgetNote =
             totalBudgetMs !== null && totalBudgetMs !== timeoutMs
                 ? ` (total budget ${totalBudgetMs}ms)`
                 : '';
         super(`Fetch timed out after ${timeoutMs}ms${budgetNote}: ${url}`);
-        this.name = 'TrialTimeoutError';
         this.url = url;
         this.timeoutMs = timeoutMs;
         this.totalBudgetMs = totalBudgetMs;
@@ -64,32 +72,42 @@ export class TrialTimeoutError extends TrialError {
 }
 
 export class TrialValidationError extends TrialError {
-    constructor(message) {
+    override name: string = 'TrialValidationError';
+
+    constructor(message: string) {
         super(message);
-        this.name = 'TrialValidationError';
     }
 }
 
 export class TokenBucketTimeoutError extends TrialError {
-    constructor(timeoutMs) {
+    override name: string = 'TokenBucketTimeoutError';
+    readonly timeoutMs: number;
+
+    constructor(timeoutMs: number) {
         super(`TokenBucket timeout: no token available within ${timeoutMs}ms`);
-        this.name = 'TokenBucketTimeoutError';
         this.timeoutMs = timeoutMs;
     }
 }
 
+export interface EndpointAcquisitionOptions {
+    budgetExhausted?: boolean;
+}
+
 export class EndpointAcquisitionTimeoutError extends TrialError {
-    /**
-     * @param {number} timeoutMs
-     * @param {number} proxyCount
-     * @param {{ budgetExhausted?: boolean }} [options]
-     */
-    constructor(timeoutMs, proxyCount, {budgetExhausted = false} = {}) {
+    override name: string = 'EndpointAcquisitionTimeoutError';
+    readonly timeoutMs: number;
+    readonly proxyCount: number;
+    readonly budgetExhausted: boolean;
+
+    constructor(
+        timeoutMs: number,
+        proxyCount: number,
+        {budgetExhausted = false}: EndpointAcquisitionOptions = {}
+    ) {
         const message = budgetExhausted
             ? `Proxy acquisition consumed the full ${timeoutMs}ms budget before fetch could start (pool size: ${proxyCount})`
             : `Proxy acquisition timeout: no proxy available within ${timeoutMs}ms (pool size: ${proxyCount})`;
         super(message);
-        this.name = 'EndpointAcquisitionTimeoutError';
         this.timeoutMs = timeoutMs;
         this.proxyCount = proxyCount;
         this.budgetExhausted = budgetExhausted;

@@ -4,7 +4,7 @@ import {
     RETRY_AFTER_STATUS_CODES,
     RETRY_BASE_DELAY_MS,
 } from '../../config/config.js';
-import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError,} from '../../error/errors.js';
+import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError,} from '../../error/errors.ts';
 
 /**
  * HTTP methods considered safe to retry automatically.

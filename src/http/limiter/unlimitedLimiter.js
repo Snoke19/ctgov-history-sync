@@ -1,4 +1,4 @@
-import {Limiter} from './limiter.js';
+import {Limiter} from './limiter.ts';
 
 export class UnlimitedLimiter extends Limiter {
     tryAcquire(now) {

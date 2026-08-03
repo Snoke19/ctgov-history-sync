@@ -1,8 +1,8 @@
 import {afterEach, beforeEach, describe, expect, jest, test} from '@jest/globals';
 import {drainBody, parseJsonResponse} from '../../src/http/responseBody.js';
 import {ERROR_BODY_PREVIEW_LENGTH, RETRYABLE_STATUS_CODES} from '../../src/config/config.js';
-import {TrialFetchError} from '../../src/error/errors.js';
-import {logger} from '../../src/config/logging.js';
+import {TrialFetchError} from '../../src/error/errors.ts';
+import {logger} from '../../src/config/logging.ts';
 
 const TEST_URL = 'http://test.local/resource';
 

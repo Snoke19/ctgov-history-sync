@@ -1,8 +1,8 @@
 import {API_BASE_URL, API_DETAIL_URL, PAGE_SIZE} from './config/config.js';
-import {TrialNotFoundError} from './error/errors.js';
+import {TrialNotFoundError} from './error/errors.ts';
 import {cleanParams} from './http/cleanParams.js';
 import {UrlBuilder} from './http/urlPrepare.js';
-import {validateNctId, validateSearchParams} from './utils/validators.js';
+import {validateNctId, validateSearchParams} from './utils/validators.ts';
 
 /**
  * Creates an API client with injectable dependencies.

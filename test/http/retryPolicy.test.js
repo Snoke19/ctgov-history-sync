@@ -7,7 +7,7 @@ import {
     parseRetryAfterHeader,
 } from '../../src/http/retry/retryPolicy.js';
 import {BACKOFF_CAP_MS, DEFAULT_RETRY_AFTER_MS} from '../../src/config/config.js';
-import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError,} from '../../src/error/errors.js';
+import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError,} from '../../src/error/errors.ts';
 
 describe('isIdempotent', () => {
     test.each([

@@ -1,7 +1,7 @@
 import {describe, test} from '@jest/globals';
 import assert from 'node:assert';
 
-describe('logging.js', () => {
+describe('logging.ts', () => {
     test('should export logger', async () => {
         const { logger } = await import('../src/config/logging.js');
         assert.ok(logger);

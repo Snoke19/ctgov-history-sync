@@ -1,5 +1,5 @@
-import {logger} from '../config/logging.js';
-import {TrialFetchError} from '../error/errors.js';
+import {logger} from '../config/logging.ts';
+import {TrialFetchError} from '../error/errors.ts';
 
 /**
  * Cancels an unused response body stream so undici can clean up
