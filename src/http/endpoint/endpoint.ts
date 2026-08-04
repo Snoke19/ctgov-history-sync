@@ -3,7 +3,7 @@ import { EndpointHandle } from "./types/endpoints.js";
 
 export abstract class Endpoint {
     private readonly url: string;
-    private readonly limiter: Limiter | null;
+    private readonly  limiter: Limiter;
 
     constructor(url: string, limiter: Limiter) {
         if (new.target === Endpoint) {
@@ -12,8 +12,6 @@ export abstract class Endpoint {
 
         this.url = url;
         this.limiter = limiter;
-
-        // Object.freeze(this);
     }
 
     getUrl() {

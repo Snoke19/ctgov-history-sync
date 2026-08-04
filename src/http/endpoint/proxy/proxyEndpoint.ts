@@ -8,7 +8,7 @@ export class ProxyEndpoint extends Endpoint {
     private closePromise?: Promise<void>;
 
     constructor(proxyUrl: string, limiter: Limiter, dispatcher: Dispatcher) {
-        if (!limiter) throw new TypeError('DirectEndpoint requires a limiter');
+        if (!limiter) throw new TypeError('ProxyEndpoint requires a limiter');
         if (!dispatcher) throw new TypeError('ProxyEndpoint requires a dispatcher');
 
         super(proxyUrl, limiter);

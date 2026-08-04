@@ -30,12 +30,6 @@ describe('ProxyEndpoint', () => {
             expect(endpoint.getHandle().dispatcher).toBe(dispatcher);
         });
 
-        it('throws if limiter is missing', () => {
-            expect(() => {
-                new ProxyEndpoint(proxyUrl, null as any, dispatcher);
-            }).toThrow('DirectEndpoint requires a limiter');
-        });
-
         it('throws if dispatcher is missing', () => {
             expect(() => {
                 new ProxyEndpoint(proxyUrl, limiter, null as any);

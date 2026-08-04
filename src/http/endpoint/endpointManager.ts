@@ -4,8 +4,8 @@ import {ConfigurationError, EndpointAcquisitionTimeoutError} from '../../error/e
 import {setTimeout as sleep} from 'node:timers/promises';
 import {TokenBucket} from '../limiter/tokenBucket.js';
 import {UnlimitedLimiter} from '../limiter/unlimitedLimiter.js';
-import {DirectEndpoint} from './directEndpoint.js';
-import {createProxyEndpoints} from './proxyEndpoints.js';
+import {DirectEndpoint} from './direct/directEndpoint.js';
+import {createProxyEndpoints} from './proxy/proxyEndpoints.js';
 import {assertPositiveInt} from "../../utils/validation.js";
 import {HttpClientOptions} from "../types/http.js";
 import {Endpoint} from "./endpoint.js";
@@ -20,6 +20,7 @@ export class EndpointManager {
     constructor(options: HttpClientOptions) {
 
         assertPositiveInt(options.acquireTimeout, 'acquireTimeout');
+        assertPositiveInt(options.concurrency, 'concurrency')
 
         if (options.useRateLimit) {
             assertPositiveInt(options.rateLimitCapacity, 'rateLimitCapacity');
@@ -49,7 +50,7 @@ export class EndpointManager {
 
             this.endpoints.push(...endpoints);
         } else {
-            this.endpoints.push(new DirectEndpoint('direct', createLimiter()));
+            this.endpoints.push(new DirectEndpoint(createLimiter()));
         }
 
         this.acquireTimeout = options.acquireTimeout;

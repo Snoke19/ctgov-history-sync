@@ -1,5 +1,5 @@
 import {describe, expect, test} from '@jest/globals';
-import {resolveConnections} from '../../../src/http/endpoint/resolveConnections.js';
+import {resolveConnections} from '../../../src/http/endpoint/proxy/resolveConnections.js';
 
 const poolConfig = {
     connections: 10,
