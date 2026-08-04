@@ -81,13 +81,13 @@ export class TokenBucket extends Limiter {
      *   Defaults to the injected clock.
      * @returns Current credit in milliseconds, range [0, windowMs].
      */
-    #availableCreditMs(now: number = this.clock()): number {
+    private availableCreditMs(now: number = this.clock()): number {
         const elapsed = Math.max(0, now - this.lastUpdate);
         return Math.min(this.windowMs, this.creditMs + elapsed);
     }
 
     tryAcquire(now: number = this.clock()): boolean {
-        const availableCreditMs = this.#availableCreditMs(now);
+        const availableCreditMs = this.availableCreditMs(now);
 
         if (availableCreditMs + FLOATING_POINT_TOLERANCE < this.msPerToken) {
             return false;
@@ -111,7 +111,7 @@ export class TokenBucket extends Limiter {
      *   floating-point division edge case.
      */
     peekTokens(): number {
-        const creditMs = this.#availableCreditMs();
+        const creditMs = this.availableCreditMs();
 
         // Guard against floating-point undershoot when the bucket is exactly
         // full. `windowMs / msPerToken` should equal `capacity`, but IEEE-754
@@ -151,7 +151,7 @@ export class TokenBucket extends Limiter {
             return Infinity;
         }
 
-        const availableCreditMs = this.#availableCreditMs(now);
+        const availableCreditMs = this.availableCreditMs(now);
 
         // Full bucket: any count ≤ capacity is satisfied immediately.
         if (availableCreditMs >= this.windowMs) {
