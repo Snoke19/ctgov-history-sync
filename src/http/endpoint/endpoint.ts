@@ -1,10 +1,5 @@
 import {Limiter} from "../limiter/limiter.js";
-import {ProxyAgent} from "undici";
-
-export interface EndpointHandle {
-    readonly url: string;
-    readonly dispatcher: ProxyAgent | undefined;
-}
+import { EndpointHandle } from "./types/endpoints.js";
 
 export abstract class Endpoint {
     private readonly url: string;
@@ -18,7 +13,7 @@ export abstract class Endpoint {
         this.url = url;
         this.limiter = limiter;
 
-        Object.freeze(this);
+        // Object.freeze(this);
     }
 
     getUrl() {

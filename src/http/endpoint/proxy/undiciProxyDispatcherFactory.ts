@@ -2,7 +2,7 @@ import {ProxyAgent, Dispatcher} from 'undici';
 import type {DispatcherFactory} from '../types/dispatcherFactory.js';
 import type {CreateProxyEndpointsOptions} from '../types/endpointOptions.js';
 import {createPoolFactory} from '../../poolFactory.js';
-import {resolveConnections} from '../resolveConnections.js';
+import {resolveConnections} from './resolveConnections.js';
 
 export class UndiciProxyDispatcherFactory implements DispatcherFactory {
     create(proxyUrl: string, options: CreateProxyEndpointsOptions): Dispatcher {
