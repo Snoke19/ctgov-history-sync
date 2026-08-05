@@ -6,10 +6,6 @@ export abstract class Endpoint {
     private readonly  limiter: Limiter;
 
     constructor(url: string, limiter: Limiter) {
-        if (new.target === Endpoint) {
-            throw new TypeError('Endpoint is abstract and cannot be instantiated directly');
-        }
-
         this.url = url;
         this.limiter = limiter;
     }
