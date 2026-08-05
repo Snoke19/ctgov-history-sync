@@ -130,6 +130,10 @@ export function buildRetryableError(url: string, response: HttpResponse, proxyUr
  * @returns {{isTimeout: boolean, reason: string}}
  */
 export function classifyError(error: any) {
+    const isAbort =
+        (error instanceof DOMException && error.name === 'AbortError') ||
+        error?.code === 'ABORT_ERR';
+
     if (error instanceof EndpointAcquisitionTimeoutError) {
         return {
             isTimeout: true,
@@ -146,7 +150,7 @@ export function classifyError(error: any) {
         };
     }
 
-    if (error?.name === 'AbortError' || error?.code === 'ABORT_ERR') {
+    if (isAbort) {
         return {
             isTimeout: false,
             isCancelled: true,

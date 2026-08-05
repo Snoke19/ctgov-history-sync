@@ -1,21 +1,12 @@
 import { performance } from 'node:perf_hooks';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { logger } from '../../config/logging.js';
 import { ConfigurationError, EndpointAcquisitionTimeoutError } from '../../error/errors.js';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { Endpoint } from './endpoint.js';
 import type { AcquiredEndpointHandle } from './types/endpoints.js';
 
 const now = (): number => performance.now();
 
-/**
- * Manages a pool of HTTP endpoints and enforces per-endpoint rate limits
- * via a round-robin acquire loop.
- *
- * This class is intentionally free of construction logic. All endpoint
- * building, validation, and limiter wiring is delegated to
- * {@link EndpointManagerFactory}, which allows this class to be constructed
- * with pre-built endpoints in tests without touching real infrastructure.
- */
 export class EndpointManager {
     private readonly endpoints: readonly Endpoint[];
     private readonly acquireTimeout: number;
@@ -36,12 +27,19 @@ export class EndpointManager {
         return this.endpoints.length;
     }
 
-    async acquireEndpoint(timeoutMs = this.acquireTimeout): Promise<AcquiredEndpointHandle> {
+    async acquireEndpoint(
+        timeoutMs = this.acquireTimeout,
+        signal?: AbortSignal,
+    ): Promise<AcquiredEndpointHandle> {
         const deadline = now() + timeoutMs;
 
         while (true) {
             // Single clock read per iteration to avoid skew between the
             // endpoint scan and the deadline check.
+            if (signal?.aborted) {
+                throw new DOMException('The operation was aborted.', 'AbortError');
+            }
+
             const currentTime = now();
             const remaining = deadline - currentTime;
 
@@ -67,7 +65,7 @@ export class EndpointManager {
                 shortestWait = Math.min(shortestWait, endpoint.timeUntilToken(currentTime));
             }
 
-            await sleep(Math.min(shortestWait, remaining));
+            await sleep(Math.min(shortestWait, remaining), undefined, { signal });
         }
     }
 
