@@ -18,7 +18,6 @@ const DATE_RANGE = 'AREA[StartDate]RANGE[07/15/2026, 07/18/2026]';
 
 const httpClient = createHttpClient(
     {
-        useProxy: true,
         proxyUrls: PROXY_URLS,
         useRateLimit: true,
         rateLimitCapacity: RATE_LIMIT_CAPACITY,
