@@ -1,9 +1,4 @@
-import { ProxyEndpoint } from './proxyEndpoint.js';
-import { ProxyEndpointFactory } from './proxyEndpointFactory.js';
 import { logger } from '../../../config/logging.js';
-import { ProxyPoolConfig } from '../../../config/config.js';
-import { Limiter } from '../../limiter/limiter.js';
-import { CreateProxyEndpointsOptions } from '../types/endpointOptions.js';
 
 /**
  * Supported formats:
@@ -35,19 +30,12 @@ function hasExplicitPort(url: string): boolean {
     return /:\d+$/.test(hostPort);
 }
 
-export function createProxyEndpoints(
-    proxyUrls: string,
-    createLimiter: () => Limiter,
-    concurrency: number,
-    poolConfig: ProxyPoolConfig,
-    proxyType: string,
-    factory: ProxyEndpointFactory,
-): ProxyEndpoint[] {
+export function parseProxyUrls(proxyUrls: string): string[] {
     if (!proxyUrls) {
         return [];
     }
 
-    const validUrls: string[] = [];
+    const urls: string[] = [];
 
     for (const raw of String(proxyUrls).split(',')) {
         const url = raw.trim();
@@ -64,23 +52,11 @@ export function createProxyEndpoints(
                 continue;
             }
 
-            validUrls.push(url);
+            urls.push(url);
         } catch {
             logger.warn('[Proxy] Skipping invalid proxy URL: "%s"', url);
         }
     }
 
-    const proxyCount = validUrls.length;
-
-    const options: CreateProxyEndpointsOptions = {
-        concurrency,
-        poolConfig,
-        proxyCount,
-        proxyType,
-    };
-
-    return validUrls.map((url) => {
-        const limiter = createLimiter();
-        return factory.create(url, limiter, options);
-    });
+    return urls;
 }

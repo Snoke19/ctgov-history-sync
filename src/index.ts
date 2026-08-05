@@ -10,25 +10,30 @@ import {
 } from './config/config.js';
 import { logger } from './config/logging.js';
 import { TrialFetchError, TrialNotFoundError, TrialTimeoutError } from './error/errors.js';
+import { UndiciTransportFactory } from './http/endpoint/transport/undiciProxyTransport.js';
 import { createHttpClient } from './http/httpClient.js';
+import { ProxyEndpointProvider } from './http/endpoint/proxy/proxyEndpointProvider.js';
 
 const DATE_RANGE = 'AREA[StartDate]RANGE[07/15/2026, 07/18/2026]';
 
-const httpClient = createHttpClient({
-    useProxy: true,
-    proxyUrls: PROXY_URLS,
-    useRateLimit: true,
-    rateLimitCapacity: RATE_LIMIT_CAPACITY,
-    rateLimitWindow: RATE_LIMIT_WINDOW,
-    acquireTimeout: ACQUIRE_TIMEOUT,
-    concurrency: CONCURRENCY,
-    poolConfig: PROXY_POOL_CONFIG,
-    proxyType: '',
-});
+const httpClient = createHttpClient(
+    {
+        useProxy: true,
+        proxyUrls: PROXY_URLS,
+        useRateLimit: true,
+        rateLimitCapacity: RATE_LIMIT_CAPACITY,
+        rateLimitWindow: RATE_LIMIT_WINDOW,
+        acquireTimeout: ACQUIRE_TIMEOUT,
+        concurrency: CONCURRENCY,
+        poolConfig: PROXY_POOL_CONFIG,
+        proxyType: '',
+    },
+    new ProxyEndpointProvider(new UndiciTransportFactory()),
+);
 
 const api = createApiClient(httpClient);
 
-// State for checkpointing
+// State for checkpoint
 let pageToken: string | undefined = '';
 let pageNum = 1;
 

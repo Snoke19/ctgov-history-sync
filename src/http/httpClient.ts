@@ -20,24 +20,17 @@ import {
 } from './retry/retryPolicy.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
-import { ProxyEndpointFactory } from './endpoint/proxy/proxyEndpointFactory.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
-import { UndiciTransportFactory } from './endpoint/transport/undiciProxyTransport.js';
-import { FetchTransport } from './endpoint/transport/fetchTransport.js';
-import { ProxyEndpointProvider } from './endpoint/proxy/proxyEndpointProvider.js';
-import { DirectEndpointProvider } from './endpoint/direct/directEndpointProvider.js';
+import { EndpointProvider } from './endpoint/types/endpointProvider.js';
 
 const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',
     'User-Agent': DEFAULT_USER_AGENT,
 });
 
-export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
-    const provider = endpointManagerOptions.useProxy
-        ? new ProxyEndpointProvider(new ProxyEndpointFactory(new UndiciTransportFactory()))
-        : new DirectEndpointProvider(new FetchTransport());
-
+export function createHttpClient(endpointManagerOptions: HttpClientOptions, provider: EndpointProvider) {
     const endpointFactory = new EndpointFactory(provider);
+
     const endpointManager = new EndpointManagerFactory(endpointFactory).create(
         endpointManagerOptions,
     );

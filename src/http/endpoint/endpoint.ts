@@ -1,28 +1,35 @@
 import { Limiter } from '../limiter/limiter.js';
-import type { AcquiredEndpointHandle } from './types/endpoints.js';
+import { EndpointHandle } from './types/endpoints.js';
+import { HttpTransport } from './types/transport.js';
 
-export abstract class Endpoint {
-    private readonly url: string;
-    private readonly limiter: Limiter;
+export class Endpoint {
+    private readonly handle: EndpointHandle;
+    private closePromise?: Promise<void>;
 
-    constructor(url: string, limiter: Limiter) {
-        this.url = url;
-        this.limiter = limiter;
+    constructor(
+        readonly url: string,
+        private readonly limiter: Limiter,
+        transport: HttpTransport,
+    ) {
+        this.handle = Object.freeze({
+            url,
+            transport,
+        });
     }
 
-    getUrl(): string {
-        return this.url;
+    getHandle(): EndpointHandle {
+        return this.handle;
     }
 
     tryAcquire(now: number): boolean {
-        return this.limiter ? this.limiter.tryAcquire(now) : true;
+        return this.limiter.tryAcquire(now);
     }
 
     timeUntilToken(now: number): number {
-        return this.limiter ? this.limiter.timeUntilToken(now) : 0;
+        return this.limiter.timeUntilToken(now);
     }
 
-    abstract getHandle(): AcquiredEndpointHandle;
-
-    abstract close(): Promise<void>;
+    close(): Promise<void> {
+        return (this.closePromise ??= this.handle.transport.close());
+    }
 }
