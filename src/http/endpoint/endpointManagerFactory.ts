@@ -2,6 +2,8 @@ import {assertPositiveInt} from '../../utils/validation.js';
 import type {HttpClientOptions} from '../types/http.js';
 import {EndpointFactory} from './endpointFactory.js';
 import {EndpointManager} from './endpointManager.js';
+import { ProxyEndpointFactory } from './proxy/proxyEndpointFactory.js';
+import { UndiciProxyDispatcherFactory } from './proxy/undiciProxyDispatcherFactory.js';
 
 /**
  * Composes {@link EndpointFactory} and {@link EndpointManager} into a single
@@ -23,7 +25,7 @@ import {EndpointManager} from './endpointManager.js';
  */
 export class EndpointManagerFactory {
 
-    constructor(private readonly endpointFactory: EndpointFactory = new EndpointFactory()) {}
+    constructor(private readonly endpointFactory: EndpointFactory) {}
 
     create(options: HttpClientOptions): EndpointManager {
         assertPositiveInt(options.acquireTimeout, 'acquireTimeout');

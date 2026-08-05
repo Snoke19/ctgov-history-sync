@@ -1,5 +1,5 @@
-import {performance} from 'node:perf_hooks';
-import {fetch} from 'undici';
+import { performance } from 'node:perf_hooks';
+import { fetch } from 'undici';
 import {
     DEFAULT_USER_AGENT,
     ERROR_BODY_PREVIEW_LENGTH,
@@ -9,13 +9,21 @@ import {
     RETRY_ON_TIMEOUT,
     RETRYABLE_STATUS_CODES,
 } from '../config/config.js';
-import {logger} from '../config/logging.js';
-import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
-import {EndpointManagerFactory} from './endpoint/endpointManagerFactory.js';
-import {drainBody, parseJsonResponse} from './responseBody.js';
-import {buildRetryableError, calculateBackoff, classifyError, isIdempotent,} from './retry/retryPolicy.js';
-import {setTimeout as sleep} from 'node:timers/promises';
-import {FetchJsonRequestOptions, HttpClientOptions} from "./types/http.js";
+import { logger } from '../config/logging.js';
+import { TrialFetchError, TrialTimeoutError } from '../error/errors.js';
+import { EndpointManagerFactory } from './endpoint/endpointManagerFactory.js';
+import { drainBody, parseJsonResponse } from './responseBody.js';
+import {
+    buildRetryableError,
+    calculateBackoff,
+    classifyError,
+    isIdempotent,
+} from './retry/retryPolicy.js';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
+import { UndiciProxyDispatcherFactory } from './endpoint/proxy/undiciProxyDispatcherFactory.js';
+import { ProxyEndpointFactory } from './endpoint/proxy/proxyEndpointFactory.js';
+import { EndpointFactory } from './endpoint/endpointFactory.js';
 
 const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',
@@ -23,13 +31,14 @@ const DEFAULT_HEADERS = Object.freeze({
 });
 
 export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
-
-    const endpointManager = new EndpointManagerFactory().create(endpointManagerOptions);
+    const endpointManager = new EndpointManagerFactory(
+        new EndpointFactory(new ProxyEndpointFactory(new UndiciProxyDispatcherFactory())),
+    ).create(endpointManagerOptions);
 
     async function executeFetch(url: any, options: any = {}) {
         // Total time budget for the entire operation (acquire + fetch).
         const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
-        const deadline = options.deadline ?? (Date.now() + timeoutMs);
+        const deadline = options.deadline ?? Date.now() + timeoutMs;
 
         // Step 1: Acquire a rate-limited proxy dispatcher.
         let proxyEntry;
@@ -37,11 +46,7 @@ export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
             const remainingBeforeAcquire = getRemainingTime(deadline, url, timeoutMs);
             proxyEntry = await endpointManager.acquireEndpoint(remainingBeforeAcquire);
         } catch (error: any) {
-            logger.warn(
-                'Endpoint acquisition failed | URL: %s | Error: %s',
-                url,
-                error.message,
-            );
+            logger.warn('Endpoint acquisition failed | URL: %s | Error: %s', url, error.message);
             throw error;
         }
 
@@ -63,9 +68,9 @@ export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
         // Step 4: Assemble fetch options.
         const headers = options.headers
             ? {
-                ...DEFAULT_HEADERS,
-                ...options.headers,
-            }
+                  ...DEFAULT_HEADERS,
+                  ...options.headers,
+              }
             : DEFAULT_HEADERS;
 
         const fetchOptions: any = {
@@ -100,7 +105,7 @@ export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
                 durationMs,
             );
 
-            return {response, proxyUrl};
+            return { response, proxyUrl };
         } catch (error) {
             const durationMs = Math.round(performance.now() - startTime);
 
@@ -114,7 +119,11 @@ export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
 
             const logMessage = transformed.cause?.message ?? transformed.message;
             const failureType =
-                transformed instanceof TrialTimeoutError ? 'Timeout' : transformed === error ? 'Cancelled' : 'Network Error';
+                transformed instanceof TrialTimeoutError
+                    ? 'Timeout'
+                    : transformed === error
+                      ? 'Cancelled'
+                      : 'Network Error';
 
             logger.warn(
                 'Failed %s | Type: %s | Proxy: %s | Took: %dms | Error: %s',
@@ -133,11 +142,11 @@ export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
 
     async function attemptFetch(url: any, options: any) {
         try {
-            const {response, proxyUrl} = await executeFetch(url, options);
+            const { response, proxyUrl } = await executeFetch(url, options);
 
             // Non-retryable status → immediate success.
             if (!RETRYABLE_STATUS_CODES.has(response.status)) {
-                return {success: true, response};
+                return { success: true, response };
             }
 
             // Retryable status (408, 429, 5xx).
@@ -153,24 +162,24 @@ export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
                 reason: `Retryable HTTP ${response.status}`,
             };
         } catch (error: any) {
-            const {
-                isTimeout,
-                isCancelled,
-                reason,
-            } = classifyError(error);
+            const { isTimeout, isCancelled, reason } = classifyError(error);
 
             return {
                 success: false,
                 error,
                 retryable:
                     !isCancelled &&
-                    ((isTimeout && RETRY_ON_TIMEOUT) || (Boolean(error.isTransient) && RETRY_ON_NETWORK_ERROR)),
+                    ((isTimeout && RETRY_ON_TIMEOUT) ||
+                        (Boolean(error.isTransient) && RETRY_ON_NETWORK_ERROR)),
                 reason,
             };
         }
     }
 
-    async function fetchWithRetry(url: string, {method = 'GET', ...options}: FetchJsonRequestOptions) {
+    async function fetchWithRetry(
+        url: string,
+        { method = 'GET', ...options }: FetchJsonRequestOptions,
+    ) {
         const canRetry = isIdempotent(method, options.idempotent);
         const maxRetries = canRetry ? Math.max(0, options.maxRetries ?? MAX_RETRIES) : 0;
 
@@ -197,14 +206,14 @@ export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
 
             const delay = calculateBackoff(
                 attempt,
-                outcome.error instanceof TrialFetchError
-                    ? outcome.error.retryAfterMs
-                    : null,
+                outcome.error instanceof TrialFetchError ? outcome.error.retryAfterMs : null,
             );
 
             const proxyUrl =
                 outcome.error instanceof TrialFetchError ||
-                outcome.error instanceof TrialTimeoutError ? outcome.error.proxyUrl : 'n/a';
+                outcome.error instanceof TrialTimeoutError
+                    ? outcome.error.proxyUrl
+                    : 'n/a';
 
             logger.warn(
                 '%s - retrying in %dms (attempt %d/%d) | Proxy: %s | URL: %s',
@@ -217,11 +226,7 @@ export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
             );
 
             // Recalculate again because the fetch itself consumed time.
-            const remainingBeforeSleep = getRemainingTime(
-                deadline,
-                url,
-                timeoutMs,
-            );
+            const remainingBeforeSleep = getRemainingTime(deadline, url, timeoutMs);
 
             if (delay >= remainingBeforeSleep) {
                 throw new TrialTimeoutError(url, 0, {
@@ -233,48 +238,33 @@ export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
         }
     }
 
-    async function fetchJson(url: string, {allow404 = false, ...requestOptions}: FetchJsonRequestOptions) {
+    async function fetchJson(
+        url: string,
+        { allow404 = false, ...requestOptions }: FetchJsonRequestOptions,
+    ) {
         const response = await fetchWithRetry(url, requestOptions);
-        return parseJsonResponse(
-            response,
-            url,
-            {
-                allow404,
-                errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
-                retryableStatusCodes: RETRYABLE_STATUS_CODES,
-            });
+        return parseJsonResponse(response, url, {
+            allow404,
+            errorBodyPreviewLength: ERROR_BODY_PREVIEW_LENGTH,
+            retryableStatusCodes: RETRYABLE_STATUS_CODES,
+        });
     }
 
     function close() {
         return endpointManager.close();
     }
 
-    return {fetchJson, close};
+    return { fetchJson, close };
 }
 
-function transformFetchError(error: any,
-                             {
-                                 url,
-                                 proxyUrl,
-                                 remainingMs,
-                                 timeoutMs,
-                                 signal,
-                             }: any) {
+function transformFetchError(error: any, { url, proxyUrl, remainingMs, timeoutMs, signal }: any) {
     const isTimeout = error?.name === 'TimeoutError';
-    const isAbort =
-        error?.name === 'AbortError' ||
-        error?.code === 'ABORT_ERR';
+    const isAbort = error?.name === 'AbortError' || error?.code === 'ABORT_ERR';
 
-    const isExternalAbort =
-        isAbort &&
-        signal?.aborted;
+    const isExternalAbort = isAbort && signal?.aborted;
 
     if (isTimeout) {
-        const timeoutErr = new TrialTimeoutError(
-            url,
-            remainingMs,
-            {totalBudgetMs: timeoutMs},
-        );
+        const timeoutErr = new TrialTimeoutError(url, remainingMs, { totalBudgetMs: timeoutMs });
 
         timeoutErr.proxyUrl = proxyUrl;
         return timeoutErr;
@@ -284,7 +274,7 @@ function transformFetchError(error: any,
         return error;
     }
 
-    const fetchErr = new TrialFetchError(url, error, null, true,);
+    const fetchErr = new TrialFetchError(url, error, null, true);
 
     fetchErr.proxyUrl = proxyUrl;
     return fetchErr;

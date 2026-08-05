@@ -8,6 +8,7 @@ import { ConfigurationError } from '../../error/errors.js';
 import type { HttpClientOptions } from '../types/http.js';
 import type { Endpoint } from './endpoint.js';
 import type { Limiter } from '../limiter/limiter.js';
+import { UndiciProxyDispatcherFactory } from './proxy/undiciProxyDispatcherFactory.js';
 
 /**
  * Builds the concrete {@link Endpoint} list from {@link HttpClientOptions}.
@@ -28,7 +29,7 @@ export class EndpointFactory {
      *   which itself defaults to {@link UndiciProxyDispatcherFactory}.
      */
     constructor(
-        private readonly proxyEndpointFactory: ProxyEndpointFactory = new ProxyEndpointFactory(),
+        private readonly proxyEndpointFactory: ProxyEndpointFactory,
     ) {}
 
     build(options: HttpClientOptions): Endpoint[] {
