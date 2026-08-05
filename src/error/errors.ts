@@ -41,8 +41,13 @@ export class TrialFetchError extends TrialError {
     readonly status: number | null;
     readonly isTransient: boolean;
 
-    constructor(url: string, cause?: unknown, status?: number | null, isTransient: boolean = false) {
-        super(`Failed to fetch: ${url}`, {cause});
+    constructor(
+        url: string,
+        cause?: unknown,
+        status?: number | null,
+        isTransient: boolean = false,
+    ) {
+        super(`Failed to fetch: ${url}`, { cause });
         this.url = url;
         this.status = status ?? null;
         this.isTransient = isTransient;
@@ -60,7 +65,11 @@ export class TrialTimeoutError extends TrialError {
     readonly totalBudgetMs: number | null;
     proxyUrl: string | null = null;
 
-    constructor(url: string, timeoutMs: number, {totalBudgetMs = null}: TrialTimeoutOptions = {}) {
+    constructor(
+        url: string,
+        timeoutMs: number,
+        { totalBudgetMs = null }: TrialTimeoutOptions = {},
+    ) {
         const budgetNote =
             totalBudgetMs !== null && totalBudgetMs !== timeoutMs
                 ? ` (total budget ${totalBudgetMs}ms)`
@@ -103,7 +112,7 @@ export class EndpointAcquisitionTimeoutError extends TrialError {
     constructor(
         timeoutMs: number,
         proxyCount: number,
-        {budgetExhausted = false}: EndpointAcquisitionOptions = {}
+        { budgetExhausted = false }: EndpointAcquisitionOptions = {},
     ) {
         const message = budgetExhausted
             ? `Proxy acquisition consumed the full ${timeoutMs}ms budget before fetch could start (pool size: ${proxyCount})`

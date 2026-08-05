@@ -1,4 +1,4 @@
-import pino, {Logger, LoggerOptions} from 'pino';
+import pino, { Logger, LoggerOptions } from 'pino';
 
 const isProduction: boolean = process.env.NODE_ENV === 'production';
 
@@ -18,7 +18,7 @@ const pinoOptions: LoggerOptions = {
             },
         },
     }),
-    ...(isProduction && {errorKey: 'err'}),
+    ...(isProduction && { errorKey: 'err' }),
 };
 
 export const logger: Logger = pino(pinoOptions);

@@ -1,6 +1,7 @@
-import type {Limiter} from '../../limiter/limiter.js';
-import {Endpoint} from '../endpoint.js';
-import {DirectEndpointHandle} from '../types/endpoints.js';
+import type { Limiter } from '../../limiter/limiter.js';
+import { Endpoint } from '../endpoint.js';
+import { FetchTransport } from '../transport/fetchTransport.js';
+import type { DirectEndpointHandle } from '../types/endpoints.js';
 
 export const DIRECT_ENDPOINT_URL = 'direct' as const;
 
@@ -13,7 +14,7 @@ export class DirectEndpoint extends Endpoint {
         super(DIRECT_ENDPOINT_URL, limiter);
         this.handle = Object.freeze({
             url: this.getUrl(),
-            dispatcher: null,
+            transport: new FetchTransport(),
         });
     }
 
@@ -22,6 +23,6 @@ export class DirectEndpoint extends Endpoint {
     }
 
     async close(): Promise<void> {
-        return Promise.resolve();
+        return this.handle.transport.close();
     }
 }

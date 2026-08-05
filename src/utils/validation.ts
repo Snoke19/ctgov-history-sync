@@ -1,4 +1,4 @@
-import {ConfigurationError, TrialValidationError} from '../error/errors.js';
+import { ConfigurationError, TrialValidationError } from '../error/errors.js';
 
 type ErrorCtor = new (message: string) => Error;
 
@@ -11,7 +11,11 @@ interface Assertions {
 
     assertFormat(value: unknown, pattern: RegExp, message: string): void;
 
-    assertInteger(value: number, name: string, opts?: { min?: number; max?: number; label?: string }): void;
+    assertInteger(
+        value: number,
+        name: string,
+        opts?: { min?: number; max?: number; label?: string },
+    ): void;
 }
 
 function makeAssertions(ErrorType: ErrorCtor): Assertions {
@@ -36,8 +40,12 @@ function makeAssertions(ErrorType: ErrorCtor): Assertions {
             if (typeof value !== 'string' || !pattern.test(value.trim())) fail(message);
         },
 
-        assertInteger(value: number, name: string, opts: { min?: number; max?: number; label?: string } = {}): void {
-            const {min = -Infinity, max = Infinity, label} = opts;
+        assertInteger(
+            value: number,
+            name: string,
+            opts: { min?: number; max?: number; label?: string } = {},
+        ): void {
+            const { min = -Infinity, max = Infinity, label } = opts;
             if (Number.isInteger(value) && value >= min && value <= max) return;
 
             const description =
@@ -54,7 +62,7 @@ function makeAssertions(ErrorType: ErrorCtor): Assertions {
 const configAssertions: Assertions = makeAssertions(ConfigurationError);
 
 export function assertPositiveInt(value: number, name: string): void {
-    configAssertions.assertInteger(value, name, {min: 1});
+    configAssertions.assertInteger(value, name, { min: 1 });
 }
 
 const trialAssertions: Assertions = makeAssertions(TrialValidationError);
@@ -62,7 +70,8 @@ const trialAssertions: Assertions = makeAssertions(TrialValidationError);
 const PATTERNS = {
     nctId: /^NCT\d{8}$/i,
     geo: /^distance\(-?\d+(\.\d+)?,-?\d+(\.\d+)?,\d+(\.\d+)?(km|mi)?\)$/,
-    geoDecay: /^func:(gauss|exp|linear),scale:(\d+(\.\d+)?(km|mi)),offset:(\d+(\.\d+)?(km|mi)),decay:(\d+(\.\d+)?)$/,
+    geoDecay:
+        /^func:(gauss|exp|linear),scale:(\d+(\.\d+)?(km|mi)),offset:(\d+(\.\d+)?(km|mi)),decay:(\d+(\.\d+)?)$/,
 } as const;
 
 export function validateNctId(value: string): void {
@@ -75,5 +84,5 @@ export function validateNctId(value: string): void {
 }
 
 export function validatePageSize(value: number): void {
-    trialAssertions.assertInteger(value, 'pageSize', {min: 1});
+    trialAssertions.assertInteger(value, 'pageSize', { min: 1 });
 }

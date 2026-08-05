@@ -1,6 +1,6 @@
-import {logger} from '../config/logging.js';
-import {TrialFetchError} from '../error/errors.js';
-import {Response} from "undici";
+import { logger } from '../config/logging.js';
+import { TrialFetchError } from '../error/errors.js';
+import { HttpResponse } from './endpoint/types/transport.js';
 
 interface ParseJsonResponseOptions {
     allow404?: boolean;
@@ -8,22 +8,24 @@ interface ParseJsonResponseOptions {
     retryableStatusCodes: ReadonlySet<number>;
 }
 
-export async function drainBody(response: Response): Promise<void> {
-    if (!response?.body) {
+export async function drainBody(response: HttpResponse): Promise<void> {
+    if (!response?.json) {
         return;
     }
 
     try {
-        await response.body.cancel();
+        await response.discard();
     } catch {
         // Already closed or errored - safe to ignore.
     }
 }
 
-export async function parseJsonResponse(response: Response,
-                                        url: string,
-                                        options: ParseJsonResponseOptions) {
-    const {allow404 = false, errorBodyPreviewLength, retryableStatusCodes} = options;
+export async function parseJsonResponse(
+    response: HttpResponse,
+    url: string,
+    options: ParseJsonResponseOptions,
+) {
+    const { allow404 = false, errorBodyPreviewLength, retryableStatusCodes } = options;
 
     if (!retryableStatusCodes) {
         throw new TypeError('parseJsonResponse: retryableStatusCodes is required');
@@ -44,23 +46,14 @@ export async function parseJsonResponse(response: Response,
     }
 
     if (!response.ok) {
-        const text = await readErrorPreview(
-            response,
-            errorBodyPreviewLength,
-        ).catch((error) => {
-            logger.debug(
-                'Failed to read error preview: %s',
-                error.message,
-            );
+        const text = await readErrorPreview(response, errorBodyPreviewLength).catch((error) => {
+            logger.debug('Failed to read error preview: %s', error.message);
             return '';
         });
 
         throw new TrialFetchError(
             url,
-            new Error(
-                `HTTP ${response.status}: ${response.statusText}. ` +
-                `Body: ${text}`,
-            ),
+            new Error(`HTTP ${response.status}: ${response.statusText}. ` + `Body: ${text}`),
             response.status,
             retryableStatusCodes.has(response.status),
         );
@@ -86,45 +79,15 @@ export async function parseJsonResponse(response: Response,
     }
 }
 
-async function readErrorPreview(response: Response, maxBytes: number) {
-    if (!response.body || maxBytes <= 0) {
+async function readErrorPreview(response: HttpResponse, maxBytes: number) {
+    if (maxBytes <= 0) {
         return '';
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    let preview = '';
-    let bytesRead = 0;
-
     try {
-        while (bytesRead < maxBytes) {
-            const {done, value} = await reader.read();
-
-            if (done) {
-                break;
-            }
-
-            const remaining = maxBytes - bytesRead;
-            const chunk = value.subarray(0, remaining);
-
-            preview += decoder.decode(chunk, {
-                stream: true,
-            });
-
-            bytesRead += chunk.length;
-        }
-
-        preview += decoder.decode();
-    } finally {
-        try {
-            await reader.cancel();
-        } catch {
-            // Ignore cancellation errors.
-        }
-
-        reader.releaseLock();
+        const text = await response.text();
+        return text.slice(0, maxBytes);
+    } catch {
+        return '';
     }
-
-    return preview;
 }

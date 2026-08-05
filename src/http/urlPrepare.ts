@@ -1,4 +1,4 @@
-import {QueryParams, QueryParamValue} from './types/http.js';
+import { QueryParams, QueryParamValue } from './types/http.js';
 
 export interface IUrlBuilder {
     path(segment: string): this;

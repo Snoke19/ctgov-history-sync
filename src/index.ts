@@ -1,4 +1,4 @@
-import {createApiClient} from './api/api.js';
+import { createApiClient } from './api/api.js';
 import {
     ACQUIRE_TIMEOUT,
     CONCURRENCY,
@@ -6,11 +6,11 @@ import {
     PROXY_POOL_CONFIG,
     PROXY_URLS,
     RATE_LIMIT_CAPACITY,
-    RATE_LIMIT_WINDOW
+    RATE_LIMIT_WINDOW,
 } from './config/config.js';
-import {logger} from './config/logging.js';
-import {TrialFetchError, TrialNotFoundError, TrialTimeoutError} from './error/errors.js';
-import {createHttpClient} from './http/httpClient.js';
+import { logger } from './config/logging.js';
+import { TrialFetchError, TrialNotFoundError, TrialTimeoutError } from './error/errors.js';
+import { createHttpClient } from './http/httpClient.js';
 
 const DATE_RANGE = 'AREA[StartDate]RANGE[07/15/2026, 07/18/2026]';
 
@@ -23,6 +23,7 @@ const httpClient = createHttpClient({
     acquireTimeout: ACQUIRE_TIMEOUT,
     concurrency: CONCURRENCY,
     poolConfig: PROXY_POOL_CONFIG,
+    proxyType: '',
 });
 
 const api = createApiClient(httpClient);
@@ -31,9 +32,13 @@ const api = createApiClient(httpClient);
 let pageToken: string | undefined = '';
 let pageNum = 1;
 
-async function withConcurrency<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>) {
+async function withConcurrency<T, R>(
+    items: readonly T[],
+    limit: number,
+    fn: (item: T) => Promise<R>,
+) {
     const results: (R | null)[] = new Array(items.length);
-    const queue = items.map((item, i) => ({item, i}));
+    const queue = items.map((item, i) => ({ item, i }));
 
     async function worker(): Promise<void> {
         while (queue.length > 0) {
@@ -43,7 +48,7 @@ async function withConcurrency<T, R>(items: readonly T[], limit: number, fn: (it
                 break;
             }
 
-            const {item, i} = next;
+            const { item, i } = next;
 
             try {
                 results[i] = await fn(item);
@@ -59,15 +64,13 @@ async function withConcurrency<T, R>(items: readonly T[], limit: number, fn: (it
     }
 
     const workerCount = Math.min(limit, items.length);
-    await Promise.all(
-        Array.from({length: workerCount}, () => worker()),
-    );
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
     return results;
 }
 
 async function fetchTrialSafe(nctId: string) {
     try {
-        return await api.fetchTrialDetail(nctId, {history: true});
+        return await api.fetchTrialDetail(nctId, { history: true });
     } catch (err: unknown) {
         if (err instanceof TrialNotFoundError) {
             logger.warn(`Not found: ${nctId}`);
@@ -80,15 +83,11 @@ async function fetchTrialSafe(nctId: string) {
         }
 
         if (err instanceof TrialFetchError) {
-            logger.warn(
-                `Failed: ${nctId} — ${getErrorMessage(err.cause)}`,
-            );
+            logger.warn(`Failed: ${nctId} — ${getErrorMessage(err.cause)}`);
             return null;
         }
 
-        logger.error(
-            `Unexpected error for ${nctId}: ${getErrorMessage(err)}`,
-        );
+        logger.error(`Unexpected error for ${nctId}: ${getErrorMessage(err)}`);
 
         return null;
     }
@@ -113,7 +112,7 @@ async function main(): Promise<void> {
         pageSize: PAGE_SIZE,
         countTotal: true,
         'query.term': DATE_RANGE,
-        ...(pageToken && {pageToken}),
+        ...(pageToken && { pageToken }),
     });
 
     if (!pageToken) {
@@ -132,11 +131,7 @@ async function main(): Promise<void> {
             .map((study: any) => study.protocolSection?.identificationModule?.nctId)
             .filter((id: any): id is string => id !== undefined);
 
-        const details = await withConcurrency(
-            nctIds,
-            CONCURRENCY,
-            fetchTrialSafe,
-        );
+        const details = await withConcurrency(nctIds, CONCURRENCY, fetchTrialSafe);
 
         const validDetails = details.filter(
             <T>(detail: T): detail is NonNullable<T> => detail !== null,
@@ -176,9 +171,7 @@ async function run(): Promise<void> {
 
             logger.error(
                 `Fetch error${status}: ${err.url} — ${
-                    err.cause instanceof Error
-                        ? err.cause.message
-                        : String(err.cause ?? '')
+                    err.cause instanceof Error ? err.cause.message : String(err.cause ?? '')
                 }`,
             );
         } else if (err instanceof Error) {

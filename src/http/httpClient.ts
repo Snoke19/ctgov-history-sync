@@ -1,5 +1,4 @@
 import { performance } from 'node:perf_hooks';
-import { fetch } from 'undici';
 import {
     DEFAULT_USER_AGENT,
     ERROR_BODY_PREVIEW_LENGTH,
@@ -21,9 +20,9 @@ import {
 } from './retry/retryPolicy.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
-import { UndiciProxyDispatcherFactory } from './endpoint/proxy/undiciProxyDispatcherFactory.js';
 import { ProxyEndpointFactory } from './endpoint/proxy/proxyEndpointFactory.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
+import { UndiciTransportFactory } from './endpoint/transport/undiciProxyTransport.js';
 
 const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',
@@ -31,16 +30,16 @@ const DEFAULT_HEADERS = Object.freeze({
 });
 
 export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
-    const endpointManager = new EndpointManagerFactory(
-        new EndpointFactory(new ProxyEndpointFactory(new UndiciProxyDispatcherFactory())),
-    ).create(endpointManagerOptions);
+    const proxyFactory = new ProxyEndpointFactory(new UndiciTransportFactory());
+    const endpointFactory = new EndpointFactory(proxyFactory);
+    const endpointManager = new EndpointManagerFactory(endpointFactory).create(
+        endpointManagerOptions,
+    );
 
     async function executeFetch(url: any, options: any = {}) {
-        // Total time budget for the entire operation (acquire + fetch).
         const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
         const deadline = options.deadline ?? Date.now() + timeoutMs;
 
-        // Step 1: Acquire a rate-limited proxy dispatcher.
         let proxyEntry;
         try {
             const remainingBeforeAcquire = getRemainingTime(deadline, url, timeoutMs);
@@ -50,12 +49,10 @@ export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
             throw error;
         }
 
-        const proxyUrl = proxyEntry?.url ?? 'direct';
+        const proxyUrl = proxyEntry.url;
 
-        // Step 2: Recalculate remaining time after acquisition.
         const remainingBeforeFetch = getRemainingTime(deadline, url, timeoutMs);
 
-        // Step 3: Build the abort signal.
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
             controller.abort(new DOMException('Request timed out', 'TimeoutError'));
@@ -65,36 +62,24 @@ export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
             ? AbortSignal.any([controller.signal, options.signal])
             : controller.signal;
 
-        // Step 4: Assemble fetch options.
-        const headers = options.headers
+        const headers: Record<string, string> = options.headers
             ? {
                   ...DEFAULT_HEADERS,
                   ...options.headers,
               }
-            : DEFAULT_HEADERS;
-
-        const fetchOptions: any = {
-            signal,
-            headers,
-        };
-
-        if (options.method) {
-            fetchOptions.method = options.method;
-        }
-
-        if (options.body !== undefined) {
-            fetchOptions.body = options.body;
-        }
-
-        if (proxyEntry?.dispatcher) {
-            fetchOptions.dispatcher = proxyEntry.dispatcher;
-        }
+            : { ...DEFAULT_HEADERS };
 
         const startTime = performance.now();
 
         // Step 5: Execute request.
         try {
-            const response = await fetch(url, fetchOptions);
+            const response = await proxyEntry.transport.request({
+                url,
+                method: options.method ?? 'GET',
+                headers,
+                body: options.body,
+                signal,
+            });
             const durationMs = Math.round(performance.now() - startTime);
 
             logger.debug(

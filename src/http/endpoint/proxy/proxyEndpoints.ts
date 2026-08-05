@@ -40,6 +40,7 @@ export function createProxyEndpoints(
     createLimiter: () => Limiter,
     concurrency: number,
     poolConfig: ProxyPoolConfig,
+    proxyType: string,
     factory: ProxyEndpointFactory,
 ): ProxyEndpoint[] {
     if (!proxyUrls) {
@@ -71,7 +72,12 @@ export function createProxyEndpoints(
 
     const proxyCount = validUrls.length;
 
-    const options: CreateProxyEndpointsOptions = { concurrency, poolConfig, proxyCount };
+    const options: CreateProxyEndpointsOptions = {
+        concurrency,
+        poolConfig,
+        proxyCount,
+        proxyType,
+    };
 
     return validUrls.map((url) => {
         const limiter = createLimiter();

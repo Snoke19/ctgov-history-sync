@@ -1,5 +1,5 @@
-import {Pool} from 'undici';
-import {ProxyPoolConfig} from '../config/config.js';
+import { Pool } from 'undici';
+import { ProxyPoolConfig } from '../config/config.js';
 
 interface PoolFactoryOptions {
     connections?: number;
@@ -11,9 +11,10 @@ interface PoolFactoryOptions {
     [key: string]: unknown;
 }
 
-export const createPoolFactory = (poolConfig: ProxyPoolConfig) =>
+export const createPoolFactory =
+    (poolConfig: ProxyPoolConfig) =>
     (url: string | URL, opts: PoolFactoryOptions = {}): Pool => {
-        const {connections, connect = {}, ...rest} = opts;
+        const { connections, connect = {}, ...rest } = opts;
 
         return new Pool(url, {
             ...rest,

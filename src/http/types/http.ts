@@ -1,4 +1,4 @@
-import {ProxyPoolConfig} from "../../config/config.js";
+import { ProxyPoolConfig } from '../../config/config.js';
 
 export type QueryParamValue = string | number | boolean;
 
@@ -17,6 +17,7 @@ export interface HttpClientOptions {
     acquireTimeout: number;
     concurrency: number;
     poolConfig: ProxyPoolConfig;
+    proxyType: string;
 }
 
 export interface RequestOptions {

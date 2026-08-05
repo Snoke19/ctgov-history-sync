@@ -8,29 +8,26 @@ import { ConfigurationError } from '../../error/errors.js';
 import type { HttpClientOptions } from '../types/http.js';
 import type { Endpoint } from './endpoint.js';
 import type { Limiter } from '../limiter/limiter.js';
-import { UndiciProxyDispatcherFactory } from './proxy/undiciProxyDispatcherFactory.js';
 
 /**
  * Builds the concrete {@link Endpoint} list from {@link HttpClientOptions}.
  *
  * Responsibilities:
- *  - Validate rate-limit and proxy-specific config fields
- *  - Wire the correct {@link Limiter} implementation per endpoint
- *  - Construct proxy or direct endpoints as indicated by options
+ *   - Validate rate-limit and proxy configuration fields
+ *   - Wire the correct {@link Limiter} implementation for each endpoint
+ *   - Construct proxy or direct endpoints as indicated by options
  *
- * Keeping this logic here — rather than in the EndpointManager constructor —
- * means EndpointManager can be unit-tested with injected endpoints and
- * EndpointFactory can be tested independently of the acquire/release loop.
+ * Keeping this logic here (rather than in the EndpointManager constructor)
+ * allows EndpointManager to be tested with injected endpoints,
+ * and EndpointFactory independently of the acquire/release loop.
  */
 export class EndpointFactory {
     /**
-     * @param proxyEndpointFactory - Injectable for testing or alternative
-     *   dispatcher implementations. Defaults to {@link ProxyEndpointFactory},
-     *   which itself defaults to {@link UndiciProxyDispatcherFactory}.
+     * @param proxyEndpointFactory - Injected for testing or alternative
+     *   transport implementations. Defaults to {@link ProxyEndpointFactory},
+     *   which expects a {@link TransportFactory} (e.g., {@link UndiciTransportFactory}).
      */
-    constructor(
-        private readonly proxyEndpointFactory: ProxyEndpointFactory,
-    ) {}
+    constructor(private readonly proxyEndpointFactory: ProxyEndpointFactory) {}
 
     build(options: HttpClientOptions): Endpoint[] {
         const createLimiter = this.buildLimiterFactory(options);
@@ -69,6 +66,7 @@ export class EndpointFactory {
             createLimiter,
             options.concurrency,
             options.poolConfig,
+            options.proxyType,
             this.proxyEndpointFactory,
         );
 

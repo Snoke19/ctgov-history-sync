@@ -1,37 +1,21 @@
-import { Dispatcher } from 'undici';
 import { Endpoint } from '../endpoint.js';
 import type { Limiter } from '../../limiter/limiter.js';
 import { ProxyEndpointHandle } from '../types/endpoints.js';
+import { HttpTransport } from '../types/transport.js';
 
 export class ProxyEndpoint extends Endpoint {
     private readonly handle: ProxyEndpointHandle;
     private closePromise?: Promise<void>;
 
-    constructor(proxyUrl: string, limiter: Limiter, dispatcher: Dispatcher) {
+    constructor(proxyUrl: string, limiter: Limiter, transport: HttpTransport) {
         if (!limiter) throw new TypeError('ProxyEndpoint requires a limiter');
-        if (!(dispatcher instanceof Dispatcher)) {
-            throw new TypeError(
-                'Provided dispatcher does not implement the required Dispatcher contract',
-            );
-        }
+        if (!transport) throw new TypeError('ProxyEndpoint requires a transport');
 
         super(proxyUrl, limiter);
 
-        // Optional runtime safeguard – ensures the contract is fulfilled
-        // (TypeScript already checks this at compile time, but this protects
-        //  against plain JS callers or malformed objects)
-        if (
-            typeof (dispatcher as any).request !== 'function' ||
-            typeof (dispatcher as any).close !== 'function'
-        ) {
-            throw new TypeError(
-                'Provided dispatcher does not implement the required Dispatcher contract',
-            );
-        }
-
         this.handle = Object.freeze({
             url: proxyUrl,
-            dispatcher,
+            transport,
         });
     }
 
@@ -41,7 +25,7 @@ export class ProxyEndpoint extends Endpoint {
 
     public close(): Promise<void> {
         if (!this.closePromise) {
-            this.closePromise = this.handle.dispatcher.close();
+            this.closePromise = this.handle.transport.close();
         }
 
         return this.closePromise;

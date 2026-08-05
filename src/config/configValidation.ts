@@ -1,5 +1,5 @@
-import {ConfigurationError} from '../error/errors.js';
-import {assertPositiveInt} from '../utils/validation.js';
+import { ConfigurationError } from '../error/errors.js';
+import { assertPositiveInt } from '../utils/validation.js';
 
 const isInteger = (n: number): boolean => Number.isFinite(n) && Number.isInteger(n);
 
@@ -79,7 +79,7 @@ export interface ConfigValidationOptions {
     apiDetailUrl: string;
 }
 
-export function validateConfig({apiBaseUrl, apiDetailUrl}: ConfigValidationOptions): void {
+export function validateConfig({ apiBaseUrl, apiDetailUrl }: ConfigValidationOptions): void {
     const requiredUrls: ReadonlyArray<readonly [string, string]> = [
         ['API_BASE_URL', apiBaseUrl],
         ['API_DETAIL_URL', apiDetailUrl],

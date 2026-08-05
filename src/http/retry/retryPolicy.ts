@@ -4,8 +4,12 @@ import {
     RETRY_AFTER_STATUS_CODES,
     RETRY_BASE_DELAY_MS,
 } from '../../config/config.js';
-import {EndpointAcquisitionTimeoutError, TrialFetchError, TrialTimeoutError,} from '../../error/errors.js';
-import {Response} from "undici";
+import {
+    EndpointAcquisitionTimeoutError,
+    TrialFetchError,
+    TrialTimeoutError,
+} from '../../error/errors.js';
+import { HttpResponse } from '../endpoint/types/transport.js';
 
 /**
  * HTTP methods considered safe to retry automatically.
@@ -67,7 +71,7 @@ export function calculateBackoff(attempt: number, retryAfterMs = null) {
  * @returns {number|null} Delay in milliseconds, or null if the header
  *   is absent.
  */
-export function parseRetryAfterHeader(response: Response) {
+export function parseRetryAfterHeader(response: HttpResponse) {
     const raw = response.headers.get('Retry-After');
     if (!raw) return null;
 
@@ -96,7 +100,7 @@ export function parseRetryAfterHeader(response: Response) {
  * @param {string} proxyUrl - The proxy that produced this response.
  * @returns {TrialFetchError}
  */
-export function buildRetryableError(url: string, response: Response, proxyUrl: string) {
+export function buildRetryableError(url: string, response: HttpResponse, proxyUrl: string) {
     const retryAfterMs = RETRY_AFTER_STATUS_CODES.has(response.status)
         ? (parseRetryAfterHeader(response) ?? DEFAULT_RETRY_AFTER_MS)
         : null;

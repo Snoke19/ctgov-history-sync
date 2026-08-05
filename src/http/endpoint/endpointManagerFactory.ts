@@ -8,7 +8,7 @@ import { EndpointManager } from './endpointManager.js';
  * creation step for callers that work with {@link HttpClientOptions}.
  *
  * This is the only public entry point that knows about both classes, keeping
- * each class focused on a single responsibility:
+ * each focused on a single responsibility:
  *
  *   HttpClientOptions
  *       │
@@ -17,7 +17,7 @@ import { EndpointManager } from './endpointManager.js';
  *       ├─► EndpointFactory.build()   — validates + constructs endpoints
  *       └─► new EndpointManager()     — manages acquire/release loop
  *
- * The `endpointFactory` constructor parameter exists purely for testing:
+ * The `endpointFactory` parameter exists purely for testing:
  * supply a stub factory to control which endpoints the manager receives
  * without touching real network infrastructure.
  */
