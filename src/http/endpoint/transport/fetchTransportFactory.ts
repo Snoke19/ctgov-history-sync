@@ -1,6 +1,6 @@
 import { FetchTransport } from './fetchTransport.js';
 import type { HttpTransport } from '../types/transport.js';
-import { DirectTransportFactory } from '../types/DirectTransportFactory.js';
+import { DirectTransportFactory } from './directTransportFactory.js';
 
 /**
  * Production {@link DirectTransportFactory} that returns a {@link FetchTransport}.

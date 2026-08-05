@@ -1,4 +1,4 @@
-import type { HttpTransport } from './transport.js';
+import type { HttpTransport } from '../types/transport.js';
 
 /**
  * Factory for creating a direct (non-proxy) HTTP transport.

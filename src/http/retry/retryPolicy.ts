@@ -65,7 +65,7 @@ export function calculateBackoff(attempt: number, retryAfterMs = null) {
  *   - Integer seconds:  `Retry-After: 120`
  *   - HTTP-date:        `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT`
  *
- * If the value is unparseable, falls back to DEFAULT_RETRY_AFTER_MS.
+ * If the value is unparsable, falls back to DEFAULT_RETRY_AFTER_MS.
  *
  * @param {{ headers: { get(name: string): string | null } }} response
  * @returns {number|null} Delay in milliseconds, or null if the header
@@ -83,7 +83,7 @@ export function parseRetryAfterHeader(response: HttpResponse) {
     const dateMs = Date.parse(raw);
     if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
 
-    // Unparseable — use safe default
+    // Unparsable — use safe default
     return DEFAULT_RETRY_AFTER_MS;
 }
 

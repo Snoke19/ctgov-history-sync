@@ -1,3 +1,5 @@
+import { ProxyPoolConfig } from "../../../config/config.js";
+
 /**
  * Abstraction over a specific HTTP library (undici, axios, node-fetch, etc.).
  *
@@ -32,4 +34,10 @@ export interface HttpResponse {
     text(): Promise<string>;
     json(): Promise<unknown>;
     discard(): Promise<void>;
+}
+
+export interface CreateProxyEndpointsOptions {
+    readonly concurrency: number;
+    readonly poolConfig: ProxyPoolConfig;
+    readonly proxyCount: number;
 }

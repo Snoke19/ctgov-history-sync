@@ -1,8 +1,7 @@
 import { fetch, ProxyAgent } from 'undici';
 import type { Dispatcher } from 'undici';
-import type { HttpRequest, HttpResponse, HttpTransport } from '../types/transport.js';
+import type { CreateProxyEndpointsOptions, HttpRequest, HttpResponse, HttpTransport } from '../types/transport.js';
 import type { TransportFactory } from '../types/transportFactory.js';
-import type { CreateProxyEndpointsOptions } from '../types/endpointOptions.js';
 import { resolveConnections } from '../proxy/resolveConnections.js';
 import { createPoolFactory } from '../../poolFactory.js';
 import type { ProxyPoolConfig } from '../../../config/config.js';
