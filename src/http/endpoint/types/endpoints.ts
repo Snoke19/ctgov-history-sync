@@ -1,11 +1,11 @@
-import type { ProxyAgent } from 'undici';
+import type { Dispatcher } from 'undici';
 
 export interface EndpointHandle {
     readonly url: string;
 }
 
 export interface ProxyEndpointHandle extends EndpointHandle {
-    readonly dispatcher: ProxyAgent;
+    readonly dispatcher: Dispatcher;
 }
 
 export interface DirectEndpointHandle extends EndpointHandle {
