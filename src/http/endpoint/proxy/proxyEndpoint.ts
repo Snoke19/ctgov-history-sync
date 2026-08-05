@@ -1,7 +1,7 @@
-import {Dispatcher} from 'undici';
-import {Endpoint} from '../endpoint.js';
-import type {Limiter} from '../../limiter/limiter.js';
-import {ProxyEndpointHandle} from '../types/endpoints.js';
+import { Dispatcher } from 'undici';
+import { Endpoint } from '../endpoint.js';
+import type { Limiter } from '../../limiter/limiter.js';
+import { ProxyEndpointHandle } from '../types/endpoints.js';
 
 export class ProxyEndpoint extends Endpoint {
     private readonly handle: ProxyEndpointHandle;
@@ -9,15 +9,24 @@ export class ProxyEndpoint extends Endpoint {
 
     constructor(proxyUrl: string, limiter: Limiter, dispatcher: Dispatcher) {
         if (!limiter) throw new TypeError('ProxyEndpoint requires a limiter');
-        if (!dispatcher) throw new TypeError('ProxyEndpoint requires a dispatcher');
+        if (!(dispatcher instanceof Dispatcher)) {
+            throw new TypeError(
+                'Provided dispatcher does not implement the required Dispatcher contract',
+            );
+        }
 
         super(proxyUrl, limiter);
 
         // Optional runtime safeguard – ensures the contract is fulfilled
         // (TypeScript already checks this at compile time, but this protects
         //  against plain JS callers or malformed objects)
-        if (typeof (dispatcher as any).request !== 'function' || typeof (dispatcher as any).close !== 'function') {
-            throw new TypeError('Provided dispatcher does not implement the required Dispatcher contract');
+        if (
+            typeof (dispatcher as any).request !== 'function' ||
+            typeof (dispatcher as any).close !== 'function'
+        ) {
+            throw new TypeError(
+                'Provided dispatcher does not implement the required Dispatcher contract',
+            );
         }
 
         this.handle = Object.freeze({
