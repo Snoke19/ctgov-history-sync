@@ -1,4 +1,4 @@
-import type {ProxyAgent} from 'undici';
+import type { ProxyAgent } from 'undici';
 
 export interface EndpointHandle {
     readonly url: string;
@@ -11,3 +11,12 @@ export interface ProxyEndpointHandle extends EndpointHandle {
 export interface DirectEndpointHandle extends EndpointHandle {
     readonly dispatcher: null;
 }
+
+/**
+ * The concrete union returned by {@link EndpointManager.acquireEndpoint}.
+ * Callers can narrow on `dispatcher` to distinguish proxy from direct handles:
+ *
+ *   if (handle.dispatcher) { // ProxyEndpointHandle }
+ *   else                    { // DirectEndpointHandle }
+ */
+export type AcquiredEndpointHandle = ProxyEndpointHandle | DirectEndpointHandle;

@@ -11,7 +11,7 @@ import {
 } from '../config/config.js';
 import {logger} from '../config/logging.js';
 import {TrialFetchError, TrialTimeoutError} from '../error/errors.js';
-import {EndpointManager} from './endpoint/endpointManager.js';
+import {EndpointManagerFactory} from './endpoint/endpointManagerFactory.js';
 import {drainBody, parseJsonResponse} from './responseBody.js';
 import {buildRetryableError, calculateBackoff, classifyError, isIdempotent,} from './retry/retryPolicy.js';
 import {setTimeout as sleep} from 'node:timers/promises';
@@ -24,7 +24,7 @@ const DEFAULT_HEADERS = Object.freeze({
 
 export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
 
-    const endpointManager = new EndpointManager(endpointManagerOptions);
+    const endpointManager = new EndpointManagerFactory().create(endpointManagerOptions);
 
     async function executeFetch(url: any, options: any = {}) {
         // Total time budget for the entire operation (acquire + fetch).
