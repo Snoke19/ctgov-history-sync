@@ -2,6 +2,7 @@ import { TokenBucket } from '../limiter/tokenBucket.js';
 import { UnlimitedLimiter } from '../limiter/unlimitedLimiter.js';
 import { DirectEndpoint } from './direct/directEndpoint.js';
 import { createProxyEndpoints } from './proxy/proxyEndpoints.js';
+import { ProxyEndpointFactory } from './proxy/proxyEndpointFactory.js';
 import { assertPositiveInt } from '../../utils/validation.js';
 import { ConfigurationError } from '../../error/errors.js';
 import type { HttpClientOptions } from '../types/http.js';
@@ -21,6 +22,15 @@ import type { Limiter } from '../limiter/limiter.js';
  * EndpointFactory can be tested independently of the acquire/release loop.
  */
 export class EndpointFactory {
+    /**
+     * @param proxyEndpointFactory - Injectable for testing or alternative
+     *   dispatcher implementations. Defaults to {@link ProxyEndpointFactory},
+     *   which itself defaults to {@link UndiciProxyDispatcherFactory}.
+     */
+    constructor(
+        private readonly proxyEndpointFactory: ProxyEndpointFactory = new ProxyEndpointFactory(),
+    ) {}
+
     build(options: HttpClientOptions): Endpoint[] {
         const createLimiter = this.buildLimiterFactory(options);
         return options.useProxy
@@ -58,6 +68,7 @@ export class EndpointFactory {
             createLimiter,
             options.concurrency,
             options.poolConfig,
+            this.proxyEndpointFactory,
         );
 
         if (endpoints.length === 0) {

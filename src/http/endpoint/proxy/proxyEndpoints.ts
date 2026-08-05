@@ -3,7 +3,6 @@ import { ProxyEndpointFactory } from './proxyEndpointFactory.js';
 import { logger } from '../../../config/logging.js';
 import { ProxyPoolConfig } from '../../../config/config.js';
 import { Limiter } from '../../limiter/limiter.js';
-import { UndiciProxyDispatcherFactory } from './undiciProxyDispatcherFactory.js';
 import { CreateProxyEndpointsOptions } from '../types/endpointOptions.js';
 
 /**
@@ -41,6 +40,7 @@ export function createProxyEndpoints(
     createLimiter: () => Limiter,
     concurrency: number,
     poolConfig: ProxyPoolConfig,
+    factory: ProxyEndpointFactory,
 ): ProxyEndpoint[] {
     if (!proxyUrls) {
         return [];
@@ -70,8 +70,6 @@ export function createProxyEndpoints(
     }
 
     const proxyCount = validUrls.length;
-
-    const factory = new ProxyEndpointFactory(new UndiciProxyDispatcherFactory());
 
     const options: CreateProxyEndpointsOptions = { concurrency, poolConfig, proxyCount };
 

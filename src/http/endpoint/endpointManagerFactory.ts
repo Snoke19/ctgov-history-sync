@@ -1,7 +1,7 @@
-import { assertPositiveInt } from '../../utils/validation.js';
-import type { HttpClientOptions } from '../types/http.js';
-import { EndpointFactory } from './endpointFactory.js';
-import { EndpointManager } from './endpointManager.js';
+import {assertPositiveInt} from '../../utils/validation.js';
+import type {HttpClientOptions} from '../types/http.js';
+import {EndpointFactory} from './endpointFactory.js';
+import {EndpointManager} from './endpointManager.js';
 
 /**
  * Composes {@link EndpointFactory} and {@link EndpointManager} into a single
@@ -22,6 +22,7 @@ import { EndpointManager } from './endpointManager.js';
  * without touching real network infrastructure.
  */
 export class EndpointManagerFactory {
+
     constructor(private readonly endpointFactory: EndpointFactory = new EndpointFactory()) {}
 
     create(options: HttpClientOptions): EndpointManager {
