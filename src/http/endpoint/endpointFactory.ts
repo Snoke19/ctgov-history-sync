@@ -1,39 +1,31 @@
-import { TokenBucket } from '../limiter/tokenBucket.js';
-import { UnlimitedLimiter } from '../limiter/unlimitedLimiter.js';
-import { assertPositiveInt } from '../../utils/validation.js';
 import type { HttpClientOptions } from '../types/http.js';
 import type { Endpoint } from './endpoint.js';
 import type { Limiter } from '../limiter/limiter.js';
-import { EndpointProvider } from './types/endpointProvider.js';
+import type { EndpointProvider } from './types/endpointProvider.js';
+import { LimiterFactory } from '../limiter/limiterFactory.js';
 
 /**
  * Builds the concrete {@link Endpoint} list from {@link HttpClientOptions}.
  *
  * Responsibilities:
- *   - Validate rate-limit and proxy configuration fields
- *   - Wire the correct {@link Limiter} implementation for each endpoint
- *   - Construct proxy or direct endpoints as indicated by options
+ *   - Wire the correct {@link Limiter} for each endpoint via {@link LimiterFactory}.
+ *   - Delegate endpoint construction to the injected {@link EndpointProvider}.
  *
- * Keeping this logic here (rather than in the EndpointManager constructor)
- * allows EndpointManager to be tested with injected endpoints,
- * and EndpointFactory independently of the acquire/release loop.
+ * Rate-limit validation now lives inside the {@link LimiterFactory} implementation,
+ * keeping this class focused solely on endpoint construction.
+ *
+ * The separation of this class from {@link EndpointManager} allows both to be
+ * tested independently: EndpointFactory with various provider/limiter stubs,
+ * and EndpointManager with pre-built endpoint stubs.
  */
 export class EndpointFactory {
-    constructor(private readonly provider: EndpointProvider) {}
+    constructor(
+        private readonly provider: EndpointProvider,
+        private readonly limiterFactory: LimiterFactory,
+    ) {}
 
     build(options: HttpClientOptions): Endpoint[] {
-        const createLimiter = this.buildLimiterFactory(options);
+        const createLimiter = (): Limiter => this.limiterFactory.create(options);
         return this.provider.build(options, createLimiter);
-    }
-
-    private buildLimiterFactory(options: HttpClientOptions): () => Limiter {
-        if (!options.useRateLimit) {
-            return () => new UnlimitedLimiter();
-        }
-
-        assertPositiveInt(options.rateLimitCapacity, 'rateLimitCapacity');
-        assertPositiveInt(options.rateLimitWindow, 'rateLimitWindow');
-
-        return () => new TokenBucket(options.rateLimitCapacity, options.rateLimitWindow);
     }
 }

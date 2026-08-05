@@ -1,24 +1,48 @@
 import { performance } from 'node:perf_hooks';
-import { setTimeout as sleep } from 'node:timers/promises';
+import { setTimeout as nodeTimersSleep } from 'node:timers/promises';
 import { logger } from '../../config/logging.js';
 import { ConfigurationError, EndpointAcquisitionTimeoutError } from '../../error/errors.js';
 import { Endpoint } from './endpoint.js';
 import type { AcquiredEndpointHandle } from './types/endpoints.js';
 
-const now = (): number => performance.now();
+type ClockFn = () => number;
+type SleepFn = (ms: number, signal?: AbortSignal) => Promise<void>;
+
+// Production defaults are module-level so they are not re-created per instance
+// and do not appear in test output as noise.
+const defaultClock: ClockFn = () => performance.now();
+const defaultSleep: SleepFn = (ms, signal) =>
+    nodeTimersSleep(ms, undefined, signal !== undefined ? { signal } : undefined);
 
 export class EndpointManager {
     private readonly endpoints: readonly Endpoint[];
     private readonly acquireTimeout: number;
+    private readonly clock: ClockFn;
+    private readonly sleep: SleepFn;
     private nextIndex = 0;
 
-    constructor(endpoints: readonly Endpoint[], acquireTimeout: number) {
+    /**
+     * @param endpoints       Pre-built endpoint list (at least one required).
+     * @param acquireTimeout  Default timeout in ms for {@link acquireEndpoint}.
+     * @param clock           Wall-clock source. Defaults to `performance.now()`.
+     *                        Inject a fake in tests to drive timing deterministically.
+     * @param sleep           Async delay. Defaults to `timers/promises.setTimeout`.
+     *                        Inject a jest.fn() in tests to skip real waits.
+     */
+    constructor(
+        endpoints: readonly Endpoint[],
+        acquireTimeout: number,
+        clock: ClockFn = defaultClock,
+        sleep: SleepFn = defaultSleep,
+    ) {
         if (endpoints.length === 0) {
             throw new ConfigurationError('EndpointManager requires at least one endpoint.');
         }
 
         this.endpoints = endpoints;
         this.acquireTimeout = acquireTimeout;
+        this.clock = clock;
+        this.sleep = sleep;
 
         logger.info('Endpoint manager initialized | Endpoints: %d', this.endpoints.length);
     }
@@ -31,16 +55,18 @@ export class EndpointManager {
         timeoutMs = this.acquireTimeout,
         signal?: AbortSignal,
     ): Promise<AcquiredEndpointHandle> {
-        const deadline = now() + timeoutMs;
+        const deadline = this.clock() + timeoutMs;
 
         while (true) {
-            // Single clock read per iteration to avoid skew between the
-            // endpoint scan and the deadline check.
+            // AbortSignal is checked before the clock read so that an already-aborted
+            // signal surfaces immediately, even before any deadline evaluation.
             if (signal?.aborted) {
                 throw new DOMException('The operation was aborted.', 'AbortError');
             }
 
-            const currentTime = now();
+            // Single clock read per iteration to keep the endpoint scan and deadline
+            // check consistent — avoids skew between the two.
+            const currentTime = this.clock();
             const remaining = deadline - currentTime;
 
             if (remaining <= 0) {
@@ -65,7 +91,9 @@ export class EndpointManager {
                 shortestWait = Math.min(shortestWait, endpoint.timeUntilToken(currentTime));
             }
 
-            await sleep(Math.min(shortestWait, remaining), undefined, { signal });
+            // Sleep for the shortest wait across all endpoints, but never past
+            // the deadline — this keeps the loop responsive to timeouts.
+            await this.sleep(Math.min(shortestWait, remaining), signal);
         }
     }
 

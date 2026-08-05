@@ -26,7 +26,6 @@ const httpClient = createHttpClient(
         acquireTimeout: ACQUIRE_TIMEOUT,
         concurrency: CONCURRENCY,
         poolConfig: PROXY_POOL_CONFIG,
-        proxyType: '',
     },
     new ProxyEndpointProvider(new UndiciTransportFactory()),
 );

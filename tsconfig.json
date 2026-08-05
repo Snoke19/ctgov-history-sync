@@ -1,6 +1,5 @@
 {
     "compilerOptions": {
-        "types": ["node"],
         "target": "ES2022",
         "module": "NodeNext",
         "moduleResolution": "NodeNext",
@@ -29,10 +28,11 @@
         "declarationMap": true,
         "sourceMap": true,
         "outDir": "./dist",
-        "rootDir": "./src",
+        "rootDir": ".",
+        "noEmit": true,
         "resolveJsonModule": true,
         "isolatedModules": true
     },
-    "include": ["src/**/*"],
-    "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+    "include": ["src/**/*.ts", "test/**/*.ts"],
+    "exclude": ["node_modules", "dist"]
 }

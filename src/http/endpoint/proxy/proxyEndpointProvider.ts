@@ -4,7 +4,7 @@ import type { Limiter } from '../../limiter/limiter.js';
 import { Endpoint } from '../endpoint.js';
 import type { EndpointProvider } from '../types/endpointProvider.js';
 import { parseProxyUrls } from './proxyEndpoints.js';
-import { TransportFactory } from '../types/transportFactory.js';
+import type { TransportFactory } from '../types/transportFactory.js';
 
 export class ProxyEndpointProvider implements EndpointProvider {
     constructor(private readonly transportFactory: TransportFactory) {}
@@ -24,7 +24,6 @@ export class ProxyEndpointProvider implements EndpointProvider {
             concurrency: options.concurrency,
             proxyCount: urls.length,
             poolConfig: options.poolConfig,
-            proxyType: options.proxyType,
         };
 
         return urls.map(

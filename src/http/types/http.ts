@@ -9,7 +9,6 @@ export interface QueryParams {
 }
 
 export interface HttpClientOptions {
-    useProxy?: boolean;
     proxyUrls?: string;
     useRateLimit?: boolean;
     rateLimitCapacity: number;
@@ -17,7 +16,6 @@ export interface HttpClientOptions {
     acquireTimeout: number;
     concurrency: number;
     poolConfig: ProxyPoolConfig;
-    proxyType: string;
 }
 
 export interface RequestOptions {

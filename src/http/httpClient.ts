@@ -21,6 +21,7 @@ import {
 import { setTimeout as sleep } from 'node:timers/promises';
 import { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
+import { DefaultLimiterFactory } from './limiter/defaultLimiterFactory.js';
 import { EndpointProvider } from './endpoint/types/endpointProvider.js';
 
 const DEFAULT_HEADERS = Object.freeze({
@@ -29,9 +30,9 @@ const DEFAULT_HEADERS = Object.freeze({
 });
 
 export function createHttpClient(endpointManagerOptions: HttpClientOptions, provider: EndpointProvider) {
-    const endpointFactory = new EndpointFactory(provider);
-
-    const endpointManager = new EndpointManagerFactory(endpointFactory).create(
+    const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
+    
+    const endpointManager = new EndpointManagerFactory(factory).create(
         endpointManagerOptions,
     );
 
