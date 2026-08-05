@@ -1,13 +1,10 @@
 import { TokenBucket } from '../limiter/tokenBucket.js';
 import { UnlimitedLimiter } from '../limiter/unlimitedLimiter.js';
-import { DirectEndpoint } from './direct/directEndpoint.js';
-import { createProxyEndpoints } from './proxy/proxyEndpoints.js';
-import { ProxyEndpointFactory } from './proxy/proxyEndpointFactory.js';
 import { assertPositiveInt } from '../../utils/validation.js';
-import { ConfigurationError } from '../../error/errors.js';
 import type { HttpClientOptions } from '../types/http.js';
 import type { Endpoint } from './endpoint.js';
 import type { Limiter } from '../limiter/limiter.js';
+import { EndpointProvider } from './types/endpointProvider.js';
 
 /**
  * Builds the concrete {@link Endpoint} list from {@link HttpClientOptions}.
@@ -22,18 +19,11 @@ import type { Limiter } from '../limiter/limiter.js';
  * and EndpointFactory independently of the acquire/release loop.
  */
 export class EndpointFactory {
-    /**
-     * @param proxyEndpointFactory - Injected for testing or alternative
-     *   transport implementations. Defaults to {@link ProxyEndpointFactory},
-     *   which expects a {@link TransportFactory} (e.g., {@link UndiciTransportFactory}).
-     */
-    constructor(private readonly proxyEndpointFactory: ProxyEndpointFactory) {}
+    constructor(private readonly provider: EndpointProvider) {}
 
     build(options: HttpClientOptions): Endpoint[] {
         const createLimiter = this.buildLimiterFactory(options);
-        return options.useProxy
-            ? this.buildProxyEndpoints(options, createLimiter)
-            : [new DirectEndpoint(createLimiter())];
+        return this.provider.build(options, createLimiter);
     }
 
     private buildLimiterFactory(options: HttpClientOptions): () => Limiter {
@@ -45,37 +35,5 @@ export class EndpointFactory {
         assertPositiveInt(options.rateLimitWindow, 'rateLimitWindow');
 
         return () => new TokenBucket(options.rateLimitCapacity, options.rateLimitWindow);
-    }
-
-    private buildProxyEndpoints(
-        options: HttpClientOptions,
-        createLimiter: () => Limiter,
-    ): Endpoint[] {
-        if (typeof options.proxyUrls !== 'string' || options.proxyUrls.trim() === '') {
-            throw new ConfigurationError(
-                'proxyUrls must be a non-empty string when useProxy is enabled.',
-            );
-        }
-
-        if (!options.poolConfig) {
-            throw new ConfigurationError('poolConfig is required when useProxy is enabled.');
-        }
-
-        const endpoints = createProxyEndpoints(
-            options.proxyUrls,
-            createLimiter,
-            options.concurrency,
-            options.poolConfig,
-            options.proxyType,
-            this.proxyEndpointFactory,
-        );
-
-        if (endpoints.length === 0) {
-            throw new ConfigurationError(
-                'useProxy is enabled, but no valid proxy URLs were configured.',
-            );
-        }
-
-        return endpoints;
     }
 }

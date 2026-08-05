@@ -23,6 +23,9 @@ import { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
 import { ProxyEndpointFactory } from './endpoint/proxy/proxyEndpointFactory.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { UndiciTransportFactory } from './endpoint/transport/undiciProxyTransport.js';
+import { FetchTransport } from './endpoint/transport/fetchTransport.js';
+import { ProxyEndpointProvider } from './endpoint/proxy/proxyEndpointProvider.js';
+import { DirectEndpointProvider } from './endpoint/direct/directEndpointProvider.js';
 
 const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',
@@ -30,8 +33,11 @@ const DEFAULT_HEADERS = Object.freeze({
 });
 
 export function createHttpClient(endpointManagerOptions: HttpClientOptions) {
-    const proxyFactory = new ProxyEndpointFactory(new UndiciTransportFactory());
-    const endpointFactory = new EndpointFactory(proxyFactory);
+    const provider = endpointManagerOptions.useProxy
+        ? new ProxyEndpointProvider(new ProxyEndpointFactory(new UndiciTransportFactory()))
+        : new DirectEndpointProvider(new FetchTransport());
+
+    const endpointFactory = new EndpointFactory(provider);
     const endpointManager = new EndpointManagerFactory(endpointFactory).create(
         endpointManagerOptions,
     );

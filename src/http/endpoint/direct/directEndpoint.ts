@@ -1,6 +1,6 @@
 import type { Limiter } from '../../limiter/limiter.js';
 import { Endpoint } from '../endpoint.js';
-import { FetchTransport } from '../transport/fetchTransport.js';
+import type { HttpTransport } from '../types/transport.js';
 import type { DirectEndpointHandle } from '../types/endpoints.js';
 
 export const DIRECT_ENDPOINT_URL = 'direct' as const;
@@ -8,13 +8,14 @@ export const DIRECT_ENDPOINT_URL = 'direct' as const;
 export class DirectEndpoint extends Endpoint {
     private readonly handle: DirectEndpointHandle;
 
-    constructor(limiter: Limiter) {
+    constructor(limiter: Limiter, transport: HttpTransport) {
         if (!limiter) throw new TypeError('DirectEndpoint requires a limiter');
+        if (!transport) throw new TypeError('DirectEndpoint requires a transport');
 
         super(DIRECT_ENDPOINT_URL, limiter);
         this.handle = Object.freeze({
             url: this.getUrl(),
-            transport: new FetchTransport(),
+            transport,
         });
     }
 

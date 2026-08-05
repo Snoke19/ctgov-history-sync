@@ -11,9 +11,7 @@ export interface DirectEndpointHandle extends EndpointHandle {}
 
 /**
  * The concrete union returned by {@link EndpointManager.acquireEndpoint}.
- * Check `transport` to determine the endpoint type:
- *
- *   if (handle.transport) { // ProxyEndpointHandle }
- *   else                  { // DirectEndpointHandle }
+ * Both proxy and direct handles expose a transport.
+ * Use the endpoint URL ('direct' vs proxy URL) to distinguish if needed.
  */
 export type AcquiredEndpointHandle = ProxyEndpointHandle | DirectEndpointHandle;
