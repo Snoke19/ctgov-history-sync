@@ -13,6 +13,7 @@ import { TrialFetchError, TrialNotFoundError, TrialTimeoutError } from './error/
 import { createHttpClient } from './http/httpClient.js';
 import { ProxyEndpointProvider } from './http/endpoint/provider/proxyEndpointProvider.js';
 import { UndiciTransportFactory } from './http/endpoint/transport/impl/undiciProxyTransport.js';
+import { HttpProxyUrlParser } from './http/endpoint/proxy/httpProxyUrlParser.js';
 
 const DATE_RANGE = 'AREA[StartDate]RANGE[07/15/2026, 07/18/2026]';
 
@@ -26,7 +27,7 @@ const httpClient = createHttpClient(
         concurrency: CONCURRENCY,
         poolConfig: PROXY_POOL_CONFIG,
     },
-    new ProxyEndpointProvider(new UndiciTransportFactory()),
+    new ProxyEndpointProvider(new UndiciTransportFactory(), new HttpProxyUrlParser()),
 );
 
 const api = createApiClient(httpClient);

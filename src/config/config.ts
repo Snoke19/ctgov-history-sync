@@ -79,14 +79,17 @@ export const PROXY_POOL_CONFIG: ProxyPoolConfig = Object.freeze({
     connectTimeout: PROXY_POOL_CONNECT_TIMEOUT,
 });
 
-export interface ProxyPoolConfig {
+export interface ConnectionConfig {
     readonly connections: number;
     readonly maxConnections: number;
+    readonly connectTimeout: number;
+}
+
+export interface ProxyPoolConfig extends ConnectionConfig {
     readonly pipelining: number;
     readonly keepAliveTimeout: number;
     readonly headersTimeout: number;
     readonly bodyTimeout: number;
-    readonly connectTimeout: number;
 }
 
 // ---------------------------------------------------------------------------

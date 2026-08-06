@@ -7,5 +7,5 @@ import { CreateProxyEndpointsOptions, HttpTransport } from '../httpTransport.js'
  * solely responsible for creating the HTTP client (with or without a proxy).
  */
 export interface ProxyTransportFactory {
-    create(proxyUrl: string, options: CreateProxyEndpointsOptions): HttpTransport;
+    create(url: string, options: CreateProxyEndpointsOptions): HttpTransport;
 }

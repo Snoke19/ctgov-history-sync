@@ -24,6 +24,7 @@ import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { DefaultLimiterFactory } from './limiter/factory/defaultLimiterFactory.js';
 import { EndpointHandle } from './endpoint/endpoint.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
+import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 
 const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',
@@ -33,8 +34,9 @@ const DEFAULT_HEADERS = Object.freeze({
 export function createHttpClient(
     endpointManagerOptions: HttpClientOptions,
     provider: EndpointProvider,
+    limiterFactory: LimiterFactory = new DefaultLimiterFactory(),
 ) {
-    const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
+    const factory = new EndpointFactory(provider, limiterFactory);
 
     const endpointManager = new EndpointManagerFactory(factory).create(endpointManagerOptions);
 

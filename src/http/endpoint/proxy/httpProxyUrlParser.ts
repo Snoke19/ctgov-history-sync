@@ -1,5 +1,42 @@
 import { logger } from '../../../config/logging.js';
 
+export interface ProxyUrlParser {
+    parse(input: string): string[];
+}
+
+export class HttpProxyUrlParser implements ProxyUrlParser {
+    parse(proxyUrls: string): string[] {
+        if (!proxyUrls) {
+            return [];
+        }
+
+        const urls: string[] = [];
+
+        for (const raw of String(proxyUrls).split(',')) {
+            const url = raw.trim();
+
+            try {
+                const parsed = new URL(url);
+
+                const validProtocol = parsed.protocol === 'http:' || parsed.protocol === 'https:';
+                const validHost = Boolean(parsed.hostname);
+                const validPort = hasExplicitPort(url);
+
+                if (!validProtocol || !validHost || !validPort) {
+                    logger.warn('[Proxy] Skipping invalid proxy URL: "%s"', url);
+                    continue;
+                }
+
+                urls.push(url);
+            } catch {
+                logger.warn('[Proxy] Skipping invalid proxy URL: "%s"', url);
+            }
+        }
+
+        return urls;
+    }
+}
+
 /**
  * Supported formats:
  *
@@ -28,35 +65,4 @@ function hasExplicitPort(url: string): boolean {
         : authority;
 
     return /:\d+$/.test(hostPort);
-}
-
-export function parseProxyUrls(proxyUrls: string): string[] {
-    if (!proxyUrls) {
-        return [];
-    }
-
-    const urls: string[] = [];
-
-    for (const raw of String(proxyUrls).split(',')) {
-        const url = raw.trim();
-
-        try {
-            const parsed = new URL(url);
-
-            const validProtocol = parsed.protocol === 'http:' || parsed.protocol === 'https:';
-            const validHost = Boolean(parsed.hostname);
-            const validPort = hasExplicitPort(url);
-
-            if (!validProtocol || !validHost || !validPort) {
-                logger.warn('[Proxy] Skipping invalid proxy URL: "%s"', url);
-                continue;
-            }
-
-            urls.push(url);
-        } catch {
-            logger.warn('[Proxy] Skipping invalid proxy URL: "%s"', url);
-        }
-    }
-
-    return urls;
 }

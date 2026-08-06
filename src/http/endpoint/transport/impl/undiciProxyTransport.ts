@@ -58,7 +58,7 @@ export class UndiciHttpTransport implements HttpTransport {
             ok: response.ok,
             headers: response.headers,
             text: () => response.text(),
-            json: <T>() => response.json() as Promise<T>,
+            json: () => response.json(),
             discard: async () => {
                 if (response.body) {
                     await (response.body as ReadableStream).cancel().catch(() => {});

@@ -13,6 +13,7 @@ import {
     PoolCreatorFn,
     UndiciTransportFactory,
 } from '../../../src/http/endpoint/transport/impl/undiciProxyTransport.js';
+import { HttpProxyUrlParser } from '../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
 
 /**
  * Builds an UndiciTransportFactory that never opens real sockets.
@@ -59,7 +60,10 @@ function createValidOptions(overrides: Partial<HttpClientOptions> = {}): HttpCli
 
 describe('Proxy + Undici construction chain', () => {
     it('builds successfully with rate limiting disabled', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory());
+        const provider = new ProxyEndpointProvider(
+            createSafeTransportFactory(),
+            new HttpProxyUrlParser(),
+        );
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const manager = new EndpointManagerFactory(factory).create(createValidOptions());
 
@@ -68,7 +72,10 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('builds successfully with rate limiting enabled', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory());
+        const provider = new ProxyEndpointProvider(
+            createSafeTransportFactory(),
+            new HttpProxyUrlParser(),
+        );
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const manager = new EndpointManagerFactory(factory).create(
             createValidOptions({
@@ -83,7 +90,10 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('creates exactly one endpoint per valid proxy URL', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory());
+        const provider = new ProxyEndpointProvider(
+            createSafeTransportFactory(),
+            new HttpProxyUrlParser(),
+        );
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const manager = new EndpointManagerFactory(factory).create(
             createValidOptions({
@@ -97,7 +107,10 @@ describe('Proxy + Undici construction chain', () => {
     // ─── ProxyEndpointProvider validation ───────────────────────────────────
 
     it('throws ConfigurationError when poolConfig is missing', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory());
+        const provider = new ProxyEndpointProvider(
+            createSafeTransportFactory(),
+            new HttpProxyUrlParser(),
+        );
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
         delete (options as any).poolConfig;
@@ -109,7 +122,10 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('throws ConfigurationError when proxyUrls is empty', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory());
+        const provider = new ProxyEndpointProvider(
+            createSafeTransportFactory(),
+            new HttpProxyUrlParser(),
+        );
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions({ proxyUrls: '' });
 
@@ -122,7 +138,10 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('throws ConfigurationError when every proxyUrl is invalid', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory());
+        const provider = new ProxyEndpointProvider(
+            createSafeTransportFactory(),
+            new HttpProxyUrlParser(),
+        );
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions({ proxyUrls: 'not-a-url,also-bad://missing-port' });
 
@@ -134,7 +153,10 @@ describe('Proxy + Undici construction chain', () => {
     // ─── EndpointManagerFactory validation ──────────────────────────────────
 
     it('throws when acquireTimeout is missing', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory());
+        const provider = new ProxyEndpointProvider(
+            createSafeTransportFactory(),
+            new HttpProxyUrlParser(),
+        );
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
         delete (options as any).acquireTimeout;
@@ -143,7 +165,10 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('throws when concurrency is missing', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory());
+        const provider = new ProxyEndpointProvider(
+            createSafeTransportFactory(),
+            new HttpProxyUrlParser(),
+        );
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
         delete (options as any).concurrency;
@@ -154,7 +179,10 @@ describe('Proxy + Undici construction chain', () => {
     // ─── DefaultLimiterFactory validation ───────────────────────────────────
 
     it('throws when rate limit is enabled but capacity is missing', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory());
+        const provider = new ProxyEndpointProvider(
+            createSafeTransportFactory(),
+            new HttpProxyUrlParser(),
+        );
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions({
             useRateLimit: true,
@@ -166,7 +194,10 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('throws when rate limit is enabled but window is missing', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory());
+        const provider = new ProxyEndpointProvider(
+            createSafeTransportFactory(),
+            new HttpProxyUrlParser(),
+        );
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions({
             useRateLimit: true,
@@ -180,7 +211,10 @@ describe('Proxy + Undici construction chain', () => {
     // ─── Lifecycle smoke test ───────────────────────────────────────────────
 
     it('produces a manager whose endpoints can be closed cleanly', async () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory());
+        const provider = new ProxyEndpointProvider(
+            createSafeTransportFactory(),
+            new HttpProxyUrlParser(),
+        );
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const manager = new EndpointManagerFactory(factory).create(createValidOptions());
 

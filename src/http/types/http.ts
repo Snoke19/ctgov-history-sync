@@ -15,7 +15,7 @@ export interface HttpClientOptions {
     rateLimitWindow: number;
     acquireTimeout: number;
     concurrency: number;
-    poolConfig: ProxyPoolConfig;
+    poolConfig?: ProxyPoolConfig;
 }
 
 export interface RequestOptions {
