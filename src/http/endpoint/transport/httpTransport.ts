@@ -22,7 +22,7 @@ export interface HttpRequest {
     readonly url: string;
     readonly method: string;
     readonly headers: Record<string, string>;
-    readonly body?: string | Buffer | Uint8Array | null;
+    readonly body?: string | undefined;
     readonly signal?: AbortSignal;
 }
 

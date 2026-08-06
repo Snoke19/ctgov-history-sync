@@ -4,7 +4,7 @@ import { BusinessOperation } from './businessOperation.js';
 export class Retry<T> implements BusinessOperation<T> {
     private readonly op: BusinessOperation<T>;
     private readonly maxAttempts: number;
-    private readonly delayMs: number;
+    private readonly delayMs: number | ((attempt: number, error: BusinessException) => number);
     private attemptsCount: number;
     private readonly shouldRetry: (error: BusinessException) => boolean;
     private readonly errors: BusinessException[];
@@ -12,7 +12,7 @@ export class Retry<T> implements BusinessOperation<T> {
     constructor(
         op: BusinessOperation<T>,
         maxAttempts: number,
-        delayMs: number,
+        delayMs: number | ((attempt: number, error: BusinessException) => number),
         ...ignoreTests: Array<(error: BusinessException) => boolean>
     ) {
         this.op = op;
@@ -48,7 +48,12 @@ export class Retry<T> implements BusinessOperation<T> {
                     throw error;
                 }
 
-                await new Promise((resolve) => setTimeout(resolve, this.delayMs));
+                const delay =
+                    typeof this.delayMs === 'function'
+                        ? this.delayMs(this.attemptsCount - 1, error)
+                        : this.delayMs;
+
+                await new Promise((resolve) => setTimeout(resolve, Math.max(0, delay)));
             }
         } while (true);
     }

@@ -2,17 +2,14 @@ import { logger } from '../config/logging.js';
 import { TrialFetchError } from '../error/errors.js';
 import { HttpResponse } from './endpoint/transport/httpTransport.js';
 
-interface ParseJsonResponseOptions {
-    allow404?: boolean;
-    errorBodyPreviewLength: number;
-    retryableStatusCodes: ReadonlySet<number>;
-}
-
+/**
+ * Safely drains and discards an HTTP response body.
+ *
+ * Must be called whenever a response is not consumed (e.g. 204, early return)
+ * to prevent connection leaks in keep-alive pools.
+ */
 export async function drainBody(response: HttpResponse): Promise<void> {
-    if (!response?.json) {
-        return;
-    }
-
+    if (!response?.discard) return;
     try {
         await response.discard();
     } catch {
@@ -20,74 +17,44 @@ export async function drainBody(response: HttpResponse): Promise<void> {
     }
 }
 
-export async function parseJsonResponse(
+/**
+ * Parses the body of an ok HTTP response as JSON.
+ *
+ * Precondition: response.ok === true. Status-code handling (4xx, 5xx) is the
+ * responsibility of the caller — this function only deals with the body.
+ *
+ * - 204 No Content → returns null (body is empty by spec, connection is drained)
+ * - Unexpected Content-Type → logs a warning but still attempts to parse
+ * - Malformed JSON → throws TrialFetchError(isTransient=false)
+ */
+export async function parseOkResponseBody(
     response: HttpResponse,
     url: string,
-    options: ParseJsonResponseOptions,
-) {
-    const { allow404 = false, errorBodyPreviewLength, retryableStatusCodes } = options;
-
-    if (!retryableStatusCodes) {
-        throw new TypeError('parseJsonResponse: retryableStatusCodes is required');
-    }
-
-    if (response.status === 404) {
-        logger.debug('HTTP 404 on %s | allow404=%s', url, allow404);
-    }
-
-    if (allow404 && response.status === 404) {
-        await drainBody(response);
-        return null;
-    }
-
+    errorBodyPreviewLength: number,
+): Promise<unknown> {
     if (response.status === 204) {
         await drainBody(response);
         return null;
     }
 
-    if (!response.ok) {
-        const text = await readErrorPreview(response, errorBodyPreviewLength).catch((error) => {
-            logger.debug('Failed to read error preview: %s', error.message);
-            return '';
-        });
-
-        throw new TrialFetchError(
-            url,
-            new Error(`HTTP ${response.status}: ${response.statusText}. ` + `Body: ${text}`),
-            response.status,
-            retryableStatusCodes.has(response.status),
-        );
-    }
-
-    const contentType = response.headers.get('Content-Type') ?? '';
-
-    if (!contentType.includes('application/json')) {
-        logger.warn('Unexpected Content-Type: %s | %s', contentType, url);
-    }
+    warnOnUnexpectedContentType(response, url);
 
     try {
         return await response.json();
     } catch (error: any) {
         await drainBody(response);
-
         throw new TrialFetchError(
             url,
-            new Error(`Invalid JSON: ${error.message}`),
+            new Error(`Invalid JSON response: ${error.message}`),
             response.status,
-            false,
+            false, // JSON parse failure is not transient — retrying won't help
         );
     }
 }
 
-async function readErrorPreview(response: HttpResponse, maxBytes: number) {
-    if (maxBytes <= 0) {
-        return '';
-    }
-
-    try {
-        const text = await response.text();
-        return text.slice(0, maxBytes);
-    } catch {
-        return '';
+function warnOnUnexpectedContentType(response: HttpResponse, url: string): void {
+    const contentType = response.headers.get('Content-Type') ?? '';
+    if (!contentType.includes('application/json')) {
+        logger.warn('Unexpected Content-Type "%s" for %s', contentType, url);
     }
 }
