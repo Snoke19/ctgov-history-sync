@@ -21,7 +21,7 @@ import {
 import { setTimeout as sleep } from 'node:timers/promises';
 import { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
 import { EndpointFactory, EndpointProvider } from './endpoint/endpointFactory.js';
-import { DefaultLimiterFactory } from './limiter/defaultLimiterFactory.js';
+import { DefaultLimiterFactory } from './limiter/factory/defaultLimiterFactory.js';
 import { EndpointHandle } from './endpoint/endpoint.js';
 
 const DEFAULT_HEADERS = Object.freeze({

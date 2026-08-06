@@ -3,16 +3,16 @@ import { ProxyPoolConfig } from '../../../src/config/config.js';
 import { EndpointFactory } from '../../../src/http/endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from '../../../src/http/endpoint/endpointManagerFactory.js';
 import { ProxyEndpointProvider } from '../../../src/http/endpoint/proxy/proxyEndpointProvider.js';
-import { UndiciTransportFactory } from '../../../src/http/endpoint/transport/undiciProxyTransport.js';
-import { DefaultLimiterFactory } from '../../../src/http/limiter/defaultLimiterFactory.js';
+import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import { HttpClientOptions } from '../../../src/http/types/http.js';
 import { ConfigurationError } from '../../../src/error/errors.js';
-import type {
-    PoolCreatorFn,
+import { Dispatcher, ProxyAgent } from 'undici';
+import {
     AgentCreatorFn,
     PoolClientFactory,
+    PoolCreatorFn,
+    UndiciTransportFactory,
 } from '../../../src/http/endpoint/transport/undiciProxyTransport.js';
-import { Dispatcher, ProxyAgent } from 'undici';
 
 /**
  * Builds an UndiciTransportFactory that never opens real sockets.

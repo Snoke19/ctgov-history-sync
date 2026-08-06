@@ -3,7 +3,7 @@ import type { Limiter } from '../../limiter/limiter.js';
 import { Endpoint } from '../endpoint.js';
 import { logger } from '../../../config/logging.js';
 import { EndpointProvider } from '../endpointFactory.js';
-import { DirectTransportFactory } from '../transport/fetchTransport.js';
+import { DirectTransportFactory } from '../transport/factory/directTransportFactory.js';
 
 export class DirectEndpointProvider implements EndpointProvider {
     constructor(private readonly transportFactory: DirectTransportFactory) {}

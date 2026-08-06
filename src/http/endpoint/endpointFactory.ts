@@ -1,7 +1,7 @@
 import type { HttpClientOptions } from '../types/http.js';
 import type { Endpoint } from './endpoint.js';
 import type { Limiter } from '../limiter/limiter.js';
-import { LimiterFactory } from '../limiter/limiterFactory.js';
+import { LimiterFactory } from '../limiter/factory/limiterFactory.js';
 
 /**
  * Endpoint creation strategy.

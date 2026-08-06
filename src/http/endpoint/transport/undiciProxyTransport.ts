@@ -1,16 +1,15 @@
 import { fetch, ProxyAgent } from 'undici';
 import type { Dispatcher } from 'undici';
-import { resolveConnections } from '../proxy/resolveConnections.js';
-import { createPoolFactory } from '../../poolFactory.js';
-import type { ProxyPoolConfig } from '../../../config/config.js';
 import {
     CreateProxyEndpointsOptions,
     HttpRequest,
     HttpResponse,
     HttpTransport,
-    TransportFactory,
 } from './transport.js';
-
+import { TransportFactory } from './factory/transportFactory.js';
+import { ProxyPoolConfig } from '../../../config/config.js';
+import { resolveConnections } from '../proxy/resolveConnections.js';
+import { createPoolFactory } from '../../poolFactory.js';
 // ─── Injectable seam types ────────────────────────────────────────────────────
 //
 // These types define the boundary between UndiciTransportFactory and the

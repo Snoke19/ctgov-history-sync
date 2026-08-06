@@ -1,5 +1,5 @@
-import type { HttpClientOptions } from '../types/http.js';
-import type { Limiter } from './limiter.js';
+import type { HttpClientOptions } from '../../types/http.js';
+import type { Limiter } from '../limiter.js';
 
 /**
  * Strategy for creating a {@link Limiter} from the current HTTP client options.

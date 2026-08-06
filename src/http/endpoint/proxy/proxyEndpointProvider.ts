@@ -5,7 +5,8 @@ import { Endpoint } from '../endpoint.js';
 import { parseProxyUrls } from './proxyEndpoints.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
 import { EndpointProvider } from '../endpointFactory.js';
-import { CreateProxyEndpointsOptions, TransportFactory } from '../transport/transport.js';
+import { TransportFactory } from '../transport/factory/transportFactory.js';
+import { CreateProxyEndpointsOptions } from '../transport/transport.js';
 
 export class ProxyEndpointProvider implements EndpointProvider {
     constructor(private readonly transportFactory: TransportFactory) {}
