@@ -20,9 +20,10 @@ import {
 } from './retry/retryPolicy.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
-import { EndpointFactory, EndpointProvider } from './endpoint/endpointFactory.js';
+import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { DefaultLimiterFactory } from './limiter/factory/defaultLimiterFactory.js';
 import { EndpointHandle } from './endpoint/endpoint.js';
+import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
 
 const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',

@@ -1,9 +1,9 @@
 import { performance } from 'node:perf_hooks';
 import { setTimeout as nodeTimersSleep } from 'node:timers/promises';
-import { logger } from '../../config/logging.js';
-import { ConfigurationError, EndpointAcquisitionTimeoutError } from '../../error/errors.js';
-import { assertPositiveInt } from '../../utils/validation.js';
-import { Endpoint, EndpointHandle } from './endpoint.js';
+import { Endpoint, EndpointHandle } from '../endpoint.js';
+import { ConfigurationError, EndpointAcquisitionTimeoutError } from '../../../error/errors.js';
+import { assertPositiveInt } from '../../../utils/validation.js';
+import { logger } from '../../../config/logging.js';
 
 type ClockFn = () => number;
 type SleepFn = (ms: number, signal?: AbortSignal) => Promise<void>;
