@@ -1,7 +1,6 @@
-import { assertPositiveInt } from '../../utils/validation.js';
 import type { HttpClientOptions } from '../types/http.js';
-import { TokenBucket } from './tokenBucket.js';
-import { UnlimitedLimiter } from './unlimitedLimiter.js';
+import { TokenBucket } from './impl/tokenBucket.js';
+import { UnlimitedLimiter } from './impl/unlimitedLimiter.js';
 import type { Limiter } from './limiter.js';
 import { LimiterFactory } from './limiterFactory.js';
 
@@ -18,9 +17,6 @@ export class DefaultLimiterFactory implements LimiterFactory {
         if (!options.useRateLimit) {
             return new UnlimitedLimiter();
         }
-
-        assertPositiveInt(options.rateLimitCapacity, 'rateLimitCapacity');
-        assertPositiveInt(options.rateLimitWindow, 'rateLimitWindow');
 
         return new TokenBucket(options.rateLimitCapacity, options.rateLimitWindow);
     }

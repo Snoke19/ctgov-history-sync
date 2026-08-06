@@ -1,6 +1,6 @@
-import {TokenBucket} from '../../../../src/http/limiter/tokenBucket.js';
-import {TokenBucketTimeoutError} from '../../../../src/error/errors.js';
-import {afterEach, beforeEach, describe, expect, it, jest} from "@jest/globals";
+import { TokenBucket } from '../../../../src/http/limiter/impl/tokenBucket.js';
+import { ConfigurationError, TokenBucketTimeoutError } from '../../../../src/error/errors.js';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 /**
  * These tests treat TokenBucket as a black box: only the constructor and its
@@ -36,14 +36,14 @@ describe('TokenBucket', () => {
         it.each([0, -1, 1.5, NaN, Infinity])(
             'rejects a non-positive-integer capacity: %p',
             (capacity) => {
-                expect(() => new TokenBucket(capacity, 1000)).toThrow(TypeError);
+                expect(() => new TokenBucket(capacity, 1000)).toThrow(ConfigurationError);
             },
         );
 
         it.each([0, -1, NaN, Infinity])(
             'rejects a non-positive-finite windowMs: %p',
             (windowMs) => {
-                expect(() => new TokenBucket(5, windowMs)).toThrow(TypeError);
+                expect(() => new TokenBucket(5, windowMs)).toThrow(ConfigurationError);
             },
         );
 
@@ -280,10 +280,13 @@ describe('TokenBucket', () => {
             await expectation;
         });
 
-        it.each([-1, NaN, -Infinity])('rejects with TypeError for an invalid timeoutMs: %p', async (timeoutMs) => {
-            const bucket = new TokenBucket(1, 1000, clock.now);
-            await expect(bucket.acquire(timeoutMs)).rejects.toThrow(TypeError);
-        });
+        it.each([-1, NaN, -Infinity])(
+            'rejects with TypeError for an invalid timeoutMs: %p',
+            async (timeoutMs) => {
+                const bucket = new TokenBucket(1, 1000, clock.now);
+                await expect(bucket.acquire(timeoutMs)).rejects.toThrow(TypeError);
+            },
+        );
 
         it('serves concurrent callers one at a time, in first-come-first-served order', async () => {
             // capacity=2, msPerToken=1000ms. Drain both tokens up front so all

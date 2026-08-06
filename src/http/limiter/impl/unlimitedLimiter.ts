@@ -1,4 +1,4 @@
-import { Limiter } from './limiter.js';
+import { Limiter } from '../limiter.js';
 
 export class UnlimitedLimiter extends Limiter {
     tryAcquire(_now: number): boolean {

@@ -1,6 +1,7 @@
 import { performance } from 'node:perf_hooks';
-import { TokenBucketTimeoutError } from '../../error/errors.js';
-import { Limiter } from './limiter.js';
+import { TokenBucketTimeoutError } from '../../../error/errors.js';
+import { Limiter } from '../limiter.js';
+import { assertPositiveInt } from '../../../utils/validation.js';
 
 // Tolerance used to compensate for IEEE-754 floating-point rounding errors
 // when comparing or converting token bucket credit.
@@ -52,13 +53,8 @@ export class TokenBucket extends Limiter {
     constructor(capacity: number, windowMs: number, now: Clock = () => performance.now()) {
         super();
 
-        if (!Number.isInteger(capacity) || capacity < 1) {
-            throw new TypeError('capacity must be a positive integer');
-        }
-
-        if (!Number.isFinite(windowMs) || windowMs <= 0) {
-            throw new TypeError('windowMs must be a positive finite number');
-        }
+        assertPositiveInt(capacity, 'capacity');
+        assertPositiveInt(windowMs, 'windowMs');
 
         this.capacity = capacity;
         this.windowMs = windowMs;
@@ -122,7 +118,7 @@ export class TokenBucket extends Limiter {
 
         // Guard against floating-point undershoot. After subtracting msPerToken,
         // creditMs can be epsilon-smaller than the exact mathematical value,
-        // causing floor() to undercount by 1.
+        // causing floor() to under count by 1.
         const tokens = creditMs / this.msPerToken;
 
         return Math.floor(Math.min(tokens + FLOATING_POINT_TOLERANCE, this.capacity));
