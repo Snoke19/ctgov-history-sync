@@ -10,7 +10,7 @@ import {
 } from '../config/config.js';
 import { logger } from '../config/logging.js';
 import { TrialFetchError, TrialTimeoutError } from '../error/errors.js';
-import { EndpointManagerFactory } from './endpoint/endpointManagerFactory.js';
+import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { drainBody, parseJsonResponse } from './responseBody.js';
 import {
     buildRetryableError,

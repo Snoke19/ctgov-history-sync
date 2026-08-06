@@ -2,14 +2,14 @@ import { ConfigurationError } from '../../../error/errors.js';
 import type { HttpClientOptions } from '../../types/http.js';
 import type { Limiter } from '../../limiter/limiter.js';
 import { Endpoint } from '../endpoint.js';
-import { parseProxyUrls } from './proxyEndpoints.js';
+import { parseProxyUrls } from '../proxy/proxyUrlParser.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
-import { EndpointProvider } from '../endpointFactory.js';
-import { TransportFactory } from '../transport/factory/transportFactory.js';
-import { CreateProxyEndpointsOptions } from '../transport/transport.js';
+import { ProxyTransportFactory } from '../transport/factory/transportFactory.js';
+import { CreateProxyEndpointsOptions } from '../transport/httpTransport.js';
+import { EndpointProvider } from './endpointProvider.js';
 
 export class ProxyEndpointProvider implements EndpointProvider {
-    constructor(private readonly transportFactory: TransportFactory) {}
+    constructor(private readonly transportFactory: ProxyTransportFactory) {}
 
     build(options: HttpClientOptions, createLimiter: () => Limiter): Endpoint[] {
         assertPositiveInt(options.concurrency, 'concurrency');

@@ -1,4 +1,4 @@
-import { CreateProxyEndpointsOptions, HttpTransport } from '../transport.js';
+import { CreateProxyEndpointsOptions, HttpTransport } from '../httpTransport.js';
 
 /**
  * Factory that creates a concrete HttpTransport for a proxy endpoint.
@@ -6,6 +6,6 @@ import { CreateProxyEndpointsOptions, HttpTransport } from '../transport.js';
  * Implementations of this factory are isolated from the endpoint domain and are
  * solely responsible for creating the HTTP client (with or without a proxy).
  */
-export interface TransportFactory {
+export interface ProxyTransportFactory {
     create(proxyUrl: string, options: CreateProxyEndpointsOptions): HttpTransport;
 }

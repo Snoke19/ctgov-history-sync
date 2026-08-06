@@ -2,16 +2,7 @@ import type { HttpClientOptions } from '../types/http.js';
 import type { Endpoint } from './endpoint.js';
 import type { Limiter } from '../limiter/limiter.js';
 import { LimiterFactory } from '../limiter/factory/limiterFactory.js';
-
-/**
- * Endpoint creation strategy.
- *
- * Each implementation knows how to build a list of endpoints
- * for a specific data retrieval method (direct, proxy, socks).
- */
-export interface EndpointProvider {
-    build(options: HttpClientOptions, createLimiter: () => Limiter): Endpoint[];
-}
+import { EndpointProvider } from './provider/endpointProvider.js';
 
 /**
  * Builds the concrete {@link Endpoint} list from {@link HttpClientOptions}.

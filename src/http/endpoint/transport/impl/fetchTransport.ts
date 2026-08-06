@@ -1,6 +1,6 @@
-import { HttpRequest, HttpResponse, HttpTransport } from './transport.js';
+import { HttpRequest, HttpResponse, HttpTransport } from '../httpTransport.js';
 
-export class FetchTransport implements HttpTransport {
+export class FetchDirectTransport implements HttpTransport {
     async request(options: HttpRequest): Promise<HttpResponse> {
         const response = await fetch(options.url, {
             method: options.method,

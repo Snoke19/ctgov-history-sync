@@ -5,11 +5,11 @@ import {
     HttpRequest,
     HttpResponse,
     HttpTransport,
-} from './transport.js';
-import { TransportFactory } from './factory/transportFactory.js';
-import { ProxyPoolConfig } from '../../../config/config.js';
-import { resolveConnections } from '../proxy/resolveConnections.js';
-import { createPoolFactory } from '../../poolFactory.js';
+} from '../httpTransport.js';
+import { ProxyTransportFactory } from '../factory/transportFactory.js';
+import { ProxyPoolConfig } from '../../../../config/config.js';
+import { resolveConnections } from '../../proxy/resolveConnections.js';
+import { createPoolFactory } from '../../../poolFactory.js';
 // ─── Injectable seam types ────────────────────────────────────────────────────
 //
 // These types define the boundary between UndiciTransportFactory and the
@@ -87,7 +87,7 @@ export class UndiciHttpTransport implements HttpTransport {
  *
  * Both default to production undici implementations.
  */
-export class UndiciTransportFactory implements TransportFactory {
+export class UndiciTransportFactory implements ProxyTransportFactory {
     constructor(
         private readonly poolCreator: PoolCreatorFn = createPoolFactory,
         private readonly agentCreator: AgentCreatorFn = defaultAgentCreator,

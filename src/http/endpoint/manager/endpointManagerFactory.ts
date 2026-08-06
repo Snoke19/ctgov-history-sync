@@ -1,5 +1,5 @@
-import type { HttpClientOptions } from '../types/http.js';
-import { EndpointFactory } from './endpointFactory.js';
+import type { HttpClientOptions } from '../../types/http.js';
+import { EndpointFactory } from '../endpointFactory.js';
 import { EndpointManager } from './endpointManager.js';
 
 /**

@@ -1,6 +1,6 @@
 import { logger } from '../config/logging.js';
 import { TrialFetchError } from '../error/errors.js';
-import { HttpResponse } from './endpoint/transport/transport.js';
+import { HttpResponse } from './endpoint/transport/httpTransport.js';
 
 interface ParseJsonResponseOptions {
     allow404?: boolean;
