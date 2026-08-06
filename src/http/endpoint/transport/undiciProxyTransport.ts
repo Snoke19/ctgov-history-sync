@@ -1,10 +1,15 @@
 import { fetch, ProxyAgent } from 'undici';
 import type { Dispatcher } from 'undici';
-import type { CreateProxyEndpointsOptions, HttpRequest, HttpResponse, HttpTransport } from '../types/transport.js';
-import type { TransportFactory } from '../types/transportFactory.js';
 import { resolveConnections } from '../proxy/resolveConnections.js';
 import { createPoolFactory } from '../../poolFactory.js';
 import type { ProxyPoolConfig } from '../../../config/config.js';
+import {
+    CreateProxyEndpointsOptions,
+    HttpRequest,
+    HttpResponse,
+    HttpTransport,
+    TransportFactory,
+} from './transport.js';
 
 // ─── Injectable seam types ────────────────────────────────────────────────────
 //

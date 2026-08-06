@@ -2,7 +2,8 @@ import { performance } from 'node:perf_hooks';
 import { setTimeout as nodeTimersSleep } from 'node:timers/promises';
 import { logger } from '../../config/logging.js';
 import { ConfigurationError, EndpointAcquisitionTimeoutError } from '../../error/errors.js';
-import { AcquiredEndpointHandle, Endpoint } from './endpoint.js';
+import { assertPositiveInt } from '../../utils/validation.js';
+import { Endpoint, EndpointHandle } from './endpoint.js';
 
 type ClockFn = () => number;
 type SleepFn = (ms: number, signal?: AbortSignal) => Promise<void>;
@@ -37,6 +38,7 @@ export class EndpointManager {
         if (endpoints.length === 0) {
             throw new ConfigurationError('EndpointManager requires at least one endpoint.');
         }
+        assertPositiveInt(acquireTimeout, 'acquireTimeout');
 
         this.endpoints = endpoints;
         this.acquireTimeout = acquireTimeout;
@@ -53,7 +55,7 @@ export class EndpointManager {
     async acquireEndpoint(
         timeoutMs = this.acquireTimeout,
         signal?: AbortSignal,
-    ): Promise<AcquiredEndpointHandle> {
+    ): Promise<EndpointHandle> {
         const deadline = this.clock() + timeoutMs;
 
         while (true) {

@@ -2,15 +2,17 @@ import { ConfigurationError } from '../../../error/errors.js';
 import type { HttpClientOptions } from '../../types/http.js';
 import type { Limiter } from '../../limiter/limiter.js';
 import { Endpoint } from '../endpoint.js';
-import type { EndpointProvider } from '../types/endpointProvider.js';
 import { parseProxyUrls } from './proxyEndpoints.js';
-import type { TransportFactory } from '../types/transportFactory.js';
-import { CreateProxyEndpointsOptions } from '../types/transport.js';
+import { assertPositiveInt } from '../../../utils/validation.js';
+import { EndpointProvider } from '../endpointFactory.js';
+import { CreateProxyEndpointsOptions, TransportFactory } from '../transport/transport.js';
 
 export class ProxyEndpointProvider implements EndpointProvider {
     constructor(private readonly transportFactory: TransportFactory) {}
 
     build(options: HttpClientOptions, createLimiter: () => Limiter): Endpoint[] {
+        assertPositiveInt(options.concurrency, 'concurrency');
+
         if (!options.poolConfig) {
             throw new ConfigurationError('poolConfig is required when useProxy is enabled.');
         }
@@ -28,11 +30,11 @@ export class ProxyEndpointProvider implements EndpointProvider {
         };
 
         return urls.map(
-            (url) =>
+            (urlProxy) =>
                 new Endpoint(
-                    url,
+                    urlProxy,
                     createLimiter(),
-                    this.transportFactory.create(url, transportOptions),
+                    this.transportFactory.create(urlProxy, transportOptions),
                 ),
         );
     }

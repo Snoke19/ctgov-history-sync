@@ -20,27 +20,28 @@ import {
 } from './retry/retryPolicy.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
-import { EndpointFactory } from './endpoint/endpointFactory.js';
+import { EndpointFactory, EndpointProvider } from './endpoint/endpointFactory.js';
 import { DefaultLimiterFactory } from './limiter/defaultLimiterFactory.js';
-import { EndpointProvider } from './endpoint/types/endpointProvider.js';
+import { EndpointHandle } from './endpoint/endpoint.js';
 
 const DEFAULT_HEADERS = Object.freeze({
     Accept: 'application/json',
     'User-Agent': DEFAULT_USER_AGENT,
 });
 
-export function createHttpClient(endpointManagerOptions: HttpClientOptions, provider: EndpointProvider) {
+export function createHttpClient(
+    endpointManagerOptions: HttpClientOptions,
+    provider: EndpointProvider,
+) {
     const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
-    
-    const endpointManager = new EndpointManagerFactory(factory).create(
-        endpointManagerOptions,
-    );
+
+    const endpointManager = new EndpointManagerFactory(factory).create(endpointManagerOptions);
 
     async function executeFetch(url: any, options: any = {}) {
         const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
         const deadline = options.deadline ?? Date.now() + timeoutMs;
 
-        let proxyEntry;
+        let proxyEntry: EndpointHandle;
         try {
             const remainingBeforeAcquire = getRemainingTime(deadline, url, timeoutMs);
             proxyEntry = await endpointManager.acquireEndpoint(remainingBeforeAcquire);

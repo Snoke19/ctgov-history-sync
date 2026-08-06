@@ -9,7 +9,7 @@ import {
     TrialFetchError,
     TrialTimeoutError,
 } from '../../error/errors.js';
-import { HttpResponse } from '../endpoint/types/transport.js';
+import { HttpResponse } from '../endpoint/transport/transport.js';
 
 /**
  * HTTP methods considered safe to retry automatically.
@@ -71,7 +71,7 @@ export function calculateBackoff(attempt: number, retryAfterMs = null) {
  * @returns {number|null} Delay in milliseconds, or null if the header
  *   is absent.
  */
-export function parseRetryAfterHeader(response: HttpResponse) {
+export function parseRetryAfterHeader(response: HttpResponse): number | null {
     const raw = response.headers.get('Retry-After');
     if (!raw) return null;
 

@@ -1,4 +1,3 @@
-import { assertPositiveInt } from '../../utils/validation.js';
 import type { HttpClientOptions } from '../types/http.js';
 import { EndpointFactory } from './endpointFactory.js';
 import { EndpointManager } from './endpointManager.js';
@@ -25,9 +24,6 @@ export class EndpointManagerFactory {
     constructor(private readonly endpointFactory: EndpointFactory) {}
 
     create(options: HttpClientOptions): EndpointManager {
-        assertPositiveInt(options.acquireTimeout, 'acquireTimeout');
-        assertPositiveInt(options.concurrency, 'concurrency');
-
         const endpoints = this.endpointFactory.build(options);
         return new EndpointManager(endpoints, options.acquireTimeout);
     }

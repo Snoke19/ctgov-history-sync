@@ -1,4 +1,4 @@
-import { ProxyPoolConfig } from "../../../config/config.js";
+import { ProxyPoolConfig } from '../../../config/config.js';
 
 /**
  * Abstraction over a specific HTTP library (undici, axios, node-fetch, etc.).
@@ -34,6 +34,16 @@ export interface HttpResponse {
     text(): Promise<string>;
     json(): Promise<unknown>;
     discard(): Promise<void>;
+}
+
+/**
+ * Factory that creates a concrete HttpTransport for a proxy endpoint.
+ *
+ * Implementations of this factory are isolated from the endpoint domain and are
+ * solely responsible for creating the HTTP client (with or without a proxy).
+ */
+export interface TransportFactory {
+    create(proxyUrl: string, options: CreateProxyEndpointsOptions): HttpTransport;
 }
 
 export interface CreateProxyEndpointsOptions {
