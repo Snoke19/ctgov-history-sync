@@ -5,6 +5,7 @@ import { Endpoint } from '../endpoint.js';
 import type { EndpointProvider } from '../types/endpointProvider.js';
 import { parseProxyUrls } from './proxyEndpoints.js';
 import type { TransportFactory } from '../types/transportFactory.js';
+import { CreateProxyEndpointsOptions } from '../types/transport.js';
 
 export class ProxyEndpointProvider implements EndpointProvider {
     constructor(private readonly transportFactory: TransportFactory) {}
@@ -20,7 +21,7 @@ export class ProxyEndpointProvider implements EndpointProvider {
             throw new ConfigurationError('No valid proxy URLs were configured.');
         }
 
-        const transportOptions = {
+        const transportOptions: CreateProxyEndpointsOptions = {
             concurrency: options.concurrency,
             proxyCount: urls.length,
             poolConfig: options.poolConfig,

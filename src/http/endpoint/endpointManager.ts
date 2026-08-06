@@ -2,8 +2,7 @@ import { performance } from 'node:perf_hooks';
 import { setTimeout as nodeTimersSleep } from 'node:timers/promises';
 import { logger } from '../../config/logging.js';
 import { ConfigurationError, EndpointAcquisitionTimeoutError } from '../../error/errors.js';
-import { Endpoint } from './endpoint.js';
-import type { AcquiredEndpointHandle } from './types/endpoints.js';
+import { AcquiredEndpointHandle, Endpoint } from './endpoint.js';
 
 type ClockFn = () => number;
 type SleepFn = (ms: number, signal?: AbortSignal) => Promise<void>;
