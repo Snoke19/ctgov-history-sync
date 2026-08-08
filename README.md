@@ -14,12 +14,14 @@ A high-performance, resilient Node.js scraper for fetching clinical trial data f
 ## Features
 
 ### Core Capabilities
+
 - **Bulk Study Fetching**: Retrieve thousands of clinical trials with cursor-based pagination
 - **Detailed Trial Data**: Fetch full study records including protocols, phases, status, and historical changes
 - **Date-Range Querying**: Filter trials by start date or other criteria
 - **Concurrent Processing**: Parallel fetching with configurable concurrency limits
 
 ### Reliability Features
+
 - **Proxy Rotation**: Distribute requests across multiple proxy endpoints to avoid IP blocking
 - **Token Bucket Rate Limiting**: Prevent API rate limit violations with configurable limits
 - **Circuit Breaker Pattern**: Temporarily stop requests to failing proxies with automatic cooldown
@@ -28,6 +30,7 @@ A high-performance, resilient Node.js scraper for fetching clinical trial data f
 - **Connection Pooling**: Efficient HTTP connection reuse via undici
 
 ### Architecture Highlights
+
 - **Dependency Injection**: Fully testable with mock HTTP clients
 - **Immutable Configurations**: Type-safe environment variable parsing
 - **Comprehensive Logging**: Structured logging with pino
@@ -46,6 +49,7 @@ This scraper interacts with the **ClinicalTrials.gov API v2**:
 **Verified**: Both endpoints tested and working as of July 2026
 
 The API provides:
+
 - Cursor-based pagination (up to 1000 studies per page)
 - Rich study metadata including protocols, interventions, eligibility criteria
 - Historical data tracking (with `history=true` parameter)
@@ -86,6 +90,7 @@ curl -A "ClinicalTrialsScraper/1.0" \
 ## Installation
 
 ### Prerequisites
+
 - [Node.js](https://nodejs.org/) 20+ (ESM required)
 - [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
 
@@ -149,23 +154,23 @@ PROXY_ACQUIRE_TIMEOUT_MS=30000
 
 ### Full Configuration Reference
 
-| Category | Variable | Default | Description |
-|----------|----------|---------|-------------|
-| **API** | `API_BASE_URL` | - | Base URL for studies endpoint |
-| **API** | `API_DETAIL_URL` | - | Base URL for study detail endpoint |
-| **API** | `PAGE_SIZE` | 10 | Studies per page (max: 1000) |
-| **Performance** | `CONCURRENCY` | 10 | Concurrent detail requests |
-| **Performance** | `FETCH_TIMEOUT_MS` | 15000 | Request timeout in ms |
-| **Proxy** | `PROXY_URLS` | - | Comma-separated proxy URLs |
-| **Proxy** | `PROXY_POOL_CONNECTIONS` | 10 | Max connections per proxy |
-| **Rate Limit** | `PROXY_RATE_LIMIT_CAPACITY` | 40 | Requests per window |
-| **Rate Limit** | `PROXY_RATE_LIMIT_WINDOW_MS` | 60000 | Window size in ms |
-| **Retry** | `MAX_RETRIES` | 3 | Maximum retry attempts |
-| **Retry** | `RETRYABLE_STATUS_CODES` | 408,429,500,502,503,504 | Status codes to retry |
-| **Retry** | `RETRY_BASE_DELAY_MS` | 1000 | Base backoff delay |
-| **Retry** | `BACKOFF_CAP_MS` | 30000 | Maximum backoff delay |
-| **Circuit Breaker** | `CIRCUIT_BREAKER_FAILURE_THRESHOLD` | 3 | Failures before opening |
-| **Circuit Breaker** | `CIRCUIT_BREAKER_COOLDOWN_MS` | 30000 | Cooldown period in ms |
+| Category            | Variable                            | Default                 | Description                        |
+| ------------------- | ----------------------------------- | ----------------------- | ---------------------------------- |
+| **API**             | `API_BASE_URL`                      | -                       | Base URL for studies endpoint      |
+| **API**             | `API_DETAIL_URL`                    | -                       | Base URL for study detail endpoint |
+| **API**             | `PAGE_SIZE`                         | 10                      | Studies per page (max: 1000)       |
+| **Performance**     | `CONCURRENCY`                       | 10                      | Concurrent detail requests         |
+| **Performance**     | `FETCH_TIMEOUT_MS`                  | 15000                   | Request timeout in ms              |
+| **Proxy**           | `PROXY_URLS`                        | -                       | Comma-separated proxy URLs         |
+| **Proxy**           | `PROXY_POOL_CONNECTIONS`            | 10                      | Max connections per proxy          |
+| **Rate Limit**      | `PROXY_RATE_LIMIT_CAPACITY`         | 40                      | Requests per window                |
+| **Rate Limit**      | `PROXY_RATE_LIMIT_WINDOW_MS`        | 60000                   | Window size in ms                  |
+| **Retry**           | `MAX_RETRIES`                       | 3                       | Maximum retry attempts             |
+| **Retry**           | `RETRYABLE_STATUS_CODES`            | 408,429,500,502,503,504 | Status codes to retry              |
+| **Retry**           | `RETRY_BASE_DELAY_MS`               | 1000                    | Base backoff delay                 |
+| **Retry**           | `BACKOFF_CAP_MS`                    | 30000                   | Maximum backoff delay              |
+| **Circuit Breaker** | `CIRCUIT_BREAKER_FAILURE_THRESHOLD` | 3                       | Failures before opening            |
+| **Circuit Breaker** | `CIRCUIT_BREAKER_COOLDOWN_MS`       | 30000                   | Cooldown period in ms              |
 
 ---
 
@@ -184,8 +189,8 @@ npm start
 ### Programmatic Usage
 
 ```javascript
-import {createApiClient} from './api.ts';
-import {createHttpClient} from './httpClient.ts';
+import { createApiClient } from './api.ts';
+import { createHttpClient } from './httpClient.ts';
 
 const httpClient = createHttpClient({
     useProxy: true,
@@ -195,7 +200,7 @@ const httpClient = createHttpClient({
     rateLimitWindow: 60000,
 });
 
-const api = createApiClient({httpClient});
+const api = createApiClient({ httpClient });
 
 // Fetch a page of studies
 const studies = await api.fetchStudiesPage({
@@ -204,7 +209,7 @@ const studies = await api.fetchStudiesPage({
 });
 
 // Fetch a single trial's details
-const trial = await api.fetchTrialDetail('NCT12345678', {history: true});
+const trial = await api.fetchTrialDetail('NCT12345678', { history: true });
 ```
 
 ---
@@ -216,6 +221,7 @@ const trial = await api.fetchTrialDetail('NCT12345678', {history: true});
 Fetch a paginated list of clinical studies.
 
 **Parameters:**
+
 - `params.pageSize` (number): Number of studies per page (default: configured PAGE_SIZE)
 - `params.pageToken` (string): Cursor token for pagination
 - `params.countTotal` (boolean): Include total count in response
@@ -224,6 +230,7 @@ Fetch a paginated list of clinical studies.
 **Returns:** Promise<{ studies: Array, nextPageToken: string, totalCount: number }>
 
 **Example:**
+
 ```javascript
 const result = await api.fetchStudiesPage({
     pageSize: 100,
@@ -237,6 +244,7 @@ const result = await api.fetchStudiesPage({
 Fetch full details for a single clinical trial.
 
 **Parameters:**
+
 - `nctId` (string): Required. NCT identifier (e.g., "NCT12345678")
 - `params.history` (boolean): Include historical changes (optional)
 

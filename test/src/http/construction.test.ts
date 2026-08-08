@@ -22,9 +22,7 @@ import { HttpProxyUrlParser } from '../../../src/http/endpoint/proxy/httpProxyUr
  * the production one from the perspective of ProxyEndpointProvider.
  */
 function createSafeTransportFactory(): UndiciTransportFactory {
-    const fakePoolClientFactory = jest
-        .fn<PoolClientFactory>()
-        .mockReturnValue({} as unknown as Dispatcher);
+    const fakePoolClientFactory = jest.fn<PoolClientFactory>().mockReturnValue({} as unknown as Dispatcher);
 
     const fakePoolCreator = jest.fn<PoolCreatorFn>().mockReturnValue(fakePoolClientFactory);
     const fakeAgent = {
@@ -60,10 +58,7 @@ function createValidOptions(overrides: Partial<HttpClientOptions> = {}): HttpCli
 
 describe('Proxy + Undici construction chain', () => {
     it('builds successfully with rate limiting disabled', () => {
-        const provider = new ProxyEndpointProvider(
-            createSafeTransportFactory(),
-            new HttpProxyUrlParser(),
-        );
+        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const manager = new EndpointManagerFactory(factory).create(createValidOptions());
 
@@ -72,10 +67,7 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('builds successfully with rate limiting enabled', () => {
-        const provider = new ProxyEndpointProvider(
-            createSafeTransportFactory(),
-            new HttpProxyUrlParser(),
-        );
+        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const manager = new EndpointManagerFactory(factory).create(
             createValidOptions({
@@ -90,10 +82,7 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('creates exactly one endpoint per valid proxy URL', () => {
-        const provider = new ProxyEndpointProvider(
-            createSafeTransportFactory(),
-            new HttpProxyUrlParser(),
-        );
+        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const manager = new EndpointManagerFactory(factory).create(
             createValidOptions({
@@ -107,56 +96,36 @@ describe('Proxy + Undici construction chain', () => {
     // ─── ProxyEndpointProvider validation ───────────────────────────────────
 
     it('throws ConfigurationError when poolConfig is missing', () => {
-        const provider = new ProxyEndpointProvider(
-            createSafeTransportFactory(),
-            new HttpProxyUrlParser(),
-        );
+        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
         delete (options as any).poolConfig;
 
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow(
-            ConfigurationError,
-        );
+        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow(ConfigurationError);
         expect(() => new EndpointManagerFactory(factory).create(options)).toThrow('poolConfig');
     });
 
     it('throws ConfigurationError when proxyUrls is empty', () => {
-        const provider = new ProxyEndpointProvider(
-            createSafeTransportFactory(),
-            new HttpProxyUrlParser(),
-        );
+        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions({ proxyUrls: '' });
 
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow(
-            ConfigurationError,
-        );
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow(
-            'No valid proxy URLs',
-        );
+        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow(ConfigurationError);
+        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow('No valid proxy URLs');
     });
 
     it('throws ConfigurationError when every proxyUrl is invalid', () => {
-        const provider = new ProxyEndpointProvider(
-            createSafeTransportFactory(),
-            new HttpProxyUrlParser(),
-        );
+        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions({ proxyUrls: 'not-a-url,also-bad://missing-port' });
 
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow(
-            ConfigurationError,
-        );
+        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow(ConfigurationError);
     });
 
     // ─── EndpointManagerFactory validation ──────────────────────────────────
 
     it('throws when acquireTimeout is missing', () => {
-        const provider = new ProxyEndpointProvider(
-            createSafeTransportFactory(),
-            new HttpProxyUrlParser(),
-        );
+        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
         delete (options as any).acquireTimeout;
@@ -165,10 +134,7 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('throws when concurrency is missing', () => {
-        const provider = new ProxyEndpointProvider(
-            createSafeTransportFactory(),
-            new HttpProxyUrlParser(),
-        );
+        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
         delete (options as any).concurrency;
@@ -179,10 +145,7 @@ describe('Proxy + Undici construction chain', () => {
     // ─── DefaultLimiterFactory validation ───────────────────────────────────
 
     it('throws when rate limit is enabled but capacity is missing', () => {
-        const provider = new ProxyEndpointProvider(
-            createSafeTransportFactory(),
-            new HttpProxyUrlParser(),
-        );
+        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions({
             useRateLimit: true,
@@ -194,10 +157,7 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('throws when rate limit is enabled but window is missing', () => {
-        const provider = new ProxyEndpointProvider(
-            createSafeTransportFactory(),
-            new HttpProxyUrlParser(),
-        );
+        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions({
             useRateLimit: true,
@@ -211,10 +171,7 @@ describe('Proxy + Undici construction chain', () => {
     // ─── Lifecycle smoke test ───────────────────────────────────────────────
 
     it('produces a manager whose endpoints can be closed cleanly', async () => {
-        const provider = new ProxyEndpointProvider(
-            createSafeTransportFactory(),
-            new HttpProxyUrlParser(),
-        );
+        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const manager = new EndpointManagerFactory(factory).create(createValidOptions());
 

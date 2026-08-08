@@ -60,9 +60,7 @@ function hasExplicitPort(url: string): boolean {
 
     const afterScheme = url.slice(schemeEnd + 3);
     const authority = afterScheme.split(/[/?#]/, 1)[0] ?? '';
-    const hostPort = authority.includes('@')
-        ? authority.slice(authority.lastIndexOf('@') + 1)
-        : authority;
+    const hostPort = authority.includes('@') ? authority.slice(authority.lastIndexOf('@') + 1) : authority;
 
     return /:\d+$/.test(hostPort);
 }

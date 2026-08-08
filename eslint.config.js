@@ -1,8 +1,8 @@
 import js from '@eslint/js';
-import globals from 'globals';
+import prettier from 'eslint-config-prettier';
 import importPlugin from 'eslint-plugin-import';
 import nodePlugin from 'eslint-plugin-n';
-import prettier from 'eslint-config-prettier';
+import globals from 'globals';
 
 export default [
     js.configs.recommended,
@@ -34,10 +34,7 @@ export default [
             'max-len': ['warn', { code: 120, ignoreUrls: true, ignoreStrings: true }],
 
             // --- Best practices (critical for scrapers) ---
-            'no-unused-vars': [
-                'error',
-                { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
-            ],
+            'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
             'prefer-const': 'error',
             'no-var': 'error',
             'object-shorthand': 'error',

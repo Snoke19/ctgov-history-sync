@@ -36,11 +36,7 @@ const api = createApiClient(httpClient);
 let pageToken: string | undefined = '';
 let pageNum = 1;
 
-async function withConcurrency<T, R>(
-    items: readonly T[],
-    limit: number,
-    fn: (item: T) => Promise<R>,
-) {
+async function withConcurrency<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>) {
     const results: (R | null)[] = new Array(items.length);
     const queue = items.map((item, i) => ({ item, i }));
 
@@ -57,11 +53,7 @@ async function withConcurrency<T, R>(
             try {
                 results[i] = await fn(item);
             } catch (err: unknown) {
-                logger.warn(
-                    `Error processing ${String(item)}: ${
-                        err instanceof Error ? err.message : String(err)
-                    }`,
-                );
+                logger.warn(`Error processing ${String(item)}: ${err instanceof Error ? err.message : String(err)}`);
                 results[i] = null;
             }
         }
@@ -137,9 +129,7 @@ async function main(): Promise<void> {
 
         const details = await withConcurrency(nctIds, CONCURRENCY, fetchTrialSafe);
 
-        const validDetails = details.filter(
-            <T>(detail: T): detail is NonNullable<T> => detail !== null,
-        );
+        const validDetails = details.filter(<T>(detail: T): detail is NonNullable<T> => detail !== null);
 
         logger.info(
             `Page ${pageNum}: Fetched ${nctIds.length}, Saved ${validDetails.length}, Failed ${nctIds.length - validDetails.length}`,

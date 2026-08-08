@@ -1,10 +1,4 @@
-import {
-    ERROR_BODY_PREVIEW_LENGTH,
-    MAX_RETRIES,
-    RETRYABLE_STATUS_CODES,
-    RETRY_ON_NETWORK_ERROR,
-    RETRY_ON_TIMEOUT,
-} from '../config/config.js';
+import { MAX_RETRIES, RETRYABLE_STATUS_CODES, RETRY_ON_NETWORK_ERROR, RETRY_ON_TIMEOUT } from '../config/config.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
@@ -63,7 +57,7 @@ export function createHttpClient(
         // All other non-ok responses have already been thrown as HttpException
         if (response === null) return null as T;
 
-        return parseOkResponseBody(response, url, ERROR_BODY_PREVIEW_LENGTH) as T;
+        return parseOkResponseBody(response, url) as T;
     }
 
     async function close(): Promise<void> {

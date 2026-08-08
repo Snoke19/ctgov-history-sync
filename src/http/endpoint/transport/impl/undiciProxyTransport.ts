@@ -1,11 +1,6 @@
 import { fetch, ProxyAgent } from 'undici';
 import type { Dispatcher } from 'undici';
-import {
-    CreateProxyEndpointsOptions,
-    HttpRequest,
-    HttpResponse,
-    HttpTransport,
-} from '../httpTransport.js';
+import { CreateProxyEndpointsOptions, HttpRequest, HttpResponse, HttpTransport } from '../httpTransport.js';
 import { ProxyTransportFactory } from '../factory/transportFactory.js';
 import { ProxyPoolConfig } from '../../../../config/config.js';
 import { resolveConnections } from '../../proxy/resolveConnections.js';
@@ -27,8 +22,7 @@ export type PoolClientFactory = (origin: URL, opts?: Record<string, any>) => Dis
 export type PoolCreatorFn = (config: ProxyPoolConfig) => PoolClientFactory;
 export type AgentCreatorFn = (uri: string, clientFactory: PoolClientFactory) => ProxyAgent;
 
-const defaultAgentCreator: AgentCreatorFn = (uri, clientFactory) =>
-    new ProxyAgent({ uri, clientFactory });
+const defaultAgentCreator: AgentCreatorFn = (uri, clientFactory) => new ProxyAgent({ uri, clientFactory });
 
 /**
  * Undici ProxyAgent adapter implementing the universal {@link HttpTransport}.
@@ -94,16 +88,11 @@ export class UndiciTransportFactory implements ProxyTransportFactory {
     ) {}
 
     create(proxyUrl: string, options: CreateProxyEndpointsOptions): HttpTransport {
-        const connections = resolveConnections(
-            options.proxyCount,
-            options.concurrency,
-            options.poolConfig,
-        );
+        const connections = resolveConnections(options.proxyCount, options.concurrency, options.poolConfig);
 
         const poolFactory = this.poolCreator(options.poolConfig);
 
-        const clientFactory: PoolClientFactory = (origin, opts) =>
-            poolFactory(origin, { ...opts, connections });
+        const clientFactory: PoolClientFactory = (origin, opts) => poolFactory(origin, { ...opts, connections });
 
         const agent = this.agentCreator(proxyUrl, clientFactory);
 

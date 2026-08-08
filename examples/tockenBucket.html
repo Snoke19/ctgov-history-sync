@@ -4,10 +4,7 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Token Bucket Rate Limiter</title>
-        <link
-            rel="stylesheet"
-            href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"
-        />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css" />
         <style>
             :root {
                 --bg: #f8f9fb;
@@ -32,9 +29,7 @@
                 --radius-sm: 8px;
                 --shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
                 --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
-                --font:
-                    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-                    sans-serif;
+                --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             }
 
             * {
@@ -388,8 +383,8 @@
     <body>
         <div class="container">
             <h2 class="sr-only">
-                Interactive demo of a token bucket rate limiter: watch tokens refill over time, and
-                see how single requests, bursts, and steady traffic drain and refill the bucket.
+                Interactive demo of a token bucket rate limiter: watch tokens refill over time, and see how single
+                requests, bursts, and steady traffic drain and refill the bucket.
             </h2>
 
             <div class="controls-bar">
@@ -400,14 +395,7 @@
                 </div>
                 <div class="control-group">
                     <label for="windowMs">Refill window</label>
-                    <input
-                        type="range"
-                        id="windowMs"
-                        min="1000"
-                        max="10000"
-                        step="500"
-                        value="4000"
-                    />
+                    <input type="range" id="windowMs" min="1000" max="10000" step="500" value="4000" />
                     <span class="control-value" id="windowOut">4.0s</span>
                 </div>
                 <button id="resetBtn" class="danger" style="margin-left: auto">
@@ -466,17 +454,15 @@
                 </div>
             </div>
 
-            <p class="log-line" id="logLine">
-                Ready. Try acquiring a token, or send a burst to drain the bucket.
-            </p>
+            <p class="log-line" id="logLine">Ready. Try acquiring a token, or send a burst to drain the bucket.</p>
 
             <div class="chart-wrap">
                 <canvas
                     id="chart"
                     role="img"
                     aria-label="Line chart of tokens available in the bucket over time, showing drain and refill"
-                    >Tokens available fluctuates between 0 and capacity as requests consume tokens
-                    and time refills them.
+                    >Tokens available fluctuates between 0 and capacity as requests consume tokens and time refills
+                    them.
                 </canvas>
             </div>
         </div>
@@ -592,9 +578,7 @@
                         if (remaining <= 0) {
                             throw new TokenBucketTimeoutError(timeoutMs);
                         }
-                        await new Promise((resolve) =>
-                            setTimeout(resolve, Math.min(this.timeUntil(1), remaining)),
-                        );
+                        await new Promise((resolve) => setTimeout(resolve, Math.min(this.timeUntil(1), remaining)));
                     }
                 }
 
@@ -673,20 +657,17 @@
                     ? 'linear-gradient(90deg, var(--success) 0%, #34d399 100%)'
                     : 'linear-gradient(90deg, var(--danger) 0%, #f87171 100%)';
                 setTimeout(() => {
-                    fillEl.style.background =
-                        'linear-gradient(90deg, var(--success) 0%, #34d399 100%)';
+                    fillEl.style.background = 'linear-gradient(90deg, var(--success) 0%, #34d399 100%)';
                 }, 220);
             }
 
             function setAutoBtn(active) {
                 if (active) {
-                    autoBtn.innerHTML =
-                        '<i class="ti ti-player-stop" aria-hidden="true"></i> Stop auto-traffic';
+                    autoBtn.innerHTML = '<i class="ti ti-player-stop" aria-hidden="true"></i> Stop auto-traffic';
                     autoBtn.classList.remove('success');
                     autoBtn.classList.add('danger');
                 } else {
-                    autoBtn.innerHTML =
-                        '<i class="ti ti-activity" aria-hidden="true"></i> Start auto-traffic';
+                    autoBtn.innerHTML = '<i class="ti ti-activity" aria-hidden="true"></i> Start auto-traffic';
                     autoBtn.classList.remove('danger');
                     autoBtn.classList.add('success');
                 }
@@ -709,10 +690,7 @@
                 waiters.forEach((w, i) => {
                     if (i === 0) {
                         const remaining = bucket.timeUntil(1);
-                        w.chip.textContent =
-                            remaining <= 0
-                                ? 'resolving…'
-                                : 'waiting ' + Math.ceil(remaining) + 'ms';
+                        w.chip.textContent = remaining <= 0 ? 'resolving…' : 'waiting ' + Math.ceil(remaining) + 'ms';
                     } else {
                         w.chip.textContent = 'queued #' + (i + 1);
                     }
@@ -804,10 +782,7 @@
                     tick();
                     const now = performance.now();
                     if (now - lastBump > 2000 && currentRate < targetRate) {
-                        currentRate = Math.min(
-                            targetRate,
-                            currentRate + Math.max(1, Math.ceil(targetRate / 5)),
-                        );
+                        currentRate = Math.min(targetRate, currentRate + Math.max(1, Math.ceil(targetRate / 5)));
                         lastBump = now;
                         log(`Ramping up to ${currentRate}/s...`);
                     }
@@ -885,8 +860,7 @@
                 document.getElementById('capacityOut').textContent = capacityInput.value;
             });
             windowInput.addEventListener('input', () => {
-                document.getElementById('windowOut').textContent =
-                    (windowInput.value / 1000).toFixed(1) + 's';
+                document.getElementById('windowOut').textContent = (windowInput.value / 1000).toFixed(1) + 's';
             });
             capacityInput.addEventListener('change', resetBucket);
             windowInput.addEventListener('change', resetBucket);
@@ -899,11 +873,7 @@
                     log('Acquired instantly — token was available.');
                 } else {
                     blocked++;
-                    log(
-                        'Rejected — bucket was empty. Next token in ' +
-                            Math.round(bucket.timeUntil(1)) +
-                            'ms.',
-                    );
+                    log('Rejected — bucket was empty. Next token in ' + Math.round(bucket.timeUntil(1)) + 'ms.');
                 }
                 updateStats();
                 flashFill(ok);
@@ -995,8 +965,7 @@
                 tokenLabelEl.textContent = tokens + ' / ' + bucket.capacity + ' tokens';
                 document.getElementById('statTokens').textContent = tokens;
                 const next = bucket.timeUntil(1);
-                document.getElementById('statNext').textContent =
-                    next <= 0 ? 'ready' : Math.round(next) + 'ms';
+                document.getElementById('statNext').textContent = next <= 0 ? 'ready' : Math.round(next) + 'ms';
                 requestAnimationFrame(frame);
             }
 

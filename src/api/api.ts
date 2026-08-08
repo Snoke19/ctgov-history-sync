@@ -19,19 +19,14 @@ export interface ApiClient {
 }
 
 export function createApiClient({ fetchJson }: ApiClientDependencies): ApiClient {
-    async function fetchStudiesPage(
-        params: FetchStudiesPageParams = {},
-    ): Promise<StudiesPageResponse> {
+    async function fetchStudiesPage(params: FetchStudiesPageParams = {}): Promise<StudiesPageResponse> {
         const url = new UrlBuilder(API_BASE_URL).queryParams(params).build();
 
         const data = await fetchJson(url);
         return data as StudiesPageResponse;
     }
 
-    async function fetchTrialDetail(
-        nctId: string,
-        params: FetchTrialDetailParams = {},
-    ): Promise<unknown> {
+    async function fetchTrialDetail(nctId: string, params: FetchTrialDetailParams = {}): Promise<unknown> {
         validateNctId(nctId);
 
         const url = new UrlBuilder(API_DETAIL_URL).path(nctId).queryParams(params).build();

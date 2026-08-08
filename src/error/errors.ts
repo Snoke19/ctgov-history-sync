@@ -41,12 +41,7 @@ export class TrialFetchError extends TrialError {
     readonly status: number | null;
     readonly isTransient: boolean;
 
-    constructor(
-        url: string,
-        cause?: unknown,
-        status?: number | null,
-        isTransient: boolean = false,
-    ) {
+    constructor(url: string, cause?: unknown, status?: number | null, isTransient: boolean = false) {
         super(`Failed to fetch: ${url}`, { cause });
         this.url = url;
         this.status = status ?? null;
@@ -65,15 +60,9 @@ export class TrialTimeoutError extends TrialError {
     readonly totalBudgetMs: number | null;
     proxyUrl: string | null = null;
 
-    constructor(
-        url: string,
-        timeoutMs: number,
-        { totalBudgetMs = null }: TrialTimeoutOptions = {},
-    ) {
+    constructor(url: string, timeoutMs: number, { totalBudgetMs = null }: TrialTimeoutOptions = {}) {
         const budgetNote =
-            totalBudgetMs !== null && totalBudgetMs !== timeoutMs
-                ? ` (total budget ${totalBudgetMs}ms)`
-                : '';
+            totalBudgetMs !== null && totalBudgetMs !== timeoutMs ? ` (total budget ${totalBudgetMs}ms)` : '';
         super(`Fetch timed out after ${timeoutMs}ms${budgetNote}: ${url}`);
         this.url = url;
         this.timeoutMs = timeoutMs;
@@ -109,11 +98,7 @@ export class EndpointAcquisitionTimeoutError extends TrialError {
     readonly proxyCount: number;
     readonly budgetExhausted: boolean;
 
-    constructor(
-        timeoutMs: number,
-        proxyCount: number,
-        { budgetExhausted = false }: EndpointAcquisitionOptions = {},
-    ) {
+    constructor(timeoutMs: number, proxyCount: number, { budgetExhausted = false }: EndpointAcquisitionOptions = {}) {
         const message = budgetExhausted
             ? `Proxy acquisition consumed the full ${timeoutMs}ms budget before fetch could start (pool size: ${proxyCount})`
             : `Proxy acquisition timeout: no proxy available within ${timeoutMs}ms (pool size: ${proxyCount})`;

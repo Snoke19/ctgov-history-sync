@@ -35,11 +35,7 @@ export class ProxyEndpointProvider implements EndpointProvider {
 
         return urls.map(
             (urlProxy) =>
-                new Endpoint(
-                    urlProxy,
-                    createLimiter(),
-                    this.transportFactory.create(urlProxy, transportOptions),
-                ),
+                new Endpoint(urlProxy, createLimiter(), this.transportFactory.create(urlProxy, transportOptions)),
         );
     }
 }

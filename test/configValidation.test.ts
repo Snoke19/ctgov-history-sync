@@ -1,12 +1,12 @@
-import {ConfigurationError} from '../src/error/errors.js';
-import {env, parseStatusCodes, validateConfig} from '../src/config/configValidation.js';
-import {afterAll, beforeEach, describe, expect, it} from "@jest/globals";
+import { ConfigurationError } from '../src/error/errors.js';
+import { env, parseStatusCodes, validateConfig } from '../src/config/configValidation.js';
+import { afterAll, beforeEach, describe, expect, it } from '@jest/globals';
 
 describe('configValidation', () => {
     const ORIGINAL_ENV = process.env;
 
     beforeEach(() => {
-        process.env = {...ORIGINAL_ENV};
+        process.env = { ...ORIGINAL_ENV };
     });
 
     afterAll(() => {
@@ -79,24 +79,24 @@ describe('configValidation', () => {
 
         it('does not throw for a positive value when opts.positive is true', () => {
             process.env.MY_INT = '5';
-            expect(() => env.int('MY_INT', 10, {positive: true})).not.toThrow();
+            expect(() => env.int('MY_INT', 10, { positive: true })).not.toThrow();
         });
 
         it('throws ConfigurationError when opts.positive is true and value is zero', () => {
             process.env.MY_INT = '0';
-            expect(() => env.int('MY_INT', 10, {positive: true})).toThrow(ConfigurationError);
+            expect(() => env.int('MY_INT', 10, { positive: true })).toThrow(ConfigurationError);
         });
 
         it('throws ConfigurationError when opts.positive is true and value is negative', () => {
             process.env.MY_INT = '-5';
-            expect(() => env.int('MY_INT', 10, {positive: true})).toThrow(ConfigurationError);
+            expect(() => env.int('MY_INT', 10, { positive: true })).toThrow(ConfigurationError);
         });
 
         it('does not enforce positivity on the fallback value even when opts.positive is true', () => {
             delete process.env.MY_INT;
             // fallback itself is negative — since env var is unset, assertPositiveInt is skipped entirely
             // (this documents current behavior: positivity is only checked when opts.positive is true AND value is resolved)
-            expect(() => env.int('MY_INT', -1, {positive: true})).toThrow(ConfigurationError);
+            expect(() => env.int('MY_INT', -1, { positive: true })).toThrow(ConfigurationError);
         });
     });
 
@@ -261,45 +261,45 @@ describe('configValidation', () => {
         });
 
         it('throws ConfigurationError when apiBaseUrl is an empty string', () => {
-            expect(() =>
-                validateConfig({apiBaseUrl: '', apiDetailUrl: 'https://api.example.com/details'}),
-            ).toThrow(ConfigurationError);
+            expect(() => validateConfig({ apiBaseUrl: '', apiDetailUrl: 'https://api.example.com/details' })).toThrow(
+                ConfigurationError,
+            );
         });
 
         it('throws ConfigurationError when apiBaseUrl is whitespace-only', () => {
             expect(() =>
-                validateConfig({apiBaseUrl: '   ', apiDetailUrl: 'https://api.example.com/details'}),
+                validateConfig({ apiBaseUrl: '   ', apiDetailUrl: 'https://api.example.com/details' }),
             ).toThrow(ConfigurationError);
         });
 
         it('includes the field name in the "missing" error message', () => {
-            expect(() =>
-                validateConfig({apiBaseUrl: '', apiDetailUrl: 'https://api.example.com/details'}),
-            ).toThrow('Missing required config: API_BASE_URL');
+            expect(() => validateConfig({ apiBaseUrl: '', apiDetailUrl: 'https://api.example.com/details' })).toThrow(
+                'Missing required config: API_BASE_URL',
+            );
         });
 
         it('throws ConfigurationError when apiDetailUrl is missing', () => {
-            expect(() =>
-                validateConfig({apiBaseUrl: 'https://api.example.com', apiDetailUrl: ''}),
-            ).toThrow('Missing required config: API_DETAIL_URL');
+            expect(() => validateConfig({ apiBaseUrl: 'https://api.example.com', apiDetailUrl: '' })).toThrow(
+                'Missing required config: API_DETAIL_URL',
+            );
         });
 
         it('throws ConfigurationError when a URL is malformed', () => {
             expect(() =>
-                validateConfig({apiBaseUrl: 'not-a-valid-url', apiDetailUrl: 'https://api.example.com/details'}),
+                validateConfig({ apiBaseUrl: 'not-a-valid-url', apiDetailUrl: 'https://api.example.com/details' }),
             ).toThrow(ConfigurationError);
         });
 
         it('includes the field name and value in the "invalid URL" error message', () => {
             expect(() =>
-                validateConfig({apiBaseUrl: 'not-a-valid-url', apiDetailUrl: 'https://api.example.com/details'}),
+                validateConfig({ apiBaseUrl: 'not-a-valid-url', apiDetailUrl: 'https://api.example.com/details' }),
             ).toThrow('Invalid URL for API_BASE_URL: "not-a-valid-url"');
         });
 
         it('checks apiBaseUrl before apiDetailUrl (fails fast on the first invalid entry)', () => {
-            expect(() =>
-                validateConfig({apiBaseUrl: '', apiDetailUrl: ''}),
-            ).toThrow('Missing required config: API_BASE_URL');
+            expect(() => validateConfig({ apiBaseUrl: '', apiDetailUrl: '' })).toThrow(
+                'Missing required config: API_BASE_URL',
+            );
         });
     });
 });

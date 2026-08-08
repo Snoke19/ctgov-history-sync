@@ -11,11 +11,7 @@ interface Assertions {
 
     assertFormat(value: unknown, pattern: RegExp, message: string): void;
 
-    assertInteger(
-        value: number,
-        name: string,
-        opts?: { min?: number; max?: number; label?: string },
-    ): void;
+    assertInteger(value: number, name: string, opts?: { min?: number; max?: number; label?: string }): void;
 }
 
 function makeAssertions(ErrorType: ErrorCtor): Assertions {
@@ -40,11 +36,7 @@ function makeAssertions(ErrorType: ErrorCtor): Assertions {
             if (typeof value !== 'string' || !pattern.test(value.trim())) fail(message);
         },
 
-        assertInteger(
-            value: number,
-            name: string,
-            opts: { min?: number; max?: number; label?: string } = {},
-        ): void {
+        assertInteger(value: number, name: string, opts: { min?: number; max?: number; label?: string } = {}): void {
             const { min = -Infinity, max = Infinity, label } = opts;
             if (Number.isInteger(value) && value >= min && value <= max) return;
 
@@ -70,8 +62,7 @@ const trialAssertions: Assertions = makeAssertions(TrialValidationError);
 const PATTERNS = {
     nctId: /^NCT\d{8}$/i,
     geo: /^distance\(-?\d+(\.\d+)?,-?\d+(\.\d+)?,\d+(\.\d+)?(km|mi)?\)$/,
-    geoDecay:
-        /^func:(gauss|exp|linear),scale:(\d+(\.\d+)?(km|mi)),offset:(\d+(\.\d+)?(km|mi)),decay:(\d+(\.\d+)?)$/,
+    geoDecay: /^func:(gauss|exp|linear),scale:(\d+(\.\d+)?(km|mi)),offset:(\d+(\.\d+)?(km|mi)),decay:(\d+(\.\d+)?)$/,
 } as const;
 
 export function validateNctId(value: string): void {

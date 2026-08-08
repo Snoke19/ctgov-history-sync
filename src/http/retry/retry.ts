@@ -19,8 +19,7 @@ export class Retry<T> implements BusinessOperation<T> {
         this.maxAttempts = maxAttempts;
         this.delayMs = delayMs;
         this.attemptsCount = 0;
-        this.shouldRetry =
-            ignoreTests.length > 0 ? (e) => ignoreTests.some((test) => test(e)) : () => false;
+        this.shouldRetry = ignoreTests.length > 0 ? (e) => ignoreTests.some((test) => test(e)) : () => false;
         this.errors = [];
     }
 
@@ -49,9 +48,7 @@ export class Retry<T> implements BusinessOperation<T> {
                 }
 
                 const delay =
-                    typeof this.delayMs === 'function'
-                        ? this.delayMs(this.attemptsCount - 1, error)
-                        : this.delayMs;
+                    typeof this.delayMs === 'function' ? this.delayMs(this.attemptsCount - 1, error) : this.delayMs;
 
                 await new Promise((resolve) => setTimeout(resolve, Math.max(0, delay)));
             }

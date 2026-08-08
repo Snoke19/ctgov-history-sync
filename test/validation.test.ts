@@ -1,6 +1,6 @@
-import {ConfigurationError, TrialValidationError} from '../src/error/errors.js';
-import {assertPositiveInt, validateNctId, validatePageSize,} from '../src/utils/validation.js';
-import {describe, expect, it} from "@jest/globals";
+import { ConfigurationError, TrialValidationError } from '../src/error/errors.js';
+import { assertPositiveInt, validateNctId, validatePageSize } from '../src/utils/validation.js';
+import { describe, expect, it } from '@jest/globals';
 
 describe('assertPositiveInt', () => {
     it('does not throw for a positive integer', () => {
@@ -56,7 +56,9 @@ describe('validateNctId', () => {
     });
 
     it('includes the offending value in the error message', () => {
-        expect(() => validateNctId('bad-id')).toThrow("Invalid nctId format. Expected: NCT followed by 8 digits. Got: \"bad-id\"");
+        expect(() => validateNctId('bad-id')).toThrow(
+            'Invalid nctId format. Expected: NCT followed by 8 digits. Got: "bad-id"',
+        );
     });
 });
 

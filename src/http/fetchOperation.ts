@@ -51,26 +51,18 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         }
     }
 
-    private async acquireEndpoint(
-        remainingMs: number,
-        signal: AbortSignal,
-    ): Promise<EndpointHandle> {
+    private async acquireEndpoint(remainingMs: number, signal: AbortSignal): Promise<EndpointHandle> {
         try {
             return await this.endpointManager.acquireEndpoint(remainingMs, signal);
         } catch (error) {
             if (error instanceof EndpointAcquisitionTimeoutError) {
-                throw new TimeoutException(
-                    `Endpoint acquisition timed out after ${remainingMs}ms: ${this.url}`,
-                );
+                throw new TimeoutException(`Endpoint acquisition timed out after ${remainingMs}ms: ${this.url}`);
             }
             throw error;
         }
     }
 
-    private async executeRequest(
-        endpoint: EndpointHandle,
-        signal: AbortSignal,
-    ): Promise<HttpResponse> {
+    private async executeRequest(endpoint: EndpointHandle, signal: AbortSignal): Promise<HttpResponse> {
         const method = this.options.method ?? 'GET';
         let response: HttpResponse;
 

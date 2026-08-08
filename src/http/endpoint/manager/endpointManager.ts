@@ -52,10 +52,7 @@ export class EndpointManager {
         return this.endpoints.length;
     }
 
-    async acquireEndpoint(
-        timeoutMs = this.acquireTimeout,
-        signal?: AbortSignal,
-    ): Promise<EndpointHandle> {
+    async acquireEndpoint(timeoutMs = this.acquireTimeout, signal?: AbortSignal): Promise<EndpointHandle> {
         const deadline = this.clock() + timeoutMs;
 
         while (true) {
