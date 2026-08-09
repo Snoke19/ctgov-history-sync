@@ -24,21 +24,18 @@ function makeRequest(overrides: Partial<HttpRequest> = {}): HttpRequest {
     return {
         url: 'https://api.example.com/resource',
         method: 'GET',
-        headers: {
-            Authorization: 'Bearer test-token',
-        },
+        headers: { Authorization: 'Bearer test-token' },
         ...overrides,
     };
 }
 
-function makeFakeResponse(overrides: Partial<Response> = {}): Response {
+// Record<string, unknown> lets us override body with fake streams without `as any`
+function makeFakeResponse(overrides: Record<string, unknown> = {}): Response {
     return {
         status: 200,
         statusText: 'OK',
         ok: true,
-        headers: new Headers({
-            'content-type': 'application/json',
-        }),
+        headers: new Headers({ 'content-type': 'application/json' }),
         body: null,
         text: jest.fn<() => Promise<string>>().mockResolvedValue('response body text'),
         json: jest.fn<() => Promise<unknown>>().mockResolvedValue({ result: 'ok' }),
@@ -58,15 +55,17 @@ describe('UndiciHttpTransport', () => {
 
     beforeEach(() => {
         fakeAgent = makeFakeAgent();
-
         mockFetch.mockResolvedValue(makeFakeResponse());
-
         transport = new UndiciHttpTransport(fakeAgent as unknown as ProxyAgent);
     });
 
     afterEach(() => {
         jest.clearAllMocks();
     });
+
+    function getLastFetchOpts(): RequestInit | undefined {
+        return mockFetch.mock.calls[mockFetch.mock.calls.length - 1]![1];
+    }
 
     describe('request()', () => {
         it('passes url and method to fetch', async () => {
@@ -81,7 +80,6 @@ describe('UndiciHttpTransport', () => {
 
         it('passes headers to fetch', async () => {
             const headers = { 'x-request-id': 'abc123', Authorization: 'Bearer xyz' };
-
             await transport.request(makeRequest({ headers }));
 
             expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ headers }));
@@ -96,34 +94,42 @@ describe('UndiciHttpTransport', () => {
             );
         });
 
-        it('includes body in fetch options when provided', async () => {
-            const body = '{"foo":"bar"}';
+        it('includes body when provided', async () => {
+            await transport.request(makeRequest({ body: '{"foo":"bar"}' }));
 
-            await transport.request(makeRequest({ body }));
-
-            expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body }));
+            expect(mockFetch).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({ body: '{"foo":"bar"}' }),
+            );
         });
 
-        it('omits body key entirely when body is undefined', async () => {
+        it('omits body key when body is undefined', async () => {
             await transport.request(makeRequest({ body: undefined }));
 
-            const [, opts] = mockFetch.mock.calls[0]!;
-            expect(opts).not.toHaveProperty('body');
+            expect(getLastFetchOpts()).not.toHaveProperty('body');
         });
 
-        it('includes signal in fetch options when provided', async () => {
+        it('includes signal when provided', async () => {
             const { signal } = new AbortController();
-
             await transport.request(makeRequest({ signal }));
 
             expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ signal }));
         });
 
-        it('maps status, statusText, ok, and headers from the fetch response', async () => {
+        it('omits signal key by default', async () => {
+            await transport.request(makeRequest());
+            expect(getLastFetchOpts()).not.toHaveProperty('signal');
+        });
+
+        it('propagates fetch errors', async () => {
+            mockFetch.mockRejectedValue(new Error('network failure'));
+
+            await expect(transport.request(makeRequest())).rejects.toThrow('network failure');
+        });
+
+        it('maps status, statusText, ok, and headers from the response', async () => {
             const headers = new Headers({ 'x-rate-limit-remaining': '42' });
-            mockFetch.mockResolvedValue(
-                makeFakeResponse({ status: 404, statusText: 'Not Found', ok: false, headers }) as any,
-            );
+            mockFetch.mockResolvedValue(makeFakeResponse({ status: 404, statusText: 'Not Found', ok: false, headers }));
 
             const result = await transport.request(makeRequest());
 
@@ -133,9 +139,8 @@ describe('UndiciHttpTransport', () => {
             expect(result.headers).toBe(headers);
         });
 
-        it('text() delegates to the underlying fetch response', async () => {
+        it('text() delegates to the underlying response', async () => {
             const fakeResponse = makeFakeResponse();
-
             mockFetch.mockResolvedValue(fakeResponse);
 
             const result = await transport.request(makeRequest());
@@ -145,9 +150,8 @@ describe('UndiciHttpTransport', () => {
             expect(text).toBe('response body text');
         });
 
-        it('json() delegates to the underlying fetch response', async () => {
+        it('json() delegates to the underlying response', async () => {
             const fakeResponse = makeFakeResponse();
-
             mockFetch.mockResolvedValue(fakeResponse);
 
             const result = await transport.request(makeRequest());
@@ -158,9 +162,9 @@ describe('UndiciHttpTransport', () => {
         });
 
         describe('discard()', () => {
-            it('cancels the body ReadableStream when body is non-null', async () => {
+            it('cancels the body stream when body is present', async () => {
                 const cancel = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
-                mockFetch.mockResolvedValue(makeFakeResponse({ body: { cancel } as unknown as ReadableStream }) as any);
+                mockFetch.mockResolvedValue(makeFakeResponse({ body: { cancel } }));
 
                 const result = await transport.request(makeRequest());
                 await result.discard();
@@ -169,19 +173,17 @@ describe('UndiciHttpTransport', () => {
             });
 
             it('is a no-op when body is null', async () => {
-                mockFetch.mockResolvedValue(makeFakeResponse({ body: null }) as any);
+                mockFetch.mockResolvedValue(makeFakeResponse({ body: null }));
 
                 const result = await transport.request(makeRequest());
-
                 await expect(result.discard()).resolves.toBeUndefined();
             });
 
-            it('swallows errors thrown during stream cancellation', async () => {
-                const cancel = jest.fn<() => Promise<void>>().mockRejectedValue(new Error('stream already closed'));
-                mockFetch.mockResolvedValue(makeFakeResponse({ body: { cancel } as unknown as ReadableStream }) as any);
+            it('swallows stream cancellation errors', async () => {
+                const cancel = jest.fn<() => Promise<void>>().mockRejectedValue(new Error('already closed'));
+                mockFetch.mockResolvedValue(makeFakeResponse({ body: { cancel } }));
 
                 const result = await transport.request(makeRequest());
-
                 await expect(result.discard()).resolves.toBeUndefined();
             });
         });
@@ -194,8 +196,14 @@ describe('UndiciHttpTransport', () => {
             expect(fakeAgent.close).toHaveBeenCalledTimes(1);
         });
 
-        it('forwards the resolved value from agent.close()', async () => {
+        it('returns the resolved value from agent.close()', async () => {
             await expect(transport.close()).resolves.toBeUndefined();
+        });
+
+        it('propagates agent.close() rejection', async () => {
+            fakeAgent.close.mockRejectedValue(new Error('close failed'));
+
+            await expect(transport.close()).rejects.toThrow('close failed');
         });
     });
 });

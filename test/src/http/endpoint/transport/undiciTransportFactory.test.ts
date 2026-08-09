@@ -36,15 +36,12 @@ describe('UndiciTransportFactory', () => {
     let mockPoolCreator: jest.MockedFunction<PoolCreatorFn>;
     let mockAgentCreator: jest.MockedFunction<AgentCreatorFn>;
     let mockAgent: ProxyAgent;
-
     let factory: UndiciTransportFactoryType;
-    let options: CreateProxyEndpointsOptions;
 
     beforeEach(() => {
         mockResolveConnections.mockReturnValue(RESOLVED_CONNECTIONS);
 
         mockPoolFactory = jest.fn<PoolClientFactory>();
-
         mockPoolCreator = jest.fn<PoolCreatorFn>().mockReturnValue(mockPoolFactory);
 
         mockAgent = {
@@ -54,207 +51,62 @@ describe('UndiciTransportFactory', () => {
         mockAgentCreator = jest.fn<AgentCreatorFn>().mockReturnValue(mockAgent);
 
         factory = new UndiciTransportFactory(mockPoolCreator, mockAgentCreator);
-
-        options = makeOptions();
     });
 
     afterEach(() => {
         jest.clearAllMocks();
     });
 
+    function getClientFactory(callIndex = 0): PoolClientFactory {
+        return mockAgentCreator.mock.calls[callIndex]![1] as PoolClientFactory;
+    }
+
     describe('create()', () => {
-        it('handles resolveConnections returning 0 without crashing', () => {
-            mockResolveConnections.mockReturnValue(0);
-            const result = factory.create(PROXY_URL, options);
-            expect(result).toBeInstanceOf(UndiciHttpTransport);
-
-            const [, clientFactory] = mockAgentCreator.mock.calls[0]!;
-            clientFactory(new URL('https://target.com'));
-            expect(mockPoolFactory).toHaveBeenCalledWith(expect.any(URL), { connections: 0 });
-        });
-
-        it('handles proxyCount and concurrency of 0', () => {
-            options = makeOptions({ proxyCount: 0, concurrency: 0 });
-            expect(() => factory.create(PROXY_URL, options)).not.toThrow();
-        });
-
-        it('passes proxy URL with auth credentials unchanged', () => {
-            const proxyWithAuth = 'http://user:pass@proxy.test:8080';
-            factory.create(proxyWithAuth, options);
-            const [uri] = mockAgentCreator.mock.calls[0]!;
-            expect(uri).toBe(proxyWithAuth);
-        });
-
-        it('passes proxy URL with trailing slash unchanged', () => {
-            const proxyWithSlash = 'http://proxy.test:8080/';
-            factory.create(proxyWithSlash, options);
-            const [uri] = mockAgentCreator.mock.calls[0]!;
-            expect(uri).toBe(proxyWithSlash);
-        });
-
-        it('passes origin URL object through to poolFactory including path and query', () => {
-            factory.create(PROXY_URL, options);
-            const [, clientFactory] = mockAgentCreator.mock.calls[0]!;
-
-            const origin = new URL('https://target.example.com/path?query=1');
-            clientFactory(origin);
-
-            // Pool should still receive the origin object as-is
-            expect(mockPoolFactory).toHaveBeenCalledWith(origin, expect.any(Object));
-        });
-
-        it('handles undefined extraOpts gracefully', () => {
-            factory.create(PROXY_URL, options);
-            const [, clientFactory] = mockAgentCreator.mock.calls[0]!;
-
-            const origin = new URL('https://target.example.com');
-            expect(() => clientFactory(origin, undefined)).not.toThrow();
-        });
-
-        it('merges multiple extra options without losing resolved connections', () => {
-            factory.create(PROXY_URL, options);
-            const [, clientFactory] = mockAgentCreator.mock.calls[0]!;
-
-            const origin = new URL('https://target.example.com');
-            clientFactory(origin, {
-                keepAliveTimeout: 30_000,
-                bodyTimeout: 10_000,
-                connections: 999,
-            });
-
-            expect(mockPoolFactory).toHaveBeenCalledWith(origin, {
-                keepAliveTimeout: 30_000,
-                bodyTimeout: 10_000,
-                connections: RESOLVED_CONNECTIONS, // still wins
-            });
-        });
-
-        it('propagates errors from poolCreator', () => {
-            mockPoolCreator.mockImplementation(() => {
-                throw new Error('Pool creation failed');
-            });
-            expect(() => factory.create(PROXY_URL, options)).toThrow('Pool creation failed');
-        });
-
-        it('propagates errors from agentCreator', () => {
-            mockAgentCreator.mockImplementation(() => {
-                throw new Error('Agent creation failed');
-            });
-            expect(() => factory.create(PROXY_URL, options)).toThrow('Agent creation failed');
-        });
-
-        it('propagates errors from poolFactory through clientFactory', () => {
-            mockPoolFactory.mockImplementation(() => {
-                throw new Error('Factory invocation failed');
-            });
-            factory.create(PROXY_URL, options);
-            const [, clientFactory] = mockAgentCreator.mock.calls[0]!;
-
-            expect(() => clientFactory(new URL('https://target.com'))).toThrow('Factory invocation failed');
-        });
-
-        it('does not mutate the input options object', () => {
-            const originalOptions = makeOptions();
-
-            factory.create(PROXY_URL, originalOptions);
-
-            expect(originalOptions).toStrictEqual(makeOptions());
-        });
-
-        it('wires the agent so that transport.close() delegates to agent.close()', async () => {
-            const result = factory.create(PROXY_URL, options);
-            await result.close();
-            expect(mockAgent.close).toHaveBeenCalledTimes(1);
-        });
-
-        it('reuses the same poolFactory for multiple clientFactory invocations', () => {
-            factory.create(PROXY_URL, options);
-            const [, clientFactory] = mockAgentCreator.mock.calls[0]!;
-
-            clientFactory(new URL('https://a.com'));
-            clientFactory(new URL('https://b.com'));
-
-            expect(mockPoolFactory).toHaveBeenCalledTimes(2);
-        });
-
-        it('isolates resolved connections between create() calls', () => {
-            mockResolveConnections.mockReturnValueOnce(1).mockReturnValueOnce(99);
-
-            factory.create('http://proxy-a:8080', makeOptions());
-            const [, clientFactoryA] = mockAgentCreator.mock.calls[0]!;
-
-            factory.create('http://proxy-b:9090', makeOptions());
-            const [, clientFactoryB] = mockAgentCreator.mock.calls[1]!;
-
-            clientFactoryA(new URL('https://target.com'));
-            clientFactoryB(new URL('https://target.com'));
-
-            expect(mockPoolFactory).toHaveBeenNthCalledWith(1, expect.any(URL), { connections: 1 });
-            expect(mockPoolFactory).toHaveBeenNthCalledWith(2, expect.any(URL), { connections: 99 });
-        });
-
-        it('returns the pool from poolFactory through clientFactory', () => {
-            const mockPool = { symbol: 'dispatcher' } as unknown as Dispatcher;
-            mockPoolFactory.mockReturnValue(mockPool);
-            factory.create(PROXY_URL, options);
-            const [, clientFactory] = mockAgentCreator.mock.calls[0]!;
-
-            const result = clientFactory(new URL('https://target.com'));
-            expect(result).toBe(mockPool);
-        });
-
-        it('calls resolveConnections with proxyCount, concurrency, and poolConfig', () => {
-            factory.create(PROXY_URL, options);
-
-            expect(mockResolveConnections).toHaveBeenCalledTimes(1);
-            expect(mockResolveConnections).toHaveBeenCalledWith(
-                options.proxyCount,
-                options.concurrency,
-                options.poolConfig,
-            );
-        });
-
-        it('calls poolCreator with the pool config', () => {
-            factory.create(PROXY_URL, options);
-
-            expect(mockPoolCreator).toHaveBeenCalledTimes(1);
-            expect(mockPoolCreator).toHaveBeenCalledWith(options.poolConfig);
-        });
-
-        it('calls agentCreator with the proxy URL', () => {
-            factory.create(PROXY_URL, options);
-
-            const [uri] = mockAgentCreator.mock.calls[0]!;
-            expect(uri).toBe(PROXY_URL);
-        });
-
-        it('passes a callable clientFactory as the second arg to agentCreator', () => {
-            factory.create(PROXY_URL, options);
-
-            const [, clientFactory] = mockAgentCreator.mock.calls[0]!;
-            expect(clientFactory).toEqual(expect.any(Function));
-        });
-
-        it('returns a UndiciHttpTransport', () => {
-            const result = factory.create(PROXY_URL, options);
-
-            expect(result).toBeInstanceOf(UndiciHttpTransport);
-        });
-
-        describe('clientFactory (captured from agentCreator call)', () => {
-            let clientFactory: PoolClientFactory;
-
-            beforeEach(() => {
+        describe('factory wiring', () => {
+            it('resolves connections from proxyCount, concurrency, and poolConfig', () => {
+                const options = makeOptions();
                 factory.create(PROXY_URL, options);
-                // Pull the closure that was handed to agentCreator
-                clientFactory = mockAgentCreator.mock.calls[0]![1] as PoolClientFactory;
+
+                expect(mockResolveConnections).toHaveBeenCalledTimes(1);
+                expect(mockResolveConnections).toHaveBeenCalledWith(
+                    options.proxyCount,
+                    options.concurrency,
+                    options.poolConfig,
+                );
             });
 
-            it('calls poolFactory with origin and opts merged with resolved connections', () => {
-                const origin = new URL('https://target.example.com');
-                const extraOpts = { keepAliveTimeout: 30_000 };
+            it('creates a pool factory from poolConfig', () => {
+                const options = makeOptions();
+                factory.create(PROXY_URL, options);
 
-                clientFactory(origin, extraOpts);
+                expect(mockPoolCreator).toHaveBeenCalledTimes(1);
+                expect(mockPoolCreator).toHaveBeenCalledWith(options.poolConfig);
+            });
+
+            it('creates an agent from the proxy URL', () => {
+                factory.create(PROXY_URL, makeOptions());
+
+                const [uri] = mockAgentCreator.mock.calls[0]!;
+                expect(uri).toBe(PROXY_URL);
+            });
+
+            it('passes a callable clientFactory to the agent creator', () => {
+                factory.create(PROXY_URL, makeOptions());
+                expect(getClientFactory()).toEqual(expect.any(Function));
+            });
+
+            it('returns an UndiciHttpTransport', () => {
+                const result = factory.create(PROXY_URL, makeOptions());
+                expect(result).toBeInstanceOf(UndiciHttpTransport);
+            });
+        });
+
+        describe('clientFactory closure', () => {
+            it('merges extra opts with resolved connections', () => {
+                factory.create(PROXY_URL, makeOptions());
+                const origin = new URL('https://target.example.com');
+
+                getClientFactory()(origin, { keepAliveTimeout: 30_000 });
 
                 expect(mockPoolFactory).toHaveBeenCalledTimes(1);
                 expect(mockPoolFactory).toHaveBeenCalledWith(origin, {
@@ -263,34 +115,144 @@ describe('UndiciTransportFactory', () => {
                 });
             });
 
-            it('injects connections even when no extra opts are supplied', () => {
+            it('injects connections when no extra opts are supplied', () => {
+                factory.create(PROXY_URL, makeOptions());
                 const origin = new URL('https://target.example.com');
 
-                clientFactory(origin);
+                getClientFactory()(origin);
 
+                expect(mockPoolFactory).toHaveBeenCalledTimes(1);
                 expect(mockPoolFactory).toHaveBeenCalledWith(origin, {
                     connections: RESOLVED_CONNECTIONS,
                 });
             });
 
-            it('resolved connections value wins over a caller-supplied connections key', () => {
+            it('overrides caller-supplied connections with the resolved value', () => {
+                factory.create(PROXY_URL, makeOptions());
                 const origin = new URL('https://target.example.com');
 
-                // Caller tries to override — the injected value must still win
-                clientFactory(origin, { connections: 9999 });
+                getClientFactory()(origin, { connections: 9999 });
 
+                expect(mockPoolFactory).toHaveBeenCalledTimes(1);
                 expect(mockPoolFactory).toHaveBeenCalledWith(origin, {
                     connections: RESOLVED_CONNECTIONS,
                 });
+            });
+
+            it('passes through the origin URL including path and query', () => {
+                factory.create(PROXY_URL, makeOptions());
+                const origin = new URL('https://target.example.com/path?query=1');
+
+                getClientFactory()(origin);
+
+                expect(mockPoolFactory).toHaveBeenCalledWith(origin, expect.any(Object));
+            });
+
+            it('tolerates undefined extraOpts', () => {
+                factory.create(PROXY_URL, makeOptions());
+                const origin = new URL('https://target.example.com');
+
+                expect(() => getClientFactory()(origin, undefined)).not.toThrow();
+            });
+
+            it('returns the pool from poolFactory', () => {
+                const mockPool = { symbol: 'dispatcher' } as unknown as Dispatcher;
+                mockPoolFactory.mockReturnValue(mockPool);
+                factory.create(PROXY_URL, makeOptions());
+
+                const result = getClientFactory()(new URL('https://target.example.com'));
+
+                expect(result).toBe(mockPool);
+            });
+        });
+
+        describe('produced transport', () => {
+            it('delegates close() to the agent', async () => {
+                const transport = factory.create(PROXY_URL, makeOptions());
+                await transport.close();
+
+                expect(mockAgent.close).toHaveBeenCalledTimes(1);
+            });
+        });
+
+        describe('state isolation', () => {
+            it('isolates resolved connections between create() calls', () => {
+                mockResolveConnections.mockReturnValueOnce(1).mockReturnValueOnce(99);
+
+                factory.create('http://proxy-a:8080', makeOptions());
+                const clientFactoryA = getClientFactory(0);
+
+                factory.create('http://proxy-b:9090', makeOptions());
+                const clientFactoryB = getClientFactory(1);
+
+                clientFactoryA(new URL('https://target.com'));
+                clientFactoryB(new URL('https://target.com'));
+
+                expect(mockPoolFactory).toHaveBeenNthCalledWith(1, expect.any(URL), { connections: 1 });
+                expect(mockPoolFactory).toHaveBeenNthCalledWith(2, expect.any(URL), { connections: 99 });
+            });
+        });
+
+        describe('edge cases', () => {
+            it('handles proxyCount and concurrency of 0', () => {
+                expect(() => factory.create(PROXY_URL, makeOptions({ proxyCount: 0, concurrency: 0 }))).not.toThrow();
+            });
+
+            it('handles resolved connections of 0', () => {
+                mockResolveConnections.mockReturnValue(0);
+                factory.create(PROXY_URL, makeOptions());
+
+                getClientFactory()(new URL('https://target.com'));
+
+                expect(mockPoolFactory).toHaveBeenCalledTimes(1);
+                expect(mockPoolFactory).toHaveBeenCalledWith(expect.any(URL), { connections: 0 });
+            });
+
+            it('preserves auth credentials in the proxy URL', () => {
+                factory.create('http://user:pass@proxy.test:8080', makeOptions());
+                expect(mockAgentCreator.mock.calls[0]![0]).toBe('http://user:pass@proxy.test:8080');
+            });
+
+            it('preserves a trailing slash in the proxy URL', () => {
+                factory.create('http://proxy.test:8080/', makeOptions());
+                expect(mockAgentCreator.mock.calls[0]![0]).toBe('http://proxy.test:8080/');
+            });
+
+            it('does not mutate the input options', () => {
+                const options = makeOptions();
+                factory.create(PROXY_URL, options);
+                expect(options).toStrictEqual(makeOptions());
+            });
+        });
+
+        describe('error handling', () => {
+            it('propagates poolCreator errors', () => {
+                mockPoolCreator.mockImplementation(() => {
+                    throw new Error('Pool creation failed');
+                });
+                expect(() => factory.create(PROXY_URL, makeOptions())).toThrow('Pool creation failed');
+            });
+
+            it('propagates agentCreator errors', () => {
+                mockAgentCreator.mockImplementation(() => {
+                    throw new Error('Agent creation failed');
+                });
+                expect(() => factory.create(PROXY_URL, makeOptions())).toThrow('Agent creation failed');
+            });
+
+            it('propagates poolFactory errors through clientFactory', () => {
+                mockPoolFactory.mockImplementation(() => {
+                    throw new Error('Factory invocation failed');
+                });
+                factory.create(PROXY_URL, makeOptions());
+
+                expect(() => getClientFactory()(new URL('https://target.com'))).toThrow('Factory invocation failed');
             });
         });
     });
 
     describe('constructor', () => {
-        it('instantiates without seams using production defaults', () => {
-            // Smoke test: verifies the default seam wiring compiles and the
-            // instance is created without error. We do not call create() here
-            // to avoid real socket construction.
+        it('instantiates with production defaults', () => {
             expect(() => new UndiciTransportFactory()).not.toThrow();
         });
     });
