@@ -21,8 +21,9 @@ export class HttpProxyUrlParser implements ProxyUrlParser {
                 const validProtocol = parsed.protocol === 'http:' || parsed.protocol === 'https:';
                 const validHost = Boolean(parsed.hostname);
                 const validPort = hasExplicitPort(url);
+                const validOrigin = parsed.pathname === '/' && !parsed.search && !parsed.hash;
 
-                if (!validProtocol || !validHost || !validPort) {
+                if (!validProtocol || !validHost || !validPort || !validOrigin) {
                     logger.warn('[Proxy] Skipping invalid proxy URL: "%s"', url);
                     continue;
                 }
@@ -62,5 +63,16 @@ function hasExplicitPort(url: string): boolean {
     const authority = afterScheme.split(/[/?#]/, 1)[0] ?? '';
     const hostPort = authority.includes('@') ? authority.slice(authority.lastIndexOf('@') + 1) : authority;
 
-    return /:\d+$/.test(hostPort);
+    const match = hostPort.match(/:(\d+)$/);
+    if (!match) {
+        return false;
+    }
+
+    const portText = match[1];
+    if (!portText) {
+        return false;
+    }
+
+    const port = Number.parseInt(portText, 10);
+    return port > 0 && port <= 65535;
 }
