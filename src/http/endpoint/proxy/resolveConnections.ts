@@ -5,5 +5,6 @@ export function resolveConnections(proxyCount: number, concurrency: number, pool
         return poolConfig.connections;
     }
 
-    return Math.min(poolConfig.maxConnections, Math.max(poolConfig.connections, Math.ceil(concurrency / proxyCount)));
+    const perProxy = Math.ceil(concurrency / proxyCount);
+    return Math.min(poolConfig.maxConnections, Math.max(poolConfig.connections, perProxy));
 }
