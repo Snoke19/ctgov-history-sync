@@ -68,6 +68,11 @@ describe('UndiciHttpTransport', () => {
     }
 
     describe('request()', () => {
+        it('includes empty string body', async () => {
+            await transport.request(makeRequest({ body: '' }));
+            expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: '' }));
+        });
+
         it('passes url and method to fetch', async () => {
             await transport.request(makeRequest({ url: 'https://target.com/api', method: 'DELETE' }));
 
