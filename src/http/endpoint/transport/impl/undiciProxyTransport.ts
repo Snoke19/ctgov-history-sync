@@ -5,34 +5,21 @@ import { ProxyTransportFactory } from '../factory/transportFactory.js';
 import { ProxyPoolConfig } from '../../../../config/config.js';
 import { resolveConnections } from '../../proxy/resolveConnections.js';
 import { createPoolFactory } from '../../../poolFactory.js';
-// ─── Injectable seam types ────────────────────────────────────────────────────
-//
-// These types define the boundary between UndiciTransportFactory and the
-// underlying connection pool / agent infrastructure. They are exported so
-// tests can construct fully-typed fakes without resorting to `any` casts.
-//
-// PoolClientFactory: the function ProxyAgent calls per-origin to obtain a pool.
-// PoolCreatorFn:     transforms pool config into a PoolClientFactory.
-// AgentCreatorFn:    assembles a ProxyAgent from a URI + clientFactory.
-//
-// In production these defaults wire real undici objects. In tests, inject
-// stubs to avoid real socket creation and proxy handshakes.
-// ─────────────────────────────────────────────────────────────────────────────
-export type PoolClientFactory = (origin: URL, opts?: Record<string, any>) => Dispatcher;
-export type PoolCreatorFn = (config: ProxyPoolConfig) => PoolClientFactory;
-export type AgentCreatorFn = (uri: string, clientFactory: PoolClientFactory) => ProxyAgent;
 
-const defaultAgentCreator: AgentCreatorFn = (uri, clientFactory) => new ProxyAgent({ uri, clientFactory });
+/** Creates a Dispatcher pool for a given origin. Called by ProxyAgent per-origin. */
+export type PoolClientFactory = (origin: URL, opts?: Record<string, any>) => Dispatcher;
+
+/** Transforms pool config into a PoolClientFactory. */
+export type PoolCreatorFn = (config: ProxyPoolConfig) => PoolClientFactory;
+
+/** Assembles a ProxyAgent from a URI and clientFactory. */
+export type AgentCreatorFn = (uri: string, clientFactory: PoolClientFactory) => ProxyAgent;
 
 /**
  * Undici ProxyAgent adapter implementing the universal {@link HttpTransport}.
  *
  * Each instance owns a single ProxyAgent. The agent is closed on shutdown
  * to release underlying sockets and timers.
- *
- * To add SOCKS support, create a separate `SocksHttpTransport` and a matching
- * `SocksTransportFactory`, then inject the appropriate factory into
- * `ProxyEndpointProvider` at the composition root.
  */
 export class UndiciHttpTransport implements HttpTransport {
     constructor(private readonly agent: ProxyAgent) {}
@@ -46,6 +33,14 @@ export class UndiciHttpTransport implements HttpTransport {
             ...(options.signal !== undefined && { signal: options.signal }),
         });
 
+        return this.toHttpResponse(response);
+    }
+
+    close(): Promise<void> {
+        return this.agent.close();
+    }
+
+    private toHttpResponse(response: Awaited<ReturnType<typeof fetch>>): HttpResponse {
         return {
             status: response.status,
             statusText: response.statusText,
@@ -60,10 +55,6 @@ export class UndiciHttpTransport implements HttpTransport {
             },
         };
     }
-
-    close(): Promise<void> {
-        return this.agent.close();
-    }
 }
 
 /**
@@ -71,15 +62,10 @@ export class UndiciHttpTransport implements HttpTransport {
  * specific proxy URL and shared pool configuration.
  *
  * This class is the **only** place in the endpoint layer that knows about
- * undici. It is injected into `ProxyEndpointProvider`, which in turn is
- * injected into `EndpointFactory` at the composition root.
+ * undici. Constructor parameters are test seams:
  *
- * The two constructor parameters are **test seams**:
- *
- *   - `poolCreator`  – Replace with a stub to avoid creating real TCP pools.
- *   - `agentCreator` – Replace with a stub to avoid real proxy handshakes.
- *
- * Both default to production undici implementations.
+ *   - `poolCreator`  – stub to avoid creating real TCP pools.
+ *   - `agentCreator` – stub to avoid real proxy handshakes.
  */
 export class UndiciTransportFactory implements ProxyTransportFactory {
     constructor(
@@ -89,7 +75,6 @@ export class UndiciTransportFactory implements ProxyTransportFactory {
 
     create(proxyUrl: string, options: CreateProxyEndpointsOptions): HttpTransport {
         const connections = resolveConnections(options.proxyCount, options.concurrency, options.poolConfig);
-
         const poolFactory = this.poolCreator(options.poolConfig);
 
         const clientFactory: PoolClientFactory = (origin, opts) => poolFactory(origin, { ...opts, connections });
@@ -98,4 +83,8 @@ export class UndiciTransportFactory implements ProxyTransportFactory {
 
         return new UndiciHttpTransport(agent);
     }
+}
+
+function defaultAgentCreator(uri: string, clientFactory: PoolClientFactory): ProxyAgent {
+    return new ProxyAgent({ uri, clientFactory });
 }
