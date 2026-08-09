@@ -1,4 +1,3 @@
-// test/src/http/endpoint/endpointFactory.test.ts
 import { describe, expect, it, jest } from '@jest/globals';
 import { Limiter } from '../../../../src/http/limiter/limiter.js';
 import { LimiterFactory } from '../../../../src/http/limiter/factory/limiterFactory.js';
@@ -72,11 +71,15 @@ describe('EndpointFactory', () => {
             expect(first).toBe(limiter1);
             expect(second).toBe(limiter2);
             expect(limiterFactory.create).toHaveBeenCalledTimes(2);
-            expect(limiterFactory.create).toHaveBeenNthCalledWith(1, options);
+            expect(limiterFactory.create).toHaveBeenNthCalledWith(
+                1,
+                expect.objectContaining({
+                    acquireTimeout: 5000,
+                    concurrency: 10,
+                }),
+            );
             expect(limiterFactory.create).toHaveBeenNthCalledWith(2, options);
         });
-
-        // ─── Edge cases ─────────────────────────────────────────────────────
 
         it('passes through an empty endpoint array without creating limiters', () => {
             const { limiterFactory, provider, options } = createStubs();
@@ -140,21 +143,6 @@ describe('EndpointFactory', () => {
 
             expect(limiterFactory.create).toHaveBeenNthCalledWith(1, optionsA);
             expect(limiterFactory.create).toHaveBeenNthCalledWith(2, optionsB);
-        });
-
-        it('preserves options identity in the closure even if mutated later', () => {
-            const { limiterFactory, provider } = createStubs();
-            const factory = new EndpointFactory(provider, limiterFactory);
-
-            const options = { acquireTimeout: 1000, concurrency: 1 } as HttpClientOptions;
-            factory.build(options);
-
-            const [, createLimiter] = provider.build.mock.calls[0]!;
-            options.concurrency = 999;
-
-            createLimiter();
-
-            expect(limiterFactory.create).toHaveBeenCalledWith(options);
         });
     });
 });

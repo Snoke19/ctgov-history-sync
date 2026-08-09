@@ -13,10 +13,6 @@ import { EndpointProvider } from './provider/endpointProvider.js';
  *
  * Rate-limit validation now lives inside the {@link LimiterFactory} implementation,
  * keeping this class focused solely on endpoint construction.
- *
- * The separation of this class from {@link EndpointManager} allows both to be
- * tested independently: EndpointFactory with various provider/limiter stubs,
- * and EndpointManager with pre-built endpoint stubs.
  */
 export class EndpointFactory {
     constructor(
@@ -25,7 +21,8 @@ export class EndpointFactory {
     ) {}
 
     build(options: HttpClientOptions): Endpoint[] {
-        const createLimiter = (): Limiter => this.limiterFactory.create(options);
+        const snapshot = { ...options };
+        const createLimiter = (): Limiter => this.limiterFactory.create(snapshot);
         return this.provider.build(options, createLimiter);
     }
 }

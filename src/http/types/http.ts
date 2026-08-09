@@ -7,13 +7,13 @@ export interface QueryParams {
 }
 
 export interface HttpClientOptions {
-    proxyUrls?: string;
-    useRateLimit?: boolean;
-    rateLimitCapacity: number;
-    rateLimitWindow: number;
-    acquireTimeout: number;
-    concurrency: number;
-    poolConfig?: ProxyPoolConfig;
+    readonly proxyUrls?: string;
+    readonly useRateLimit?: boolean;
+    readonly rateLimitCapacity: number;
+    readonly rateLimitWindow: number;
+    readonly acquireTimeout: number;
+    readonly concurrency: number;
+    readonly poolConfig?: Readonly<ProxyPoolConfig>;
 }
 
 /**
