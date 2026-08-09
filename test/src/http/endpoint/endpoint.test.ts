@@ -1,8 +1,8 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { Limiter } from '../../../../src/http/limiter/limiter.js';
-import { UndiciHttpTransport } from '../../../../src/http/endpoint/transport/impl/undiciProxyTransport.js';
 import { HttpTransport } from '../../../../src/http/endpoint/transport/httpTransport.js';
 import { Endpoint } from '../../../../src/http/endpoint/endpoint.js';
+import { UndiciHttpTransport } from '../../../../src/http/endpoint/transport/impl/undiciProxyTransport.js';
 
 describe('Endpoint', () => {
     const createStubs = () => {
@@ -20,7 +20,7 @@ describe('Endpoint', () => {
     };
 
     describe('getHandle', () => {
-        it('returns a frozen handle containing the url and transport', () => {
+        it('returns a frozen handle with url and transport', () => {
             const { limiter, transport } = createStubs();
             const endpoint = new Endpoint('https://example.com', limiter, transport);
 
@@ -57,7 +57,7 @@ describe('Endpoint', () => {
             limiter.tryAcquire.mockReturnValue(false);
             const endpoint = new Endpoint('https://example.com', limiter, transport);
 
-            expect(endpoint.tryAcquire(0)).toBe(false);
+            expect(endpoint.tryAcquire(1_234_567)).toBe(false);
         });
     });
 
@@ -76,20 +76,16 @@ describe('Endpoint', () => {
     });
 
     describe('close', () => {
-        it('delegates to transport.close() and returns its promise', async () => {
+        it('delegates to transport.close() on first call', async () => {
             const { limiter, transport } = createStubs();
-            const closePromise = Promise.resolve();
-            transport.close.mockReturnValue(closePromise);
             const endpoint = new Endpoint('https://example.com', limiter, transport);
 
-            const result = endpoint.close();
+            await endpoint.close();
 
             expect(transport.close).toHaveBeenCalledTimes(1);
-            expect(result).toBe(closePromise);
-            await expect(result).resolves.toBeUndefined();
         });
 
-        it('caches the close promise (idempotent)', async () => {
+        it('returns the same promise on repeated calls (idempotent)', () => {
             const { limiter, transport } = createStubs();
             const endpoint = new Endpoint('https://example.com', limiter, transport);
 
@@ -98,7 +94,6 @@ describe('Endpoint', () => {
 
             expect(transport.close).toHaveBeenCalledTimes(1);
             expect(p1).toBe(p2);
-            await expect(p1).resolves.toBeUndefined();
         });
 
         it('does not call transport.close() before the first invocation', () => {
@@ -106,6 +101,19 @@ describe('Endpoint', () => {
             new Endpoint('https://example.com', limiter, transport);
 
             expect(transport.close).not.toHaveBeenCalled();
+        });
+
+        it('caches a rejected promise (subsequent calls get the same rejection)', async () => {
+            const { limiter, transport } = createStubs();
+            transport.close.mockRejectedValue(new Error('close failed'));
+            const endpoint = new Endpoint('https://example.com', limiter, transport);
+
+            const p1 = endpoint.close();
+            const p2 = endpoint.close();
+
+            expect(transport.close).toHaveBeenCalledTimes(1);
+            expect(p1).toBe(p2);
+            await expect(p1).rejects.toThrow('close failed');
         });
     });
 });
