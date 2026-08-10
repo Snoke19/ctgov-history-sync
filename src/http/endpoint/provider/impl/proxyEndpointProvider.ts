@@ -33,9 +33,10 @@ export class ProxyEndpointProvider implements EndpointProvider {
             poolConfig: options.poolConfig,
         };
 
-        return urls.map(
-            (urlProxy) =>
-                new Endpoint(urlProxy, createLimiter(), this.transportFactory.create(urlProxy, transportOptions)),
-        );
+        return urls.map((urlProxy) => {
+            const transport = this.transportFactory.create(urlProxy, transportOptions);
+            const limiter = createLimiter();
+            return new Endpoint(urlProxy, limiter, transport);
+        });
     }
 }
