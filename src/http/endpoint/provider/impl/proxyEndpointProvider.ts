@@ -1,12 +1,12 @@
-import { ConfigurationError } from '../../../error/errors.js';
-import type { HttpClientOptions } from '../../types/http.js';
-import type { Limiter } from '../../limiter/limiter.js';
-import { Endpoint } from '../endpoint.js';
-import { assertPositiveInt } from '../../../utils/validation.js';
-import { ProxyTransportFactory } from '../transport/factory/transportFactory.js';
-import { CreateProxyEndpointsOptions } from '../transport/httpTransport.js';
-import { EndpointProvider } from './endpointProvider.js';
-import { ProxyUrlParser } from '../proxy/httpProxyUrlParser.js';
+import { ConfigurationError } from '../../../../error/errors.js';
+import type { HttpClientOptions } from '../../../types/http.js';
+import type { Limiter } from '../../../limiter/limiter.js';
+import { Endpoint } from '../../endpoint.js';
+import { assertPositiveInt } from '../../../../utils/validation.js';
+import { ProxyTransportFactory } from '../../transport/factory/transportFactory.js';
+import { CreateProxyEndpointsOptions } from '../../transport/httpTransport.js';
+import { EndpointProvider } from '../endpointProvider.js';
+import { ProxyUrlParser } from '../../proxy/httpProxyUrlParser.js';
 
 export class ProxyEndpointProvider implements EndpointProvider {
     constructor(

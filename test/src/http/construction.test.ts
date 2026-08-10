@@ -2,7 +2,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { ProxyPoolConfig } from '../../../src/config/config.js';
 import { EndpointFactory } from '../../../src/http/endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from '../../../src/http/endpoint/manager/endpointManagerFactory.js';
-import { ProxyEndpointProvider } from '../../../src/http/endpoint/provider/proxyEndpointProvider.js';
+import { ProxyEndpointProvider } from '../../../src/http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import { HttpClientOptions } from '../../../src/http/types/http.js';
 import { ConfigurationError } from '../../../src/error/errors.js';

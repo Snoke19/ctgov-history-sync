@@ -11,7 +11,7 @@ import {
 import { logger } from './config/logging.js';
 import { TrialFetchError, TrialNotFoundError, TrialTimeoutError } from './error/errors.js';
 import { createHttpClient } from './http/httpClient.js';
-import { ProxyEndpointProvider } from './http/endpoint/provider/proxyEndpointProvider.js';
+import { ProxyEndpointProvider } from './http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { UndiciTransportFactory } from './http/endpoint/transport/impl/undiciProxyTransport.js';
 import { HttpProxyUrlParser } from './http/endpoint/proxy/httpProxyUrlParser.js';
 
