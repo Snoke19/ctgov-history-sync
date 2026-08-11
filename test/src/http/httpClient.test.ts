@@ -313,7 +313,7 @@ describe('HttpClient Integration', () => {
             );
         });
 
-        it('performs 1 retry when maxRetries is 1', async () => {
+        it('respects maxRetries: 1 override and performs exactly 1 attempt', async () => {
             const fetchMock = jest
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Bad Gateway', 502, {}, 'Bad Gateway'));
@@ -321,7 +321,7 @@ describe('HttpClient Integration', () => {
             const { client } = makeClient();
 
             await expect(
-                client.fetchJson(`${API_URL}/one-retry`, {
+                client.fetchJson(`${API_URL}/no-retries`, {
                     maxRetries: 1,
                 }),
             ).rejects.toMatchObject({
@@ -386,13 +386,73 @@ describe('HttpClient Integration', () => {
             await expect(
                 client.fetchJson(`${API_URL}/error-resource`, {
                     allow404: true,
-                    maxRetries: 1,
+                    maxRetries: 0,
                 }),
             ).rejects.toMatchObject({
                 status: 500,
             });
 
-            expect(fetchMock).toHaveBeenCalledTimes(2);
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        it('returns null for 404 with allow404 even when response has a JSON body', async () => {
+            const fetchMock = jest
+                .spyOn(globalThis, 'fetch')
+                .mockResolvedValue(jsonResponse({ error: 'Not Found', detail: 'resource gone' }, 404, {}, 'Not Found'));
+
+            const { client } = makeClient();
+
+            const result = await client.fetchJson(`${API_URL}/gone`, { allow404: true });
+
+            expect(result).toBeNull();
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('Null Return Contract', () => {
+        it('returns null for 204 No Content instead of parsing JSON', async () => {
+            const fetchMock = jest
+                .spyOn(globalThis, 'fetch')
+                .mockResolvedValue(jsonResponse(null, 204, {}, 'No Content'));
+
+            const { client } = makeClient();
+
+            const result = await client.fetchJson<{ id: number }>(`${API_URL}/empty`);
+
+            expect(result).toBeNull();
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        it('returns null for 404 when allow404 is enabled', async () => {
+            const fetchMock = jest
+                .spyOn(globalThis, 'fetch')
+                .mockResolvedValue(jsonResponse({ message: 'Not Found' }, 404, {}, 'Not Found'));
+
+            const { client } = makeClient();
+
+            const result = await client.fetchJson<{ message: string }>(`${API_URL}/missing`, { allow404: true });
+
+            expect(result).toBeNull();
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        it('typed as T | null so callers must handle the null case', async () => {
+            // Runtime check: the value is null, not undefined or a thrown error.
+            // Compile-time check: fetchJson<T> returns Promise<T | null>.
+            const fetchMock = jest
+                .spyOn(globalThis, 'fetch')
+                .mockResolvedValue(jsonResponse(null, 204, {}, 'No Content'));
+
+            const { client } = makeClient();
+
+            const result = await client.fetchJson<number>(`${API_URL}/no-body`);
+
+            // If the return type were Promise<T>, this would be typed as number
+            // and the caller could crash at runtime. With Promise<T | null>,
+            // TypeScript forces a null check before use.
+            expect(result).toBeNull();
+            expect(typeof result).not.toBe('number');
+            expect(fetchMock).toHaveBeenCalledTimes(1);
         });
     });
 
@@ -411,7 +471,7 @@ describe('HttpClient Integration', () => {
             expect(fetchMock).toHaveBeenCalledTimes(2);
         });
 
-        it('throws NetworkException after exhausting the configured maximum number of retries', async () => {
+        it('throws NetworkException after exhausting the configured maximum number of total attempts', async () => {
             const fetchMock = jest
                 .spyOn(globalThis, 'fetch')
                 .mockRejectedValue(new TypeError('fetch failed: ECONNREFUSED'));
@@ -427,7 +487,7 @@ describe('HttpClient Integration', () => {
             expect(fetchMock).toHaveBeenCalledTimes(2);
         });
 
-        it('rejects immediately when caller AbortSignal is pre-aborted', async () => {
+        it('rejects immediately with NetworkException when caller AbortSignal is pre-aborted', async () => {
             const fetchMock = jest.spyOn(globalThis, 'fetch');
 
             const { client } = makeClient();
@@ -439,7 +499,9 @@ describe('HttpClient Integration', () => {
                 client.fetchJson(`${API_URL}/cancelled`, {
                     signal: controller.signal,
                 }),
-            ).rejects.toBeInstanceOf(NetworkException);
+            ).rejects.toMatchObject({
+                message: expect.stringContaining('cancelled'),
+            });
 
             expect(fetchMock).not.toHaveBeenCalled();
         });

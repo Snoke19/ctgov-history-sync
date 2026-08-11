@@ -20,7 +20,7 @@ export interface HttpClient {
      * Returns null for 204 No Content responses, or for 404 responses
      * when allow404 is enabled.
      */
-    fetchJson<T = unknown>(url: string, options?: FetchJsonRequestOptions): Promise<T>;
+    fetchJson<T = unknown>(url: string, options?: FetchJsonRequestOptions): Promise<T | null>;
 
     /** Releases all underlying connection-pool resources. */
     close(): Promise<void>;
@@ -51,12 +51,12 @@ export function createHttpClient(
         }
     }
 
-    async function fetchJson<T = unknown>(url: string, options: FetchJsonRequestOptions = {}): Promise<T> {
+    async function fetchJson<T = unknown>(url: string, options: FetchJsonRequestOptions = {}): Promise<T | null> {
         const response = await fetchResponse(url, options);
 
         // fetchResponse returns null for allow404 + 404, and for 204 in fetchResponse
         // All other non-ok responses have already been thrown as HttpException
-        if (response === null) return null as T;
+        if (response === null) return null;
 
         return parseOkResponseBody(response, url) as T;
     }
