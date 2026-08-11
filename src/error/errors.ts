@@ -108,3 +108,10 @@ export class EndpointAcquisitionTimeoutError extends TrialError {
         this.budgetExhausted = budgetExhausted;
     }
 }
+
+export class CallerAbortedError extends Error {
+    constructor(message = 'The operation was aborted.') {
+        super(message);
+        this.name = 'CallerAbortedError';
+    }
+}

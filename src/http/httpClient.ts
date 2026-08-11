@@ -43,6 +43,7 @@ export function createHttpClient(
         } catch (error) {
             // A 404 is never retried (shouldRetry returns false for it), so when
             // it arrives here it is the final, definitive response from the server.
+            // Body was already drained inside FetchOperation before the HttpException was thrown.
             if (options.allow404 && error instanceof HttpException && error.status === 404) {
                 return null;
             }

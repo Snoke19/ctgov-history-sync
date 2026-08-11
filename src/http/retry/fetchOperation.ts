@@ -1,5 +1,5 @@
 import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../../config/config.js';
-import { EndpointAcquisitionTimeoutError } from '../../error/errors.js';
+import { CallerAbortedError, EndpointAcquisitionTimeoutError } from '../../error/errors.js';
 import { EndpointHandle } from '../endpoint/endpoint.js';
 import { EndpointManager } from '../endpoint/manager/endpointManager.js';
 import { HttpResponse } from '../endpoint/transport/httpTransport.js';
@@ -8,9 +8,10 @@ import { HttpException, NetworkException, TimeoutException } from './exceptions.
 import { parseRetryAfterHeader } from './retryPolicy.js';
 import { FetchJsonRequestOptions } from '../types/http.js';
 import { BusinessOperation } from './businessOperation.js';
+import { drainBody } from '../responseBody.js';
 
 function isAbortError(error: unknown): boolean {
-    if (error instanceof DOMException && error.name === 'AbortError') return true;
+    if (error instanceof CallerAbortedError) return true;
     if (error !== null && typeof error === 'object') {
         if ('name' in error && error.name === 'AbortError') return true;
         if ('code' in error && (error as NodeJS.ErrnoException).code === 'ABORT_ERR') return true;
@@ -30,10 +31,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         const deadline = this.options.deadline ?? Date.now() + timeoutMs;
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(
-            () => controller.abort(new DOMException('Request timed out', 'TimeoutError')),
-            timeoutMs,
-        );
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
         const signal = this.options.signal
             ? AbortSignal.any([controller.signal, this.options.signal])
@@ -43,11 +41,16 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             const remainingMs = getRemainingBudget(deadline, this.url, timeoutMs);
             const endpoint = await this.acquireEndpoint(remainingMs, signal);
             return await this.executeRequest(endpoint, signal);
+        } catch (error) {
+            if (isAbortError(error)) {
+                if (this.options.signal?.aborted) {
+                    throw new NetworkException(`Request cancelled by caller: ${this.url}`, error);
+                }
+                throw new TimeoutException(`Request timed out after ${timeoutMs}ms: ${this.url}`);
+            }
+            throw error;
         } finally {
             clearTimeout(timeoutId);
-            // Do NOT abort the controller here. On success, the response body is
-            // consumed by the caller after perform() returns; aborting the signal
-            // at this point would prematurely terminate the body stream.
         }
     }
 
@@ -81,6 +84,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
         if (!response.ok) {
             const retryAfter = parseRetryAfterHeader(response);
+            await drainBody(response);
             throw new HttpException(
                 `HTTP ${response.status} ${response.statusText} — ${method} ${this.url}`,
                 response.status,
@@ -113,11 +117,6 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     }
 }
 
-/**
- * Returns the milliseconds remaining before the deadline expires.
- * Throws TimeoutException (a BusinessException) if the budget is already exhausted,
- * so Retry can intercept it like any other retryable error.
- */
 function getRemainingBudget(deadline: number, url: string, totalBudgetMs: number): number {
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {

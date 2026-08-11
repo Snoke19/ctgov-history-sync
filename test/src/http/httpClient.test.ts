@@ -7,7 +7,6 @@ import { FetchDirectTransportFactory } from '../../../src/http/endpoint/transpor
 import { FetchDirectTransport } from '../../../src/http/endpoint/transport/impl/fetchDirectTransport.js';
 import { NetworkException, TimeoutException } from '../../../src/http/retry/exceptions.js';
 import { HttpClientOptions } from '../../../src/http/types/http.js';
-import { Endpoint } from '../../../src/http/endpoint/endpoint.js';
 
 const API_URL = 'http://api.test';
 
@@ -44,6 +43,12 @@ function makeClient(optionsOverrides: Partial<HttpClientOptions> = {}): { client
     return {
         client: createHttpClient(createDefaultOptions(optionsOverrides), provider),
     };
+}
+
+function abortError(message = 'The operation was aborted.'): Error {
+    const err = new Error(message);
+    err.name = 'AbortError';
+    return err;
 }
 
 describe('HttpClient Integration', () => {
@@ -428,7 +433,7 @@ describe('HttpClient Integration', () => {
             expect(fetchMock).toHaveBeenCalledTimes(1);
         });
 
-        it('rejects immediately when caller AbortSignal is pre-aborted', async () => {
+        it('rejects immediately with NetworkException when caller AbortSignal is pre-aborted', async () => {
             const fetchMock = jest.spyOn(globalThis, 'fetch');
 
             const { client } = makeClient();
@@ -440,7 +445,9 @@ describe('HttpClient Integration', () => {
                 client.fetchJson(`${API_URL}/cancelled`, {
                     signal: controller.signal,
                 }),
-            ).rejects.toBeInstanceOf(DOMException);
+            ).rejects.toMatchObject({
+                message: expect.stringContaining('cancelled'),
+            });
 
             expect(fetchMock).not.toHaveBeenCalled();
         });
@@ -451,7 +458,7 @@ describe('HttpClient Integration', () => {
                     const signal = init?.signal as AbortSignal | undefined;
 
                     if (signal) {
-                        const onAbort = () => reject(new DOMException('The operation was aborted.', 'AbortError'));
+                        const onAbort = () => reject(abortError());
 
                         if (signal.aborted) {
                             onAbort();
@@ -459,8 +466,6 @@ describe('HttpClient Integration', () => {
                         }
                         signal.addEventListener('abort', onAbort, { once: true });
                     }
-                    // No safety timer needed here — the internal AbortController
-                    // guarantees the signal will abort after timeoutMs.
                 });
             });
 
@@ -477,13 +482,12 @@ describe('HttpClient Integration', () => {
             jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
                 return new Promise((_, reject) => {
                     const signal = init?.signal as AbortSignal | undefined;
-
                     let safetyTimer: NodeJS.Timeout | undefined;
 
                     if (signal) {
                         const onAbort = () => {
-                            clearTimeout(safetyTimer); // <-- clean up the safety valve
-                            reject(new DOMException('The operation was aborted.', 'AbortError'));
+                            clearTimeout(safetyTimer);
+                            reject(abortError());
                         };
 
                         if (signal.aborted) {
@@ -493,7 +497,6 @@ describe('HttpClient Integration', () => {
                         signal.addEventListener('abort', onAbort, { once: true });
                     }
 
-                    // If nothing happens in 1 s, force-fail (shorter = less leak risk)
                     safetyTimer = setTimeout(() => reject(new Error('should not reach')), 1000);
                 });
             });

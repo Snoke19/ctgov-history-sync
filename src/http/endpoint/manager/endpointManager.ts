@@ -1,7 +1,7 @@
 import { performance } from 'node:perf_hooks';
 import { setTimeout as nodeTimersSleep } from 'node:timers/promises';
 import { Endpoint, EndpointHandle } from '../endpoint.js';
-import { ConfigurationError, EndpointAcquisitionTimeoutError } from '../../../error/errors.js';
+import { CallerAbortedError, ConfigurationError, EndpointAcquisitionTimeoutError } from '../../../error/errors.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
 import { logger } from '../../../config/logging.js';
 
@@ -59,7 +59,7 @@ export class EndpointManager {
             // AbortSignal is checked before the clock read so that an already-aborted
             // signal surfaces immediately, even before any deadline evaluation.
             if (signal?.aborted) {
-                throw new DOMException('The operation was aborted.', 'AbortError');
+                throw new CallerAbortedError();
             }
 
             // Single clock read per iteration to keep the endpoint scan and deadline

@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { EndpointManager } from '../../../../../src/http/endpoint/manager/endpointManager.js';
-import { ConfigurationError, EndpointAcquisitionTimeoutError } from '../../../../../src/error/errors.js';
+import {
+    CallerAbortedError,
+    ConfigurationError,
+    EndpointAcquisitionTimeoutError,
+} from '../../../../../src/error/errors.js';
 import { Endpoint, EndpointHandle } from '../../../../../src/http/endpoint/endpoint.js';
 import { HttpTransport } from '../../../../../src/http/endpoint/transport/httpTransport.js';
 
@@ -106,7 +110,9 @@ describe('EndpointManager', () => {
             const ep = makeEndpoint({ tryAcquire: jest.fn().mockReturnValue(true) });
             const mgr = createManager({ endpoints: [ep] });
 
-            await expect(mgr.acquireEndpoint(1000, abortedSignal())).rejects.toMatchObject({ name: 'AbortError' });
+            await expect(mgr.acquireEndpoint(1000, abortedSignal())).rejects.toThrow(
+                new CallerAbortedError('The operation was aborted.'),
+            );
 
             expect(ep.tryAcquire).not.toHaveBeenCalled();
         });
@@ -125,7 +131,8 @@ describe('EndpointManager', () => {
             const mgr = createManager({ clock });
             const err = await mgr.acquireEndpoint(1000, abortedSignal()).catch((e) => e);
 
-            expect(err.name).toBe('AbortError');
+            expect(err).toBeInstanceOf(CallerAbortedError);
+            expect(err).toHaveProperty('message', 'The operation was aborted.');
             expect(clock).toHaveBeenCalledTimes(1);
         });
 
@@ -144,7 +151,9 @@ describe('EndpointManager', () => {
 
             const mgr = createManager({ endpoints: [ep], timeout: 100_000, sleep });
 
-            await expect(mgr.acquireEndpoint(100_000, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+            await expect(mgr.acquireEndpoint(100_000, controller.signal)).rejects.toThrow(
+                new CallerAbortedError('The operation was aborted.'),
+            );
 
             expect(sleepCount).toBe(1);
         });
