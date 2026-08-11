@@ -3,7 +3,7 @@ import { BusinessOperation } from './businessOperation.js';
 
 export class Retry<T> implements BusinessOperation<T> {
     private readonly op: BusinessOperation<T>;
-    private readonly maxAttempts: number;
+    private readonly maxRetries: number;
     private readonly delayMs: number | ((attempt: number, error: BusinessException) => number);
     private attemptsCount: number;
     private readonly shouldRetry: (error: BusinessException) => boolean;
@@ -11,12 +11,12 @@ export class Retry<T> implements BusinessOperation<T> {
 
     constructor(
         op: BusinessOperation<T>,
-        maxAttempts: number,
+        maxRetries: number,
         delayMs: number | ((attempt: number, error: BusinessException) => number),
         ...ignoreTests: Array<(error: BusinessException) => boolean>
     ) {
         this.op = op;
-        this.maxAttempts = maxAttempts;
+        this.maxRetries = maxRetries;
         this.delayMs = delayMs;
         this.attemptsCount = 0;
         this.shouldRetry = ignoreTests.length > 0 ? (e) => ignoreTests.some((test) => test(e)) : () => false;
@@ -43,9 +43,11 @@ export class Retry<T> implements BusinessOperation<T> {
                 const error = e as BusinessException;
                 this.errors.push(error);
 
-                if (++this.attemptsCount >= this.maxAttempts || !this.shouldRetry(error)) {
+                if (this.attemptsCount >= this.maxRetries || !this.shouldRetry(error)) {
                     throw error;
                 }
+
+                this.attemptsCount++;
 
                 const delay =
                     typeof this.delayMs === 'function' ? this.delayMs(this.attemptsCount - 1, error) : this.delayMs;
