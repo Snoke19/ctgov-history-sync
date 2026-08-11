@@ -5,8 +5,9 @@ import { createHttpClient, HttpClient } from '../../../src/http/httpClient.js';
 import { DirectEndpointProvider } from '../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { FetchDirectTransportFactory } from '../../../src/http/endpoint/transport/factory/fetchDirectTransportFactory.js';
 import { FetchDirectTransport } from '../../../src/http/endpoint/transport/impl/fetchDirectTransport.js';
-import { NetworkException } from '../../../src/http/retry/exceptions.js';
+import { NetworkException, TimeoutException } from '../../../src/http/retry/exceptions.js';
 import { HttpClientOptions } from '../../../src/http/types/http.js';
+import { Endpoint } from '../../../src/http/endpoint/endpoint.js';
 
 const API_URL = 'http://api.test';
 
@@ -439,14 +440,103 @@ describe('HttpClient Integration', () => {
                 client.fetchJson(`${API_URL}/cancelled`, {
                     signal: controller.signal,
                 }),
-            ).rejects.toBeDefined();
+            ).rejects.toBeInstanceOf(DOMException);
 
             expect(fetchMock).not.toHaveBeenCalled();
+        });
+
+        it('throws TimeoutException when request exceeds timeoutMs', async () => {
+            jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+                return new Promise((_, reject) => {
+                    const signal = init?.signal as AbortSignal | undefined;
+
+                    if (signal) {
+                        const onAbort = () => reject(new DOMException('The operation was aborted.', 'AbortError'));
+
+                        if (signal.aborted) {
+                            onAbort();
+                            return;
+                        }
+                        signal.addEventListener('abort', onAbort, { once: true });
+                    }
+                    // No safety timer needed here — the internal AbortController
+                    // guarantees the signal will abort after timeoutMs.
+                });
+            });
+
+            const { client } = makeClient();
+
+            await expect(client.fetchJson(`${API_URL}/slow`, { timeoutMs: 50, maxRetries: 1 })).rejects.toBeInstanceOf(
+                TimeoutException,
+            );
+        });
+
+        it('throws NetworkException when caller aborts during request', async () => {
+            const controller = new AbortController();
+
+            jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+                return new Promise((_, reject) => {
+                    const signal = init?.signal as AbortSignal | undefined;
+
+                    let safetyTimer: NodeJS.Timeout | undefined;
+
+                    if (signal) {
+                        const onAbort = () => {
+                            clearTimeout(safetyTimer); // <-- clean up the safety valve
+                            reject(new DOMException('The operation was aborted.', 'AbortError'));
+                        };
+
+                        if (signal.aborted) {
+                            onAbort();
+                            return;
+                        }
+                        signal.addEventListener('abort', onAbort, { once: true });
+                    }
+
+                    // If nothing happens in 1 s, force-fail (shorter = less leak risk)
+                    safetyTimer = setTimeout(() => reject(new Error('should not reach')), 1000);
+                });
+            });
+
+            const { client } = makeClient();
+
+            setTimeout(() => controller.abort(), 10);
+
+            await expect(
+                client.fetchJson(`${API_URL}/slow`, {
+                    signal: controller.signal,
+                    maxRetries: 1,
+                }),
+            ).rejects.toMatchObject({
+                message: expect.stringContaining('cancelled'),
+            });
+        });
+
+        it('throttles requests when useRateLimit is enabled', async () => {
+            const fetchMock = jest
+                .spyOn(globalThis, 'fetch')
+                .mockImplementation(() => Promise.resolve(jsonResponse({ ok: true })));
+
+            const { client } = makeClient({
+                useRateLimit: true,
+                rateLimitCapacity: 1,
+                rateLimitWindow: 100, // 1 token per 100 ms
+            });
+
+            await client.fetchJson(`${API_URL}/a`);
+
+            const start = Date.now();
+            await client.fetchJson(`${API_URL}/b`);
+            const elapsed = Date.now() - start;
+
+            // The second request should have been delayed while waiting for a token
+            expect(elapsed).toBeGreaterThanOrEqual(50);
+            expect(fetchMock).toHaveBeenCalledTimes(2);
         });
     });
 
     describe('Endpoint Lifecycle & Resource Management', () => {
-        it('distributes requests across multiple configured endpoints in round-robin', async () => {
+        it('handles sequential requests through a single direct endpoint', async () => {
             const fetchMock = jest
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValueOnce(jsonResponse({ ep: 1 }))

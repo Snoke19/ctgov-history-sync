@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Limiter } from '../../../../../src/http/limiter/limiter.js';
-import { ProxyTransportFactory } from '../../../../../src/http/endpoint/transport/factory/transportFactory.js';
+import { ProxyTransportFactory } from '../../../../../src/http/endpoint/transport/factory/proxyTransportFactory.js';
 import { ProxyUrlParser } from '../../../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
 import { HttpClientOptions } from '../../../../../src/http/types/http.js';
 import { ProxyPoolConfig } from '../../../../../src/config/config.js';

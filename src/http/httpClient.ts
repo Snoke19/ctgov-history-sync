@@ -3,7 +3,7 @@ import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
 import { HttpResponse } from './endpoint/transport/httpTransport.js';
-import { FetchOperation } from './fetchOperation.js';
+import { FetchOperation } from './retry/fetchOperation.js';
 import { DefaultLimiterFactory } from './limiter/factory/defaultLimiterFactory.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { parseOkResponseBody } from './responseBody.js';

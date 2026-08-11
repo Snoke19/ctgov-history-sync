@@ -1,13 +1,13 @@
-import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../config/config.js';
-import { EndpointAcquisitionTimeoutError } from '../error/errors.js';
-import { EndpointHandle } from './endpoint/endpoint.js';
-import { EndpointManager } from './endpoint/manager/endpointManager.js';
-import { HttpResponse } from './endpoint/transport/httpTransport.js';
-import { BusinessException } from './retry/businessException.js';
-import { HttpException, NetworkException, TimeoutException } from './retry/exceptions.js';
-import { parseRetryAfterHeader } from './retry/retryPolicy.js';
-import { FetchJsonRequestOptions } from './types/http.js';
-import { BusinessOperation } from './retry/businessOperation.js';
+import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../../config/config.js';
+import { EndpointAcquisitionTimeoutError } from '../../error/errors.js';
+import { EndpointHandle } from '../endpoint/endpoint.js';
+import { EndpointManager } from '../endpoint/manager/endpointManager.js';
+import { HttpResponse } from '../endpoint/transport/httpTransport.js';
+import { BusinessException } from './businessException.js';
+import { HttpException, NetworkException, TimeoutException } from './exceptions.js';
+import { parseRetryAfterHeader } from './retryPolicy.js';
+import { FetchJsonRequestOptions } from '../types/http.js';
+import { BusinessOperation } from './businessOperation.js';
 
 function isAbortError(error: unknown): boolean {
     if (error instanceof DOMException && error.name === 'AbortError') return true;
