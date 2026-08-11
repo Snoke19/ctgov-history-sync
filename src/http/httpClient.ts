@@ -1,4 +1,3 @@
-import { MAX_RETRIES, RETRYABLE_STATUS_CODES, RETRY_ON_NETWORK_ERROR, RETRY_ON_TIMEOUT } from '../config/config.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
@@ -7,11 +6,11 @@ import { FetchOperation } from './retry/fetchOperation.js';
 import { DefaultLimiterFactory } from './limiter/factory/defaultLimiterFactory.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { parseOkResponseBody } from './responseBody.js';
-import { BusinessException } from './retry/businessException.js';
-import { HttpException, NetworkException, TimeoutException } from './retry/exceptions.js';
+import { HttpException } from './retry/exceptions.js';
 import { Retry } from './retry/retry.js';
-import { calculateBackoff, isIdempotent } from './retry/retryPolicy.js';
+import { calculateBackoff, defaultRetryPolicyConfig, RetryPolicyConfig, shouldRetry } from './retry/retryPolicy.js';
 import { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
+import { MAX_RETRIES } from '../config/config.js';
 
 export interface HttpClient {
     /**
@@ -30,6 +29,7 @@ export function createHttpClient(
     clientOptions: HttpClientOptions,
     provider: EndpointProvider,
     limiterFactory: LimiterFactory = new DefaultLimiterFactory(),
+    retryConfig: RetryPolicyConfig = defaultRetryPolicyConfig,
 ): HttpClient {
     const endpointFactory = new EndpointFactory(provider, limiterFactory);
     const endpointManager = new EndpointManagerFactory(endpointFactory).create(clientOptions);
@@ -66,40 +66,25 @@ export function createHttpClient(
     }
 
     return { fetchJson, close };
-}
 
-function buildRetry(operation: FetchOperation, options: FetchJsonRequestOptions): Retry<HttpResponse> {
-    const method = options.method ?? 'GET';
+    function buildRetry(operation: FetchOperation, options: FetchJsonRequestOptions): Retry<HttpResponse> {
+        const method = options.method ?? 'GET';
 
-    return new Retry<HttpResponse>(
-        operation,
-        options.maxRetries ?? MAX_RETRIES,
-        (attempt, error) => {
-            const retryAfterMs = error instanceof HttpException ? (error.retryAfterMs ?? null) : null;
-            return calculateBackoff(attempt, retryAfterMs);
-        },
-        (error) => shouldRetry(error, method, options.idempotent),
-    );
-}
+        // Per-call override (optional but handy)
+        const effectiveConfig: RetryPolicyConfig = {
+            retryOnTimeout: options.retryPolicy?.retryOnTimeout ?? retryConfig.retryOnTimeout,
+            retryOnNetworkError: options.retryPolicy?.retryOnNetworkError ?? retryConfig.retryOnNetworkError,
+            retryableStatusCodes: options.retryPolicy?.retryableStatusCodes ?? retryConfig.retryableStatusCodes,
+        };
 
-/**
- * Decides whether a given error warrants another attempt.
- *
- * - Timeouts        → retried only when RETRY_ON_TIMEOUT is enabled in config.
- * - Network errors  → retried only when RETRY_ON_NETWORK_ERROR is enabled.
- * - HTTP errors     → retried only if the status is in RETRYABLE_STATUS_CODES;
- *                     5xx additionally requires the request to be idempotent,
- *                     since the server may have already applied the mutation.
- */
-function shouldRetry(error: BusinessException, method: string, idempotent?: boolean): boolean {
-    if (error instanceof TimeoutException) return RETRY_ON_TIMEOUT;
-    if (error instanceof NetworkException) return RETRY_ON_NETWORK_ERROR;
-
-    if (error instanceof HttpException) {
-        if (!RETRYABLE_STATUS_CODES.has(error.status)) return false;
-        if (error.status >= 500) return isIdempotent(method, idempotent);
-        return true;
+        return new Retry<HttpResponse>(
+            operation,
+            options.maxRetries ?? MAX_RETRIES,
+            (attempt, error) => {
+                const retryAfterMs = error instanceof HttpException ? (error.retryAfterMs ?? null) : null;
+                return calculateBackoff(attempt, retryAfterMs);
+            },
+            (error) => shouldRetry(error, method, effectiveConfig, options.idempotent),
+        );
     }
-
-    return false;
 }

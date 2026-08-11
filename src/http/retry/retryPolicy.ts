@@ -1,5 +1,33 @@
-import { BACKOFF_CAP_MS, RETRY_BASE_DELAY_MS } from '../../config/config.js';
+import {
+    BACKOFF_CAP_MS,
+    RETRY_BASE_DELAY_MS,
+    RETRY_ON_NETWORK_ERROR,
+    RETRY_ON_TIMEOUT,
+    RETRYABLE_STATUS_CODES,
+} from '../../config/config.js';
 import { HttpResponse } from '../endpoint/transport/httpTransport.js';
+import { BusinessException } from './businessException.js';
+import { HttpException, NetworkException, TimeoutException } from './exceptions.js';
+
+/**
+ * Configurable retry policy. All fields are plain values, so the object
+ * can be constructed ad-hoc in tests without touching module-level state.
+ */
+export interface RetryPolicyConfig {
+    readonly retryOnTimeout: boolean;
+    readonly retryOnNetworkError: boolean;
+    readonly retryableStatusCodes: ReadonlySet<number>;
+}
+
+/**
+ * Default policy derived from environment / module-level config.
+ * Used when the caller does not provide an explicit policy.
+ */
+export const defaultRetryPolicyConfig: RetryPolicyConfig = {
+    retryOnTimeout: RETRY_ON_TIMEOUT,
+    retryOnNetworkError: RETRY_ON_NETWORK_ERROR,
+    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+};
 
 /**
  * HTTP methods that are idempotent by definition.
@@ -64,4 +92,30 @@ export function parseRetryAfterHeader(response: HttpResponse): number | null {
     if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
 
     return null;
+}
+
+/**
+ * Decides whether a given error warrants another attempt.
+ *
+ * - Timeouts        → retried only when config.retryOnTimeout is true.
+ * - Network errors  → retried only when config.retryOnNetworkError is true.
+ * - HTTP errors     → retried only if the status is in config.retryableStatusCodes;
+ *                     5xx additionally requires the request to be idempotent.
+ */
+export function shouldRetry(
+    error: BusinessException,
+    method: string,
+    config: RetryPolicyConfig,
+    idempotent?: boolean,
+): boolean {
+    if (error instanceof TimeoutException) return config.retryOnTimeout;
+    if (error instanceof NetworkException) return config.retryOnNetworkError;
+
+    if (error instanceof HttpException) {
+        if (!config.retryableStatusCodes.has(error.status)) return false;
+        if (error.status >= 500) return isIdempotent(method, idempotent);
+        return true;
+    }
+
+    return false;
 }

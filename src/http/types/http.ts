@@ -1,4 +1,5 @@
 import { ProxyPoolConfig } from '../../config/config.js';
+import { RetryPolicyConfig } from '../retry/retryPolicy.js';
 export type QueryParamValue = string | number | boolean;
 export type QueryParamInput = QueryParamValue | string[] | null | undefined;
 
@@ -60,4 +61,6 @@ export interface FetchJsonRequestOptions {
 
     /** Caller-controlled cancellation signal. */
     signal?: AbortSignal;
+
+    retryPolicy?: Partial<RetryPolicyConfig>;
 }
