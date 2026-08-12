@@ -58,7 +58,6 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         const deadline = this.options.deadline ?? this.clock() + timeoutMs;
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
         // Compose the caller's signal into the controller we own instead of
         // AbortSignal.any, which keeps an abort listener attached to the
@@ -76,8 +75,14 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         }
 
         let succeeded = false;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
         try {
             const remainingMs = this.getRemainingBudget(deadline, timeoutMs);
+            // Bound the per-attempt timer by the remaining budget so the
+            // global deadline is respected end-to-end.
+            const attemptTimeoutMs = Math.min(timeoutMs, remainingMs);
+            timeoutId = setTimeout(() => controller.abort(), attemptTimeoutMs);
+
             const endpoint = await this.acquireEndpoint(remainingMs, controller.signal);
             const response = await this.executeRequest(endpoint, controller.signal);
             succeeded = true;
@@ -88,7 +93,9 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             }
             throw error;
         } finally {
-            clearTimeout(timeoutId);
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
             callerSignal?.removeEventListener('abort', forwardAbort);
             // Only abort on the failure path. On success the caller still
             // needs the response body stream; aborting here would destroy it
