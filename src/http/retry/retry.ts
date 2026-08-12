@@ -4,37 +4,34 @@ import { BusinessOperation } from './businessOperation.js';
 export class Retry<T> implements BusinessOperation<T> {
     private readonly op: BusinessOperation<T>;
     private readonly maxRetries: number;
-    private readonly delayMs: number | ((attempt: number, error: BusinessException) => number);
-    private attemptsCount: number;
     private readonly shouldRetry: (error: BusinessException) => boolean;
-    private readonly errors: BusinessException[];
+    private readonly delayMs: number | ((attempt: number, error: BusinessException) => number);
     private readonly sleep: (ms: number) => Promise<void>;
+    private attemptsCount = 0;
 
+    /**
+     * @param op          The operation to execute, retried on failure.
+     * @param maxRetries  Number of retries after the initial attempt.
+     * @param shouldRetry  Decides whether a failed attempt warrants another try.
+     * @param delayMs     Fixed delay between attempts, or a function of the
+     *                    zero-indexed retry attempt and the last error.
+     * @param sleep       Async delay implementation. Defaults to `setTimeout`.
+     */
     constructor(
         op: BusinessOperation<T>,
         maxRetries: number,
+        shouldRetry: (error: BusinessException) => boolean,
         delayMs: number | ((attempt: number, error: BusinessException) => number),
         sleep: (ms: number) => Promise<void> = (ms) =>
             new Promise((resolve) => {
                 setTimeout(resolve, ms);
             }),
-        ...ignoreTests: Array<(error: BusinessException) => boolean>
     ) {
         this.op = op;
         this.maxRetries = maxRetries;
+        this.shouldRetry = shouldRetry;
         this.delayMs = delayMs;
-        this.attemptsCount = 0;
-        this.shouldRetry = ignoreTests.length > 0 ? (e) => ignoreTests.some((test) => test(e)) : () => false;
-        this.errors = [];
         this.sleep = sleep;
-    }
-
-    public getErrors(): readonly BusinessException[] {
-        return Object.freeze([...this.errors]);
-    }
-
-    attempts(): number {
-        return this.attemptsCount;
     }
 
     async perform(): Promise<T> {
@@ -47,7 +44,6 @@ export class Retry<T> implements BusinessOperation<T> {
                 }
 
                 const error = e as BusinessException;
-                this.errors.push(error);
 
                 if (!this.shouldRetry(error)) {
                     throw error;

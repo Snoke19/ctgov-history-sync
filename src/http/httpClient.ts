@@ -100,12 +100,12 @@ export function createHttpClient(
         return new Retry<HttpResponse>(
             operation,
             options.maxRetries ?? MAX_RETRIES,
+            (error) => shouldRetry(error, method, effectiveConfig, options.idempotent),
             (attempt, error) => {
                 const retryAfterMs = error instanceof HttpException ? (error.retryAfterMs ?? null) : null;
                 return calculateBackoff(attempt, retryAfterMs, random);
             },
             sleep,
-            (error) => shouldRetry(error, method, effectiveConfig, options.idempotent),
         );
     }
 }
