@@ -136,7 +136,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         signal: AbortSignal,
         getAbortReason: () => AbortReason | undefined,
     ): Promise<HttpResponse> {
-        const method = this.options.method ?? 'GET';
+        const method = 'GET';
 
         let response: HttpResponse;
 
@@ -145,7 +145,6 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 url: this.url,
                 method,
                 headers: this.buildHeaders(),
-                body: this.options.body,
                 signal,
             });
         } catch (error) {

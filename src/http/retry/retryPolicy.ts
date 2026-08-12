@@ -44,30 +44,10 @@ export const defaultRetryPolicyConfig: RetryPolicyConfig = {
 };
 
 /**
- * HTTP methods that are idempotent by definition.
- *
- * GET, HEAD, PUT, DELETE, and OPTIONS carry no risk of duplicate side effects
- * when repeated. POST and PATCH are excluded — pass idempotent: true to a
- * specific call if you know the endpoint is safe to repeat (e.g. an upsert).
- */
-const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
-
-/**
- * Returns whether a request is safe to retry.
- *
- * @param method   - HTTP method, e.g. 'GET'.
- * @param override - When provided, takes precedence over the method-based check.
- */
-export function isIdempotent(method: string, override?: boolean): boolean {
-    if (override !== undefined) return override;
-    return IDEMPOTENT_METHODS.has(method.toUpperCase());
-}
-
-/**
  * Delay parameters for {@link calculateBackoff}.
  *
  * Each field is optional and defaults to the configured value, so callers
- * that only care about the default behaviour can pass `{}` (or nothing) while
+ * that only care about the default behavior can pass `{}` (or nothing) while
  * tests inject explicit numbers to stay decoupled from module-level config.
  */
 export interface BackoffOptions {
@@ -119,9 +99,21 @@ export function calculateBackoff(attempt: number, retryAfterMs: number | null, o
 export function parseRetryAfterHeader(response: HttpResponse): number | null {
     const raw = response.headers.get('Retry-After');
     if (!raw) return null;
+    const value = raw.trim();
 
-    const seconds = Number(raw);
-    if (!Number.isNaN(seconds)) return seconds * 1000;
+    if (/^[+-]?\d/.test(value)) {
+        if (!/^\d+$/.test(value)) {
+            return null;
+        }
+
+        const seconds = Number(value);
+
+        if (!Number.isSafeInteger(seconds)) {
+            return null;
+        }
+
+        return seconds * 1000;
+    }
 
     const dateMs = Date.parse(raw);
     if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
@@ -130,33 +122,24 @@ export function parseRetryAfterHeader(response: HttpResponse): number | null {
 }
 
 /**
- * Decides whether a given error warrants another attempt.
+ * Decides whether a failed GET request should be retried.
  *
  * - Timeouts        → retried only when config.retryOnTimeout is true.
  * - Network errors  → retried only when config.retryOnNetworkError is true.
- * - HTTP errors     → retried only if the status is in config.retryableStatusCodes;
- *                     5xx additionally requires the request to be idempotent.
- *
- * Note on 408/429 + POST: 408 (Request Timeout) and 429 (Too Many Requests)
- * are retried for non-idempotent methods by design. 408 signals the server
- * did not receive the full request; 429 signals rate-limiting — neither
- * implies the server processed the side effect. If a specific POST endpoint
- * is known to be unsafe to retry, the caller should pass idempotent: false
- * or remove 408/429 from retryableStatusCodes.
+ * - HTTP errors     → retried only when the status is in
+ *                     config.retryableStatusCodes.
  */
-export function shouldRetry(
-    error: TrialError,
-    method: string,
-    config: RetryPolicyConfig,
-    idempotent?: boolean,
-): boolean {
-    if (error instanceof TimeoutException) return config.retryOnTimeout;
-    if (error instanceof NetworkException) return config.retryOnNetworkError;
+export function shouldRetry(error: TrialError, config: RetryPolicyConfig): boolean {
+    if (error instanceof TimeoutException) {
+        return config.retryOnTimeout;
+    }
+
+    if (error instanceof NetworkException) {
+        return config.retryOnNetworkError;
+    }
 
     if (error instanceof HttpException) {
-        if (!config.retryableStatusCodes.has(error.status)) return false;
-        if (error.status >= 500) return isIdempotent(method, idempotent);
-        return true;
+        return config.retryableStatusCodes.has(error.status);
     }
 
     return false;

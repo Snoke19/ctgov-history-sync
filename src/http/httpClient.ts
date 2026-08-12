@@ -99,8 +99,6 @@ export function createHttpClient(
         sleep: (ms: number) => Promise<void>,
         random: () => number,
     ): Retry<HttpResponse> {
-        const method = options.method ?? 'GET';
-
         const effectiveConfig = {
             retryOnTimeout: options.retryPolicy?.retryOnTimeout ?? retryConfig.retryOnTimeout,
             retryOnNetworkError: options.retryPolicy?.retryOnNetworkError ?? retryConfig.retryOnNetworkError,
@@ -120,7 +118,7 @@ export function createHttpClient(
         return new Retry<HttpResponse>(
             operation,
             options.maxRetries ?? MAX_RETRIES,
-            (error) => shouldRetry(error, method, effectiveConfig, options.idempotent),
+            (error) => shouldRetry(error, effectiveConfig),
             (attempt, error) => {
                 const retryAfterMs = error instanceof HttpException ? (error.retryAfterMs ?? null) : null;
                 return calculateBackoff(attempt, retryAfterMs, {

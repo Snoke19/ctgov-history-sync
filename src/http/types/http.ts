@@ -33,11 +33,9 @@ export interface HttpClientOptions {
 
 /**
  * Options for a single fetchJson call.
- * All fields are optional; defaults are applied at call-time from config
- * or inferred from the HTTP method.
+ * All fields are optional; defaults are applied at call-time from config.
  */
 export interface FetchJsonRequestOptions {
-    method?: string;
     headers?: Record<string, string>;
     body?: string;
 
@@ -63,14 +61,6 @@ export interface FetchJsonRequestOptions {
      * Defaults to MAX_RETRIES from config.
      */
     maxRetries?: number;
-
-    /**
-     * Overrides the built-in idempotency check for retry decisions.
-     * When omitted, idempotency is inferred from the HTTP method:
-     * GET, HEAD, PUT, DELETE, and OPTIONS are safe to retry automatically;
-     * POST and PATCH are not unless this is explicitly set to true.
-     */
-    idempotent?: boolean;
 
     /**
      * When true, a 404 response resolves to null rather than throwing.

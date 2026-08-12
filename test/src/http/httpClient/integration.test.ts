@@ -78,7 +78,7 @@ describe('HttpClient full-stack integration (real server + real fetch)', () => {
                 return;
             }
 
-            if (path === '/echo' && req.method === 'POST') {
+            if (path === '/echo' && req.method === 'GET') {
                 let raw = '';
                 req.setEncoding('utf-8');
                 req.on('data', (chunk: string) => {
@@ -137,20 +137,22 @@ describe('HttpClient full-stack integration (real server + real fetch)', () => {
         expect(result).toEqual({ path: '/greeting' });
     });
 
-    it('sends method, headers and body to the server and receives the echo', async () => {
-        const result = await client.fetchJson<{ method: string; received: string; headers: Record<string, string> }>(
-            `${baseUrl}/echo`,
-            {
-                method: 'POST',
-                body: JSON.stringify({ a: 1 }),
-                headers: { 'Content-Type': 'application/json', 'X-Custom': 'v' },
+    it('sends GET request with default and custom headers and receives the response', async () => {
+        const result = await client.fetchJson<{
+            method: string;
+            headers: Record<string, string>;
+        }>(`${baseUrl}/echo`, {
+            headers: {
+                'X-Custom': 'v',
             },
-        );
+        });
 
-        expect(result).toMatchObject({ method: 'POST', received: '{"a":1}' });
+        expect(result).toMatchObject({
+            method: 'GET',
+        });
+
         expect(result?.headers.accept).toBe('application/json');
         expect(result?.headers['user-agent']).toBe(DEFAULT_USER_AGENT);
-        expect(result?.headers['content-type']).toBe('application/json');
         expect(result?.headers['x-custom']).toBe('v');
     });
 

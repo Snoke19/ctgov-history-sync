@@ -6,40 +6,20 @@ describe('HttpClient retry policy', () => {
         jest.restoreAllMocks();
     });
 
-    it('does NOT retry 500 on PUT when idempotent: false is explicitly set', async () => {
+    it('retries 408 Request Timeout', async () => {
         const fetchMock = jest
             .spyOn(globalThis, 'fetch')
-            .mockResolvedValue(jsonResponse('Server Error', 500, {}, 'Internal Server Error'));
+            .mockResolvedValueOnce(jsonResponse('Request Timeout', 408, {}, 'Request Timeout'))
+            .mockResolvedValueOnce(jsonResponse({ recovered: true }));
 
         const client = makeClient();
 
-        await expect(
-            client.fetchJson(`${API_URL}/put-no-retry`, {
-                method: 'PUT',
-                idempotent: false,
-                maxRetries: 3,
-            }),
-        ).rejects.toMatchObject({ status: 500 });
+        const result = await client.fetchJson<{ recovered: boolean }>(`${API_URL}/request-timeout`, {
+            maxRetries: 1,
+        });
 
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-
-    it('does NOT retry 500 on DELETE when idempotent: false is explicitly set', async () => {
-        const fetchMock = jest
-            .spyOn(globalThis, 'fetch')
-            .mockResolvedValue(jsonResponse('Server Error', 500, {}, 'Internal Server Error'));
-
-        const client = makeClient();
-
-        await expect(
-            client.fetchJson(`${API_URL}/delete-no-retry`, {
-                method: 'DELETE',
-                idempotent: false,
-                maxRetries: 3,
-            }),
-        ).rejects.toMatchObject({ status: 500 });
-
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(result).toEqual({ recovered: true });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
     it('retries 429 with Retry-After HTTP-date format', async () => {
@@ -146,104 +126,6 @@ describe('HttpClient retry policy', () => {
             });
 
             expect(fetchMock).toHaveBeenCalledTimes(1);
-        });
-
-        it('BUG PREVENTER: does NOT retry 500 error on POST request by default (non-idempotent protection)', async () => {
-            const fetchMock = jest
-                .spyOn(globalThis, 'fetch')
-                .mockResolvedValue(jsonResponse('Internal Server Error', 500, {}, 'Internal Server Error'));
-
-            const client = makeClient();
-
-            const body = JSON.stringify({ action: 'create' });
-
-            await expect(
-                client.fetchJson(`${API_URL}/mutate`, {
-                    method: 'POST',
-                    body,
-                    maxRetries: 3,
-                }),
-            ).rejects.toMatchObject({
-                status: 500,
-            });
-
-            expect(fetchMock).toHaveBeenCalledTimes(1);
-
-            expect(fetchMock).toHaveBeenNthCalledWith(
-                1,
-                `${API_URL}/mutate`,
-                expect.objectContaining({
-                    method: 'POST',
-                    body,
-                }),
-            );
-        });
-
-        it('retries 500 error on POST request when idempotent: true is explicitly provided', async () => {
-            const fetchMock = jest
-                .spyOn(globalThis, 'fetch')
-                .mockResolvedValueOnce(jsonResponse('Server Error', 500, {}, 'Internal Server Error'))
-                .mockResolvedValueOnce(jsonResponse({ created: true }));
-
-            const client = makeClient();
-
-            const result = await client.fetchJson<{ created: boolean }>(`${API_URL}/safe-mutate`, {
-                method: 'POST',
-                idempotent: true,
-                maxRetries: 2,
-            });
-
-            expect(result).toEqual({ created: true });
-            expect(fetchMock).toHaveBeenCalledTimes(2);
-
-            expect(fetchMock).toHaveBeenNthCalledWith(
-                1,
-                `${API_URL}/safe-mutate`,
-                expect.objectContaining({
-                    method: 'POST',
-                }),
-            );
-
-            expect(fetchMock).toHaveBeenNthCalledWith(
-                2,
-                `${API_URL}/safe-mutate`,
-                expect.objectContaining({
-                    method: 'POST',
-                }),
-            );
-        });
-
-        it('retries 500 error on PUT request automatically (PUT is inherently idempotent)', async () => {
-            const fetchMock = jest
-                .spyOn(globalThis, 'fetch')
-                .mockResolvedValueOnce(jsonResponse('Server Error', 500, {}, 'Internal Server Error'))
-                .mockResolvedValueOnce(jsonResponse({ updated: true }));
-
-            const client = makeClient();
-
-            const result = await client.fetchJson<{ updated: boolean }>(`${API_URL}/resource`, {
-                method: 'PUT',
-                maxRetries: 2,
-            });
-
-            expect(result).toEqual({ updated: true });
-            expect(fetchMock).toHaveBeenCalledTimes(2);
-
-            expect(fetchMock).toHaveBeenNthCalledWith(
-                1,
-                `${API_URL}/resource`,
-                expect.objectContaining({
-                    method: 'PUT',
-                }),
-            );
-
-            expect(fetchMock).toHaveBeenNthCalledWith(
-                2,
-                `${API_URL}/resource`,
-                expect.objectContaining({
-                    method: 'PUT',
-                }),
-            );
         });
 
         it('respects maxRetries: 1 and performs exactly 2 total attempts (1 initial + 1 retry)', async () => {
