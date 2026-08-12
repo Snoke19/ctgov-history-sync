@@ -8,8 +8,9 @@ import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { parseOkResponseBody } from './responseBody.js';
 import { HttpException } from './retry/exceptions.js';
 import { Retry } from './retry/retry.js';
-import { calculateBackoff, defaultRetryPolicyConfig, RetryPolicyConfig, shouldRetry } from './retry/retryPolicy.js';
-import { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
+import { calculateBackoff, defaultRetryPolicyConfig, shouldRetry } from './retry/retryPolicy.js';
+import type { RetryPolicyConfig } from './retry/retryPolicy.js';
+import type { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
 import { MAX_RETRIES } from '../config/config.js';
 import { defaultRandom, defaultSleeper } from './types/clock.js';
 
