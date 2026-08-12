@@ -74,7 +74,7 @@ export default [
     prettier,
 
     {
-        files: ['eslint.config.ts', '**/*.config.ts'],
+        files: ['eslint.config.js', '**/*.config.js'],
         rules: {
             'no-console': 'off',
             'n/no-process-exit': 'off',

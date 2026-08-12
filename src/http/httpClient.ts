@@ -1,5 +1,5 @@
 import { MAX_RETRIES } from '../config/config.js';
-import { CallerAbortedError, HttpException, NetworkException } from '../error/errors.js';
+import { CallerAbortedError, ConfigurationError, HttpException, NetworkException } from '../error/errors.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
@@ -34,6 +34,17 @@ export function createHttpClient(
     limiterFactory: LimiterFactory = new DefaultLimiterFactory(),
     retryConfig: RetryPolicyConfig = defaultRetryPolicyConfig,
 ): HttpClient {
+    // Fail-fast: 404 must NOT be in retryableStatusCodes. If it were,
+    // retry.perform() would loop instead of throwing, silently breaking
+    // the allow404 option.
+    if (retryConfig.retryableStatusCodes.has(404)) {
+        throw new ConfigurationError(
+            '404 must not be in retryableStatusCodes. ' +
+                'The allow404 option depends on 404 being non-retryable so that ' +
+                'retry.perform() throws an HttpException instead of looping.',
+        );
+    }
+
     const endpointFactory = new EndpointFactory(provider, limiterFactory);
     const endpointManager = new EndpointManagerFactory(endpointFactory).create(clientOptions);
 
@@ -97,8 +108,8 @@ export function createHttpClient(
         };
 
         if (effectiveConfig.retryableStatusCodes.has(404)) {
-            throw new Error(
-                'Invariant violated: 404 must not be in retryableStatusCodes. ' +
+            throw new ConfigurationError(
+                '404 must not be in retryableStatusCodes. ' +
                     'The allow404 option depends on 404 being non-retryable so that ' +
                     'retry.perform() throws an HttpException instead of looping.',
             );

@@ -24,11 +24,6 @@
         "allowSyntheticDefaultImports": true,
         "forceConsistentCasingInFileNames": true,
         "skipLibCheck": true,
-        "declaration": true,
-        "declarationMap": true,
-        "sourceMap": true,
-        "outDir": "./dist",
-        "rootDir": ".",
         "noEmit": true,
         "resolveJsonModule": true,
         "isolatedModules": true

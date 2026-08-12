@@ -104,6 +104,13 @@ export function parseRetryAfterHeader(response: HttpResponse): number | null {
  * - Network errors  → retried only when config.retryOnNetworkError is true.
  * - HTTP errors     → retried only if the status is in config.retryableStatusCodes;
  *                     5xx additionally requires the request to be idempotent.
+ *
+ * Note on 408/429 + POST: 408 (Request Timeout) and 429 (Too Many Requests)
+ * are retried for non-idempotent methods by design. 408 signals the server
+ * did not receive the full request; 429 signals rate-limiting — neither
+ * implies the server processed the side effect. If a specific POST endpoint
+ * is known to be unsafe to retry, the caller should pass idempotent: false
+ * or remove 408/429 from retryableStatusCodes.
  */
 export function shouldRetry(
     error: TrialError,

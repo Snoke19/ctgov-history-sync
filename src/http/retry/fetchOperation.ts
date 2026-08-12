@@ -157,11 +157,25 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     }
 
     private buildHeaders(): Record<string, string> {
-        return {
+        const defaults: Record<string, string> = {
             Accept: 'application/json',
             'User-Agent': DEFAULT_USER_AGENT,
-            ...this.options.headers,
         };
+
+        // Normalize caller headers: lowercase keys that collide with our
+        // defaults are rewritten to the canonical casing so both casings
+        // are never sent.
+        const KNOWN_KEYS = new Map([
+            ['accept', 'Accept'],
+            ['user-agent', 'User-Agent'],
+        ]);
+
+        for (const [key, value] of Object.entries(this.options.headers ?? {})) {
+            const canonical = KNOWN_KEYS.get(key.toLowerCase());
+            defaults[canonical ?? key] = value;
+        }
+
+        return defaults;
     }
 
     private normalizeTransportError(error: unknown): NetworkException | TimeoutException {
