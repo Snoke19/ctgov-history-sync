@@ -1,12 +1,13 @@
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import { TrialFetchError } from '../../../src/error/errors.js';
-import { createHttpClient, HttpClient } from '../../../src/http/httpClient.js';
+import { createHttpClient } from '../../../src/http/httpClient.js';
 import { DirectEndpointProvider } from '../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { FetchDirectTransportFactory } from '../../../src/http/endpoint/transport/factory/fetchDirectTransportFactory.js';
 import { FetchDirectTransport } from '../../../src/http/endpoint/transport/impl/fetchDirectTransport.js';
 import { NetworkException, TimeoutException } from '../../../src/http/retry/exceptions.js';
 import { HttpClientOptions } from '../../../src/http/types/http.js';
+import type { HttpClient } from '../../../src/http/httpClient.js';
 
 const API_URL = 'http://api.test';
 
@@ -35,7 +36,7 @@ function createFakes() {
     return {
         clock,
         sleep: sleeper.sleep.bind(sleeper),
-        random: () => 0.5, // детермінований jitter: завжди 50% від base
+        random: () => 0.5,
     };
 }
 
@@ -66,17 +67,18 @@ function createDefaultOptions(overrides: Partial<HttpClientOptions> = {}): HttpC
     };
 }
 
-function makeClient(optionsOverrides: Partial<HttpClientOptions> = {}): { client: HttpClient } {
+function makeClient(optionsOverrides: Partial<HttpClientOptions> = {}): HttpClient {
     const transportFactory = new FetchDirectTransportFactory();
     const provider = new DirectEndpointProvider(transportFactory);
-
-    return {
-        client: createHttpClient(createDefaultOptions(optionsOverrides), provider),
-    };
+    return createHttpClient(createDefaultOptions(optionsOverrides), provider);
 }
 
 describe('HttpClient Integration', () => {
     beforeEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    afterEach(() => {
         jest.restoreAllMocks();
     });
 
@@ -89,7 +91,7 @@ describe('HttpClient Integration', () => {
                 }),
             );
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson<{ id: number; title: string }>(`${API_URL}/trials/101`);
 
@@ -115,7 +117,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse(null, 204, {}, 'No Content'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson(`${API_URL}/trials/empty`);
 
@@ -126,7 +128,7 @@ describe('HttpClient Integration', () => {
         it('forwards custom HTTP method, headers, and request body to transport', async () => {
             const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ success: true }));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const payload = JSON.stringify({ query: 'cancer' });
 
@@ -166,7 +168,7 @@ describe('HttpClient Integration', () => {
                 }),
             );
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             await expect(client.fetchJson(`${API_URL}/bad-json`)).rejects.toBeInstanceOf(TrialFetchError);
         });
@@ -179,7 +181,7 @@ describe('HttpClient Integration', () => {
                 .mockResolvedValueOnce(jsonResponse('Gateway Timeout', 504, {}, 'Gateway Timeout'))
                 .mockResolvedValueOnce(jsonResponse({ recovered: true }));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson<{ recovered: boolean }>(`${API_URL}/gateway-timeout`, {
                 maxRetries: 2,
@@ -196,7 +198,7 @@ describe('HttpClient Integration', () => {
                 .mockResolvedValueOnce(jsonResponse('Bad Gateway', 502, {}, 'Bad Gateway'))
                 .mockResolvedValueOnce(jsonResponse({ status: 'recovered' }));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson<{ status: string }>(`${API_URL}/flaky`, { maxRetries: 3 });
 
@@ -209,7 +211,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Service Unavailable', 503, {}, 'Service Unavailable'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             await expect(client.fetchJson(`${API_URL}/down`, { maxRetries: 2 })).rejects.toMatchObject({
                 status: 503,
@@ -223,7 +225,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse({ error: 'Invalid parameters' }, 400, {}, 'Bad Request'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             await expect(client.fetchJson(`${API_URL}/bad-request`, { maxRetries: 3 })).rejects.toMatchObject({
                 status: 400,
@@ -237,7 +239,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Forbidden', 403, {}, 'Forbidden'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             await expect(client.fetchJson(`${API_URL}/protected`)).rejects.toMatchObject({
                 status: 403,
@@ -251,7 +253,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Internal Server Error', 500, {}, 'Internal Server Error'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const body = JSON.stringify({ action: 'create' });
 
@@ -282,7 +284,7 @@ describe('HttpClient Integration', () => {
                 .mockResolvedValueOnce(jsonResponse('Server Error', 500, {}, 'Internal Server Error'))
                 .mockResolvedValueOnce(jsonResponse({ created: true }));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson<{ created: boolean }>(`${API_URL}/safe-mutate`, {
                 method: 'POST',
@@ -316,7 +318,7 @@ describe('HttpClient Integration', () => {
                 .mockResolvedValueOnce(jsonResponse('Server Error', 500, {}, 'Internal Server Error'))
                 .mockResolvedValueOnce(jsonResponse({ updated: true }));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson<{ updated: boolean }>(`${API_URL}/resource`, {
                 method: 'PUT',
@@ -348,7 +350,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Bad Gateway', 502, {}, 'Bad Gateway'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             await expect(
                 client.fetchJson(`${API_URL}/no-retries`, {
@@ -367,7 +369,7 @@ describe('HttpClient Integration', () => {
                 .mockResolvedValueOnce(jsonResponse('Rate Limited', 429, { 'Retry-After': '2' }, 'Too Many Requests'))
                 .mockResolvedValueOnce(jsonResponse({ success: true }));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson<{ success: boolean }>(`${API_URL}/rate-limited`, { maxRetries: 2 });
 
@@ -382,7 +384,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse({ error: 'Not Found' }, 404, {}, 'Not Found'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson(`${API_URL}/missing-resource`, {
                 allow404: true,
@@ -397,7 +399,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Not Found', 404, {}, 'Not Found'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             await expect(client.fetchJson(`${API_URL}/missing-resource`)).rejects.toMatchObject({
                 status: 404,
@@ -411,7 +413,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Server Error', 500, {}, 'Internal Server Error'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             await expect(
                 client.fetchJson(`${API_URL}/error-resource`, {
@@ -430,7 +432,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse({ error: 'Not Found', detail: 'resource gone' }, 404, {}, 'Not Found'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson(`${API_URL}/gone`, { allow404: true });
 
@@ -445,7 +447,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse(null, 204, {}, 'No Content'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson<{ id: number }>(`${API_URL}/empty`);
 
@@ -458,7 +460,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse({ message: 'Not Found' }, 404, {}, 'Not Found'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson<{ message: string }>(`${API_URL}/missing`, { allow404: true });
 
@@ -473,7 +475,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse(null, 204, {}, 'No Content'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson<number>(`${API_URL}/no-body`);
 
@@ -493,7 +495,7 @@ describe('HttpClient Integration', () => {
                 .mockRejectedValueOnce(new TypeError('fetch failed: ECONNRESET'))
                 .mockResolvedValueOnce(jsonResponse({ ok: true }));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/conn-reset`, { maxRetries: 2 });
 
@@ -506,7 +508,7 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockRejectedValue(new TypeError('fetch failed: ECONNREFUSED'));
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             await expect(
                 client.fetchJson(`${API_URL}/unreachable`, {
@@ -520,7 +522,7 @@ describe('HttpClient Integration', () => {
         it('rejects immediately with NetworkException when caller AbortSignal is pre-aborted', async () => {
             const fetchMock = jest.spyOn(globalThis, 'fetch');
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             const controller = new AbortController();
             controller.abort();
@@ -555,7 +557,7 @@ describe('HttpClient Integration', () => {
                 });
             });
 
-            const { client } = makeClient();
+            const client = makeClient();
 
             await expect(client.fetchJson(`${API_URL}/slow`, { timeoutMs: 50, maxRetries: 1 })).rejects.toBeInstanceOf(
                 TimeoutException,
@@ -572,24 +574,20 @@ describe('HttpClient Integration', () => {
 
                     if (signal) {
                         const onAbort = () => {
-                            clearTimeout(safetyTimer); // <-- clean up the safety valve
+                            clearTimeout(safetyTimer);
                             reject(new DOMException('The operation was aborted.', 'AbortError'));
                         };
-
                         if (signal.aborted) {
                             onAbort();
                             return;
                         }
                         signal.addEventListener('abort', onAbort, { once: true });
                     }
-
-                    // If nothing happens in 1 s, force-fail (shorter = less leak risk)
                     safetyTimer = setTimeout(() => reject(new Error('should not reach')), 1000);
                 });
             });
 
-            const { client } = makeClient();
-
+            const client = makeClient();
             setTimeout(() => controller.abort(), 10);
 
             await expect(
@@ -597,9 +595,7 @@ describe('HttpClient Integration', () => {
                     signal: controller.signal,
                     maxRetries: 1,
                 }),
-            ).rejects.toMatchObject({
-                message: expect.stringContaining('cancelled'),
-            });
+            ).rejects.toBeInstanceOf(NetworkException);
         });
 
         it('throttles requests when useRateLimit is enabled', async () => {
@@ -608,7 +604,7 @@ describe('HttpClient Integration', () => {
                 .mockImplementation(() => Promise.resolve(jsonResponse({ ok: true })));
 
             const fakes = createFakes();
-            const { client } = makeClient({
+            const client = makeClient({
                 useRateLimit: true,
                 rateLimitCapacity: 1,
                 rateLimitWindow: 100, // 1 token per 100 ms
@@ -622,7 +618,7 @@ describe('HttpClient Integration', () => {
             await client.fetchJson(`${API_URL}/b`);
             const timeAfter = fakes.clock.now();
 
-            expect(timeAfter - timeBefore).toBe(100); // точно 100ms, не >= 50
+            expect(timeAfter - timeBefore).toBe(100);
             expect(fetchMock).toHaveBeenCalledTimes(2);
         });
     });
@@ -634,7 +630,7 @@ describe('HttpClient Integration', () => {
                 .mockResolvedValueOnce(jsonResponse({ ep: 1 }))
                 .mockResolvedValueOnce(jsonResponse({ ep: 2 }));
 
-            const { client } = makeClient({
+            const client = makeClient({
                 proxyUrls: `${ENDPOINT_1},${ENDPOINT_2}`,
             });
 
