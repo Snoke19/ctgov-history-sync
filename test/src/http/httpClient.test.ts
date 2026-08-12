@@ -574,6 +574,16 @@ describe('HttpClient Integration', () => {
             expect(result).toBeNull();
             expect(fetchMock).toHaveBeenCalledTimes(1);
         });
+
+        it('throws when per-request retryPolicy includes 404 in retryableStatusCodes', async () => {
+            const client = makeClient();
+
+            await expect(
+                client.fetchJson(`${API_URL}/invariant`, {
+                    retryPolicy: { retryableStatusCodes: new Set([404]) },
+                }),
+            ).rejects.toThrow('Invariant violated');
+        });
     });
 
     describe('Null Return Contract', () => {
