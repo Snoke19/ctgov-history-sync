@@ -13,6 +13,32 @@ const API_URL = 'http://api.test';
 const ENDPOINT_1 = 'http://test-proxy-1:8080';
 const ENDPOINT_2 = 'http://test-proxy-2:8080';
 
+class FakeClock {
+    private _now = 0;
+    now = () => this._now;
+    advance = (ms: number) => {
+        this._now += ms;
+    };
+}
+
+class FakeSleeper {
+    constructor(private clock: FakeClock) {}
+    sleep = async (ms: number) => {
+        this.clock.advance(ms);
+        await Promise.resolve();
+    };
+}
+
+function createFakes() {
+    const clock = new FakeClock();
+    const sleeper = new FakeSleeper(clock);
+    return {
+        clock,
+        sleep: sleeper.sleep.bind(sleeper),
+        random: () => 0.5, // детермінований jitter: завжди 50% від base
+    };
+}
+
 function jsonResponse<T>(body: T, status = 200, headers: Record<string, string> = {}, statusText = 'OK'): Response {
     return new Response(status === 204 ? null : JSON.stringify(body), {
         status,
@@ -25,6 +51,7 @@ function jsonResponse<T>(body: T, status = 200, headers: Record<string, string> 
 }
 
 function createDefaultOptions(overrides: Partial<HttpClientOptions> = {}): HttpClientOptions {
+    const fakes = createFakes();
     return {
         concurrency: 5,
         acquireTimeout: 5000,
@@ -32,6 +59,9 @@ function createDefaultOptions(overrides: Partial<HttpClientOptions> = {}): HttpC
         rateLimitWindow: 1000,
         useRateLimit: false,
         proxyUrls: 'http://test-proxy-0:8080',
+        sleep: fakes.sleep,
+        random: fakes.random,
+        clock: fakes.clock,
         ...overrides,
     };
 }
@@ -577,20 +607,22 @@ describe('HttpClient Integration', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockImplementation(() => Promise.resolve(jsonResponse({ ok: true })));
 
+            const fakes = createFakes();
             const { client } = makeClient({
                 useRateLimit: true,
                 rateLimitCapacity: 1,
                 rateLimitWindow: 100, // 1 token per 100 ms
+                sleep: fakes.sleep,
+                random: fakes.random,
+                clock: fakes.clock,
             });
 
+            const timeBefore = fakes.clock.now();
             await client.fetchJson(`${API_URL}/a`);
-
-            const start = Date.now();
             await client.fetchJson(`${API_URL}/b`);
-            const elapsed = Date.now() - start;
+            const timeAfter = fakes.clock.now();
 
-            // The second request should have been delayed while waiting for a token
-            expect(elapsed).toBeGreaterThanOrEqual(50);
+            expect(timeAfter - timeBefore).toBe(100); // точно 100ms, не >= 50
             expect(fetchMock).toHaveBeenCalledTimes(2);
         });
     });

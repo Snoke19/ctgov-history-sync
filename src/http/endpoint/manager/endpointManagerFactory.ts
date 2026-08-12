@@ -25,6 +25,6 @@ export class EndpointManagerFactory {
 
     create(options: HttpClientOptions): EndpointManager {
         const endpoints = this.endpointFactory.build(options);
-        return new EndpointManager(endpoints, options.acquireTimeout);
+        return new EndpointManager(endpoints, options.acquireTimeout, options.clock?.now, options.sleep);
     }
 }

@@ -63,11 +63,15 @@ export function isIdempotent(method: string, override?: boolean): boolean {
  * @param attempt      - Zero-indexed retry number (0 = first retry).
  * @param retryAfterMs - Parsed Retry-After header value in ms, or null.
  */
-export function calculateBackoff(attempt: number, retryAfterMs: number | null): number {
+export function calculateBackoff(
+    attempt: number,
+    retryAfterMs: number | null,
+    random: () => number = Math.random,
+): number {
     if (retryAfterMs !== null && retryAfterMs > 0) return retryAfterMs;
 
     const base = RETRY_BASE_DELAY_MS * 2 ** attempt;
-    const jitter = Math.random() * base * 0.5;
+    const jitter = random() * base * 0.5;
     return Math.min(base + jitter, BACKOFF_CAP_MS);
 }
 

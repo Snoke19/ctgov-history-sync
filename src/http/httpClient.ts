@@ -11,6 +11,7 @@ import { Retry } from './retry/retry.js';
 import { calculateBackoff, defaultRetryPolicyConfig, RetryPolicyConfig, shouldRetry } from './retry/retryPolicy.js';
 import { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
 import { MAX_RETRIES } from '../config/config.js';
+import { defaultRandom, defaultSleeper } from './types/clock.js';
 
 export interface HttpClient {
     /**
@@ -37,7 +38,12 @@ export function createHttpClient(
 
     async function fetchResponse(url: string, options: FetchJsonRequestOptions): Promise<HttpResponse | null> {
         const operation = new FetchOperation(endpointManager, url, options);
-        const retry = buildRetry(operation, options);
+        const retry = buildRetry(
+            operation,
+            options,
+            clientOptions.sleep ?? defaultSleeper.sleep,
+            clientOptions.random ?? defaultRandom.random,
+        );
 
         try {
             return await retry.perform();
@@ -68,7 +74,12 @@ export function createHttpClient(
 
     return { fetchJson, close };
 
-    function buildRetry(operation: FetchOperation, options: FetchJsonRequestOptions): Retry<HttpResponse> {
+    function buildRetry(
+        operation: FetchOperation,
+        options: FetchJsonRequestOptions,
+        sleep: (ms: number) => Promise<void>,
+        random: () => number,
+    ): Retry<HttpResponse> {
         const method = options.method ?? 'GET';
 
         const effectiveConfig: RetryPolicyConfig = {
@@ -77,8 +88,6 @@ export function createHttpClient(
             retryableStatusCodes: options.retryPolicy?.retryableStatusCodes ?? retryConfig.retryableStatusCodes,
         };
 
-        // Fail-fast guard: if 404 is ever marked retryable, allow404 semantics break
-        // because the retry loop will consume the 404 instead of throwing it.
         if (effectiveConfig.retryableStatusCodes.has(404)) {
             throw new Error(
                 'Invariant violated: 404 must not be in retryableStatusCodes. ' +
@@ -92,8 +101,9 @@ export function createHttpClient(
             options.maxRetries ?? MAX_RETRIES,
             (attempt, error) => {
                 const retryAfterMs = error instanceof HttpException ? (error.retryAfterMs ?? null) : null;
-                return calculateBackoff(attempt, retryAfterMs);
+                return calculateBackoff(attempt, retryAfterMs, random);
             },
+            sleep,
             (error) => shouldRetry(error, method, effectiveConfig, options.idempotent),
         );
     }

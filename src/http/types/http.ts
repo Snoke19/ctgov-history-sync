@@ -1,5 +1,6 @@
 import { ProxyPoolConfig } from '../../config/config.js';
 import { RetryPolicyConfig } from '../retry/retryPolicy.js';
+import { Clock, RandomSource, Sleeper } from './clock.js';
 export type QueryParamValue = string | number | boolean;
 export type QueryParamInput = QueryParamValue | string[] | null | undefined;
 
@@ -15,6 +16,15 @@ export interface HttpClientOptions {
     readonly acquireTimeout: number;
     readonly concurrency: number;
     readonly poolConfig?: Readonly<ProxyPoolConfig>;
+
+    /** Override real sleep (e.g. fake timers in tests). Defaults to setTimeout. */
+    sleep?: Sleeper['sleep'];
+
+    /** Override Math.random (e.g. deterministic backoff in tests). */
+    random?: RandomSource['random'];
+
+    /** Override Date.now (e.g. for rate-limit tests). */
+    clock?: Clock;
 }
 
 /**

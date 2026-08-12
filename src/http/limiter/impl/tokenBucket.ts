@@ -8,6 +8,7 @@ import { assertPositiveInt } from '../../../utils/validation.js';
 const FLOATING_POINT_TOLERANCE = 1e-9;
 
 type Clock = () => number;
+type SleepFn = (ms: number) => Promise<void>;
 
 /**
  * Token bucket rate limiter using credit-milliseconds.
@@ -37,6 +38,7 @@ export class TokenBucket extends Limiter {
     private creditMs;
     private lastUpdate;
     private readonly clock: Clock;
+    private readonly sleep: SleepFn;
 
     /**
      * @param capacity - Maximum tokens the bucket can hold. Must be
@@ -50,7 +52,12 @@ export class TokenBucket extends Limiter {
      * @throws {TypeError} If `capacity` is not a positive integer, or
      *   `windowMs` is not a positive finite number.
      */
-    constructor(capacity: number, windowMs: number, now: Clock = () => performance.now()) {
+    constructor(
+        capacity: number,
+        windowMs: number,
+        now: Clock = () => performance.now(),
+        sleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    ) {
         super();
 
         assertPositiveInt(capacity, 'capacity');
@@ -63,6 +70,7 @@ export class TokenBucket extends Limiter {
 
         this.clock = now;
         this.lastUpdate = this.clock();
+        this.sleep = sleep;
     }
 
     /**
@@ -216,9 +224,7 @@ export class TokenBucket extends Limiter {
                 throw new TokenBucketTimeoutError(timeoutMs);
             }
 
-            await new Promise((resolve) => {
-                setTimeout(resolve, Math.min(this.timeUntilToken(), remaining));
-            });
+            await this.sleep(Math.min(this.timeUntilToken(), remaining));
         }
     }
 }
