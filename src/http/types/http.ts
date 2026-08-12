@@ -51,7 +51,11 @@ export interface FetchJsonRequestOptions {
     deadline?: number;
 
     /**
-     * Maximum retry attempts (not counting the initial try).
+     * Maximum number of retries after the initial attempt.
+     *
+     * For example, maxRetries: 2 allows up to 3 total requests
+     * (1 initial + 2 retries). A value of 0 means no retries at all.
+     *
      * Defaults to MAX_RETRIES from config.
      */
     maxRetries?: number;

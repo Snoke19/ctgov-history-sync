@@ -480,7 +480,7 @@ describe('HttpClient Integration', () => {
             );
         });
 
-        it('respects maxRetries: 1 override and performs exactly 1 attempt', async () => {
+        it('respects maxRetries: 1 and performs exactly 2 total attempts (1 initial + 1 retry)', async () => {
             const fetchMock = jest
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Bad Gateway', 502, {}, 'Bad Gateway'));
@@ -624,7 +624,7 @@ describe('HttpClient Integration', () => {
     });
 
     describe('Network & Timeout Failures', () => {
-        it('retries network failure exceptions up to the configured maximum number of total attempts (maxRetries)', async () => {
+        it('retries network failures up to the configured maxRetries', async () => {
             const fetchMock = jest
                 .spyOn(globalThis, 'fetch')
                 .mockRejectedValueOnce(new TypeError('fetch failed: ECONNRESET'))
