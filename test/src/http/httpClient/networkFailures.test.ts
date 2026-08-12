@@ -1,7 +1,6 @@
 import { getEventListeners } from 'node:events';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
-import { EndpointManager } from '../../../../src/http/endpoint/manager/endpointManager.js';
 import { API_URL, createFakes, jsonResponse, makeClient } from './helpers.js';
 
 describe('HttpClient network & timeout failures', () => {
@@ -219,19 +218,15 @@ describe('HttpClient network & timeout failures', () => {
             clock: fakes.clock,
         });
 
-        const acquireSpy = jest.spyOn(EndpointManager.prototype, 'acquireEndpoint');
-
+        // Observable behaviour only: the second call must wait for the token to
+        // refill (100ms). Asserting on EndpointManager.acquireEndpoint explicitly
+        // would over-specify the implementation and churn under refactor.
         const timeBefore = fakes.clock.now();
         await client.fetchJson(`${API_URL}/a`);
         await client.fetchJson(`${API_URL}/b`);
         const timeAfter = fakes.clock.now();
 
-        // EndpointManager had to loop: first call succeeded immediately,
-        // second call waited for the token to refill (100ms).
-        expect(acquireSpy).toHaveBeenCalledTimes(2);
         expect(timeAfter - timeBefore).toBe(100);
         expect(fetchMock).toHaveBeenCalledTimes(2);
-
-        acquireSpy.mockRestore();
     });
 });

@@ -9,6 +9,7 @@
         "test:watch": "node --env-file=.env.test --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
         "lint": "eslint src/ test/",
         "lint:fix": "eslint src/ test/ --fix",
+        "typecheck": "tsc --noEmit",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
     },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import { ConfigurationError, TrialValidationError } from '../src/error/errors.js';
-import { assertPositiveInt, validateNctId } from '../src/utils/validation.js';
+import { assertPositiveInt, makeAssertions, validateNctId } from '../src/utils/validation.js';
 
 describe('assertPositiveInt', () => {
     it('does not throw for a positive integer', () => {
@@ -59,5 +59,51 @@ describe('validateNctId', () => {
         expect(() => validateNctId('bad-id')).toThrow(
             'Invalid nctId format. Expected: NCT followed by 8 digits. Got: "bad-id"',
         );
+    });
+});
+
+describe('makeAssertions (assertInteger / assertPattern / assertNonEmptyString branches)', () => {
+    const trial = makeAssertions(TrialValidationError);
+
+    it('accepts values inside or on the declared range', () => {
+        expect(() => trial.assertInteger(5, 'x', { min: 1, max: 10 })).not.toThrow();
+        expect(() => trial.assertInteger(1, 'x', { min: 1 })).not.toThrow();
+        expect(() => trial.assertInteger(10, 'x', { max: 10 })).not.toThrow();
+    });
+
+    it('rejects with a combined range description when both bounds are set', () => {
+        expect(() => trial.assertInteger(0, 'x', { min: 1, max: 10 })).toThrow('x must be an integer >= 1 <= 10');
+        expect(() => trial.assertInteger(11, 'x', { min: 1, max: 10 })).toThrow('x must be an integer >= 1 <= 10');
+    });
+
+    it('omits the max clause when only a min bound is set', () => {
+        expect(() => trial.assertInteger(4, 'x', { min: 5 })).toThrow('x must be an integer >= 5');
+    });
+
+    it('omits the min clause when only a max bound is set', () => {
+        expect(() => trial.assertInteger(11, 'x', { max: 10 })).toThrow('x must be an integer <= 10');
+    });
+
+    it('uses a custom label instead of the auto-generated description', () => {
+        expect(() => trial.assertInteger(0, 'x', { min: 1, label: 'at least one' })).toThrow('x must be at least one');
+    });
+
+    it('binds assertions to the requested error type', () => {
+        const config = makeAssertions(ConfigurationError);
+
+        expect(() => config.assertInteger(1.5, 'x', { min: 1 })).toThrow(ConfigurationError);
+        expect(() => trial.assertInteger(1.5, 'x', { min: 1 })).toThrow(TrialValidationError);
+    });
+
+    it('exposes fail, assertNonEmptyString and assertPattern helpers', () => {
+        expect(() => trial.fail('kaboom')).toThrow(TrialValidationError);
+
+        expect(() => trial.assertNonEmptyString('ok', 'x')).not.toThrow();
+        expect(() => trial.assertNonEmptyString('', 'x')).toThrow('x must be a non-empty string');
+        expect(() => trial.assertNonEmptyString('   ', 'x')).toThrow('x must be a non-empty string');
+        expect(() => trial.assertNonEmptyString(42, 'x')).toThrow('x must be a non-empty string');
+
+        expect(() => trial.assertPattern('NCT12345678', /^NCT\d{8}$/, 'bad')).not.toThrow();
+        expect(() => trial.assertPattern('NOPE', /^NCT\d{8}$/, 'bad')).toThrow('bad');
     });
 });

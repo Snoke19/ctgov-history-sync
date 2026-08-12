@@ -1,11 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { BACKOFF_CAP_MS, RETRY_BASE_DELAY_MS } from '../../../../src/config/config.js';
-import {
-    HttpException,
-    NetworkException,
-    TimeoutException,
-    TrialError,
-} from '../../../../src/error/errors.js';
+import { HttpException, NetworkException, TimeoutException, TrialError } from '../../../../src/error/errors.js';
 import { HttpResponse } from '../../../../src/http/endpoint/transport/httpTransport.js';
 import {
     calculateBackoff,
@@ -89,62 +83,72 @@ describe('shouldRetry', () => {
             expect(defaultRetryPolicyConfig).toBeDefined();
             expect(typeof defaultRetryPolicyConfig.retryOnTimeout).toBe('boolean');
             expect(defaultRetryPolicyConfig.retryableStatusCodes instanceof Set).toBe(true);
+            expect(typeof defaultRetryPolicyConfig.baseDelayMs).toBe('number');
+            expect(typeof defaultRetryPolicyConfig.backoffCapMs).toBe('number');
         });
     });
 });
 
 describe('calculateBackoff', () => {
+    // Explicit, test-local timing constants. Backoff assertions must never
+    // read RETRY_BASE_DELAY_MS / BACKOFF_CAP_MS from config: an .env.test
+    // edit would otherwise silently rewrite what these tests assert.
+    const BASE = 1000;
+    const CAP = 30000;
+
+    const noJitter = { random: () => 0, baseDelayMs: BASE, backoffCapMs: CAP };
+
     it('returns exponential backoff for first retry (attempt 0)', () => {
-        const backoff = calculateBackoff(0, null, () => 0);
-        expect(backoff).toBe(RETRY_BASE_DELAY_MS);
+        const backoff = calculateBackoff(0, null, noJitter);
+        expect(backoff).toBe(BASE);
     });
 
     it('doubles the base delay for each subsequent retry', () => {
-        const attempt0 = calculateBackoff(0, null, () => 0);
-        const attempt1 = calculateBackoff(1, null, () => 0);
-        const attempt2 = calculateBackoff(2, null, () => 0);
+        const attempt0 = calculateBackoff(0, null, noJitter);
+        const attempt1 = calculateBackoff(1, null, noJitter);
+        const attempt2 = calculateBackoff(2, null, noJitter);
 
         expect(attempt1).toBe(attempt0 * 2);
         expect(attempt2).toBe(attempt0 * 4);
     });
 
     it('adds up to 50% random jitter', () => {
-        const withoutJitter = calculateBackoff(0, null, () => 0);
-        const withMaxJitter = calculateBackoff(0, null, () => 1);
+        const withoutJitter = calculateBackoff(0, null, { ...noJitter, random: () => 0 });
+        const withMaxJitter = calculateBackoff(0, null, { ...noJitter, random: () => 1 });
 
-        expect(withoutJitter).toBe(RETRY_BASE_DELAY_MS);
-        expect(withMaxJitter).toBe(RETRY_BASE_DELAY_MS + RETRY_BASE_DELAY_MS * 0.5);
+        expect(withoutJitter).toBe(BASE);
+        expect(withMaxJitter).toBe(BASE + BASE * 0.5);
     });
 
-    it('caps backoff at BACKOFF_CAP_MS', () => {
-        const backoff = calculateBackoff(20, null, () => 0);
-        expect(backoff).toBeLessThanOrEqual(BACKOFF_CAP_MS);
+    it('caps backoff at the configured cap', () => {
+        const backoff = calculateBackoff(20, null, noJitter);
+        expect(backoff).toBe(CAP);
     });
 
     it('honors Retry-After header value', () => {
-        const backoff = calculateBackoff(0, 2000);
+        const backoff = calculateBackoff(0, 2000, { ...noJitter });
         expect(backoff).toBe(2000);
     });
 
-    it('caps Retry-After at BACKOFF_CAP_MS', () => {
+    it('caps Retry-After at the configured cap', () => {
         const hugeRetryAfter = 86_400_000; // 24 hours
-        const backoff = calculateBackoff(0, hugeRetryAfter);
-        expect(backoff).toBe(BACKOFF_CAP_MS);
+        const backoff = calculateBackoff(0, hugeRetryAfter, noJitter);
+        expect(backoff).toBe(CAP);
     });
 
     it('falls back to exponential backoff when Retry-After is null', () => {
-        const backoff = calculateBackoff(0, null, () => 0);
-        expect(backoff).toBe(RETRY_BASE_DELAY_MS);
+        const backoff = calculateBackoff(0, null, noJitter);
+        expect(backoff).toBe(BASE);
     });
 
     it('falls back to exponential backoff when Retry-After is 0', () => {
-        const backoff = calculateBackoff(0, 0, () => 0);
-        expect(backoff).toBe(RETRY_BASE_DELAY_MS);
+        const backoff = calculateBackoff(0, 0, noJitter);
+        expect(backoff).toBe(BASE);
     });
 
     it('falls back to exponential backoff when Retry-After is negative', () => {
-        const backoff = calculateBackoff(0, -1000, () => 0);
-        expect(backoff).toBe(RETRY_BASE_DELAY_MS);
+        const backoff = calculateBackoff(0, -1000, noJitter);
+        expect(backoff).toBe(BASE);
     });
 });
 

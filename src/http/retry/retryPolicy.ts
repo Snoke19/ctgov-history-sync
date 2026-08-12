@@ -7,6 +7,7 @@ import {
 } from '../../config/config.js';
 import { HttpException, NetworkException, TimeoutException, TrialError } from '../../error/errors.js';
 import { HttpResponse } from '../endpoint/transport/httpTransport.js';
+import { defaultRandom } from '../types/clock.js';
 
 /**
  * Configurable retry policy. All fields are plain values, so the object
@@ -16,6 +17,18 @@ export interface RetryPolicyConfig {
     readonly retryOnTimeout: boolean;
     readonly retryOnNetworkError: boolean;
     readonly retryableStatusCodes: ReadonlySet<number>;
+
+    /**
+     * Base delay (ms) seeded into the first exponential-backoff retry.
+     * When omitted the configured RETRY_BASE_DELAY_MS value is used.
+     */
+    readonly baseDelayMs?: number;
+
+    /**
+     * Upper bound (ms) applied to any single retry delay, including
+     * Retry-After. When omitted the configured BACKOFF_CAP_MS value is used.
+     */
+    readonly backoffCapMs?: number;
 }
 
 /**
@@ -26,6 +39,8 @@ export const defaultRetryPolicyConfig: RetryPolicyConfig = {
     retryOnTimeout: RETRY_ON_TIMEOUT,
     retryOnNetworkError: RETRY_ON_NETWORK_ERROR,
     retryableStatusCodes: RETRYABLE_STATUS_CODES,
+    baseDelayMs: RETRY_BASE_DELAY_MS,
+    backoffCapMs: BACKOFF_CAP_MS,
 };
 
 /**
@@ -49,29 +64,46 @@ export function isIdempotent(method: string, override?: boolean): boolean {
 }
 
 /**
+ * Delay parameters for {@link calculateBackoff}.
+ *
+ * Each field is optional and defaults to the configured value, so callers
+ * that only care about the default behaviour can pass `{}` (or nothing) while
+ * tests inject explicit numbers to stay decoupled from module-level config.
+ */
+export interface BackoffOptions {
+    /** Jitter source returning a value in [0, 1)]. Defaults to the shared HTTP-layer source. */
+    readonly random?: () => number;
+
+    /** Base delay (ms) for the first retry. Defaults to RETRY_BASE_DELAY_MS. */
+    readonly baseDelayMs?: number;
+
+    /** Maximum delay (ms). Defaults to BACKOFF_CAP_MS. */
+    readonly backoffCapMs?: number;
+}
+
+/**
  * Calculates the delay before the next retry attempt.
  *
  * Priority:
- *   1. Server-supplied Retry-After value (exact, in ms), capped at BACKOFF_CAP_MS.
+ *   1. Server-supplied Retry-After value (exact, in ms), capped at `backoffCapMs`.
  *   2. Exponential backoff: base × 2^attempt, plus up to 50% random jitter.
- *   3. Capped at BACKOFF_CAP_MS.
+ *   3. Capped at `backoffCapMs`.
  *
  * Jitter prevents thundering-herd conditions when many requests fail
  * simultaneously and would otherwise all retry at the same instant.
  *
  * @param attempt      - Zero-indexed retry number (0 = first retry).
  * @param retryAfterMs - Parsed Retry-After header value in ms, or null.
+ * @param options      - Optional base/cap/jitter overrides.
  */
-export function calculateBackoff(
-    attempt: number,
-    retryAfterMs: number | null,
-    random: () => number = Math.random,
-): number {
-    if (retryAfterMs !== null && retryAfterMs > 0) return Math.min(retryAfterMs, BACKOFF_CAP_MS);
+export function calculateBackoff(attempt: number, retryAfterMs: number | null, options: BackoffOptions = {}): number {
+    const { random = defaultRandom.random, baseDelayMs = RETRY_BASE_DELAY_MS, backoffCapMs = BACKOFF_CAP_MS } = options;
 
-    const base = RETRY_BASE_DELAY_MS * 2 ** attempt;
+    if (retryAfterMs !== null && retryAfterMs > 0) return Math.min(retryAfterMs, backoffCapMs);
+
+    const base = baseDelayMs * 2 ** attempt;
     const jitter = random() * base * 0.5;
-    return Math.min(base + jitter, BACKOFF_CAP_MS);
+    return Math.min(base + jitter, backoffCapMs);
 }
 
 /**

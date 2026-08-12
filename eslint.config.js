@@ -36,6 +36,9 @@ export default [
                 'error',
                 { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
             ],
+            // Any is banned across src/ and test/: it casts away the compile-time
+            // safety that the typecheck gate (npm run typecheck) enforces.
+            '@typescript-eslint/no-explicit-any': 'error',
             'prefer-const': 'error',
             'no-var': 'error',
             'object-shorthand': 'error',

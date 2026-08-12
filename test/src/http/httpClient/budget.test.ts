@@ -9,6 +9,10 @@ describe('HttpClient deadline budget', () => {
     });
 
     it('forwards shrinking deadline budget to endpoint acquisition on each retry', async () => {
+        // Deliberate regression pin: the remaining budget handed to
+        // acquireEndpoint is not observable through the public API, so this
+        // one internals spy is justified (see the black-box sibling test below
+        // for the externally-visible deadline contract).
         const acquireSpy = jest.spyOn(EndpointManager.prototype, 'acquireEndpoint');
 
         jest.spyOn(globalThis, 'fetch')

@@ -1,4 +1,4 @@
-import { MAX_RETRIES } from '../config/config.js';
+import { BACKOFF_CAP_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
 import { CallerAbortedError, ConfigurationError, HttpException, NetworkException } from '../error/errors.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
@@ -101,10 +101,12 @@ export function createHttpClient(
     ): Retry<HttpResponse> {
         const method = options.method ?? 'GET';
 
-        const effectiveConfig: RetryPolicyConfig = {
+        const effectiveConfig = {
             retryOnTimeout: options.retryPolicy?.retryOnTimeout ?? retryConfig.retryOnTimeout,
             retryOnNetworkError: options.retryPolicy?.retryOnNetworkError ?? retryConfig.retryOnNetworkError,
             retryableStatusCodes: options.retryPolicy?.retryableStatusCodes ?? retryConfig.retryableStatusCodes,
+            baseDelayMs: options.retryPolicy?.baseDelayMs ?? retryConfig.baseDelayMs ?? RETRY_BASE_DELAY_MS,
+            backoffCapMs: options.retryPolicy?.backoffCapMs ?? retryConfig.backoffCapMs ?? BACKOFF_CAP_MS,
         };
 
         if (effectiveConfig.retryableStatusCodes.has(404)) {
@@ -121,7 +123,11 @@ export function createHttpClient(
             (error) => shouldRetry(error, method, effectiveConfig, options.idempotent),
             (attempt, error) => {
                 const retryAfterMs = error instanceof HttpException ? (error.retryAfterMs ?? null) : null;
-                return calculateBackoff(attempt, retryAfterMs, random);
+                return calculateBackoff(attempt, retryAfterMs, {
+                    random,
+                    baseDelayMs: effectiveConfig.baseDelayMs,
+                    backoffCapMs: effectiveConfig.backoffCapMs,
+                });
             },
             sleep,
             options.signal,

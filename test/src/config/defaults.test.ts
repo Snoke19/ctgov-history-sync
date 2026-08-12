@@ -1,0 +1,32 @@
+import { describe, expect, it } from '@jest/globals';
+import { defaults } from '../../../src/config/defaults.js';
+
+describe('config defaults', () => {
+    it('declares a value for every required config key', () => {
+        expect(defaults).toEqual({
+            API_BASE_URL: '',
+            API_DETAIL_URL: '',
+            PAGE_SIZE: 10,
+            CONCURRENCY: 10,
+            FETCH_TIMEOUT_MS: 15_000,
+            RETRY_BASE_DELAY_MS: 1_000,
+            MAX_RETRIES: 3,
+            RETRYABLE_STATUS_CODES: [408, 429, 500, 502, 503, 504],
+            BACKOFF_CAP_MS: 30_000,
+            DEFAULT_USER_AGENT: 'ClinicalTrialsScraper/1.0',
+            RETRY_ON_TIMEOUT: true,
+            RETRY_ON_NETWORK_ERROR: true,
+            PROXY_URLS: '',
+            PROXY_POOL_CONNECTIONS: 1,
+            MAX_POOL_CONNECTIONS: 10,
+            PROXY_POOL_PIPELINING: 1,
+            PROXY_POOL_KEEP_ALIVE_TIMEOUT: 300_000,
+            PROXY_POOL_HEADERS_TIMEOUT: 15_000,
+            PROXY_POOL_BODY_TIMEOUT: 45_000,
+            PROXY_POOL_CONNECT_TIMEOUT: 5_000,
+            RATE_LIMIT_CAPACITY: 40,
+            RATE_LIMIT_WINDOW: 60_000,
+            ACQUIRE_TIMEOUT: 30_000,
+        });
+    });
+});

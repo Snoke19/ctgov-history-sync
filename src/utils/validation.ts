@@ -2,7 +2,7 @@ import { ConfigurationError, TrialValidationError } from '../error/errors.js';
 
 type ErrorCtor = new (message: string) => Error;
 
-interface Assertions {
+export interface Assertions {
     fail(message: string): never;
 
     assertNonEmptyString(value: unknown, name: string): asserts value is string;
@@ -12,7 +12,14 @@ interface Assertions {
     assertInteger(value: number, name: string, opts?: { min?: number; max?: number; label?: string }): void;
 }
 
-function makeAssertions(ErrorType: ErrorCtor): Assertions {
+/**
+ * Builds a set of assert helpers bound to a specific error type.
+ *
+ * Exported so tests can drive every branch (ranges, labels, error classes)
+ * through {@link Assertions.assertInteger} directly. Production callers use
+ * the ready-made config/trial assertion sets below.
+ */
+export function makeAssertions(ErrorType: ErrorCtor): Assertions {
     const fail = (message: string): never => {
         throw new ErrorType(message);
     };

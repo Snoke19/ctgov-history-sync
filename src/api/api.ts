@@ -10,6 +10,19 @@ export interface FetchJsonOptions {
 
 export interface ApiClientDependencies {
     fetchJson(url: string, options?: FetchJsonOptions): Promise<unknown>;
+
+    /**
+     * Base URL for study-list pages. Defaults to the configured API_BASE_URL.
+     * Injectable so callers (and tests) do not depend on module-level config.
+     */
+    apiBaseUrl?: string;
+
+    /**
+     * Base URL for single-study detail pages. Defaults to the configured
+     * API_DETAIL_URL. Injectable so callers (and tests) do not depend on
+     * module-level config.
+     */
+    apiDetailUrl?: string;
 }
 
 export interface ApiClient {
@@ -18,9 +31,13 @@ export interface ApiClient {
     fetchTrialDetail(nctId: string, params?: FetchTrialDetailParams): Promise<unknown>;
 }
 
-export function createApiClient({ fetchJson }: ApiClientDependencies): ApiClient {
+export function createApiClient({
+    fetchJson,
+    apiBaseUrl = API_BASE_URL,
+    apiDetailUrl = API_DETAIL_URL,
+}: ApiClientDependencies): ApiClient {
     async function fetchStudiesPage(params: FetchStudiesPageParams = {}): Promise<StudiesPageResponse> {
-        const url = new UrlBuilder(API_BASE_URL).queryParams(params).build();
+        const url = new UrlBuilder(apiBaseUrl).queryParams(params).build();
 
         const data = await fetchJson(url);
         return data as StudiesPageResponse;
@@ -29,7 +46,7 @@ export function createApiClient({ fetchJson }: ApiClientDependencies): ApiClient
     async function fetchTrialDetail(nctId: string, params: FetchTrialDetailParams = {}): Promise<unknown> {
         validateNctId(nctId);
 
-        const url = new UrlBuilder(API_DETAIL_URL).path(nctId).queryParams(params).build();
+        const url = new UrlBuilder(apiDetailUrl).path(nctId).queryParams(params).build();
 
         const data = await fetchJson(url, { allow404: true });
 
