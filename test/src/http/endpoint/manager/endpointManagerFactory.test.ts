@@ -16,6 +16,7 @@ function makeAlwaysAvailableLimiter(): Limiter {
 function makeEndpoint(url: string, limiter: Limiter = makeAlwaysAvailableLimiter()): Endpoint {
     const transport: HttpTransport = {
         request: jest.fn<(options: HttpRequest) => Promise<HttpResponse>>(),
+        classifyError: jest.fn<HttpTransport['classifyError']>(),
         close: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
     };
 

@@ -9,7 +9,7 @@ import {
 } from '../../error/errors.js';
 import { EndpointHandle } from '../endpoint/endpoint.js';
 import { EndpointManager } from '../endpoint/manager/endpointManager.js';
-import { HttpResponse } from '../endpoint/transport/httpTransport.js';
+import { HttpResponse, HttpTransport } from '../endpoint/transport/httpTransport.js';
 import { drainBody } from '../responseBody.js';
 import { defaultClock } from '../types/clock.js';
 import type { Clock } from '../types/clock.js';
@@ -19,10 +19,10 @@ import { parseRetryAfterHeader } from './retryPolicy.js';
 
 function isAbortError(error: unknown): boolean {
     if (error instanceof CallerAbortedError) return true;
-    if (error !== null && typeof error === 'object') {
-        if ('name' in error && error.name === 'AbortError') return true;
-        if ('code' in error && (error as NodeJS.ErrnoException).code === 'ABORT_ERR') return true;
-    }
+    // The shared sleeper (clock.ts) rejects with an AbortError-named Error
+    // when its signal aborts mid-wait. Errors from a transport never reach
+    // here — they are classified in executeRequest.
+    if (error !== null && typeof error === 'object' && 'name' in error && error.name === 'AbortError') return true;
     return false;
 }
 
@@ -140,7 +140,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             });
         } catch (error) {
             if (error instanceof TrialError) throw error;
-            throw this.normalizeTransportError(error);
+            throw this.classifyTransportError(endpoint.transport, error);
         }
 
         if (!response.ok) {
@@ -178,13 +178,20 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         return defaults;
     }
 
-    private normalizeTransportError(error: unknown): NetworkException | TimeoutException {
+    private classifyTransportError(transport: HttpTransport, error: unknown): NetworkException | TimeoutException {
         const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
+        const classification = transport.classifyError(error);
 
-        if (isAbortError(error)) {
-            return classifyAbortError(error, this.url, this.options.signal, timeoutMs);
+        switch (classification.kind) {
+            case 'timeout':
+                return new TimeoutException(`Request timed out after ${timeoutMs}ms: ${this.url}`);
+            case 'cancelled':
+                // The transport only knows the signal aborted; whether that
+                // was our per-attempt timeout timer or a forwarded caller
+                // abort is decided here from the caller's signal.
+                return classifyAbortError(classification.cause, this.url, this.options.signal, timeoutMs);
+            case 'network':
+                return new NetworkException(`Network failure: ${this.url}`, classification.cause);
         }
-
-        return new NetworkException(`Network failure: ${this.url}`, error);
     }
 }

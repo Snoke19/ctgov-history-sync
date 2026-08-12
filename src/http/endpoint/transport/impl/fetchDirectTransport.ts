@@ -1,4 +1,5 @@
-import { HttpRequest, HttpResponse, HttpTransport } from '../httpTransport.js';
+import { HttpRequest, HttpResponse, HttpTransport, TransportErrorClassification } from '../httpTransport.js';
+import { classifyFetchError } from './fetchErrorClassification.js';
 
 export class FetchDirectTransport implements HttpTransport {
     async request(options: HttpRequest): Promise<HttpResponse> {
@@ -22,6 +23,10 @@ export class FetchDirectTransport implements HttpTransport {
                 }
             },
         };
+    }
+
+    classifyError(error: unknown): TransportErrorClassification {
+        return classifyFetchError(error);
     }
 
     async close(): Promise<void> {}

@@ -4,7 +4,8 @@ import { ProxyPoolConfig } from '../../../../config/config.js';
 import { createPoolFactory } from '../../../poolFactory.js';
 import { resolveConnections } from '../../proxy/resolveConnections.js';
 import { ProxyTransportFactory } from '../factory/proxyTransportFactory.js';
-import { CreateProxyEndpointsOptions, HttpRequest, HttpResponse, HttpTransport } from '../httpTransport.js';
+import { CreateProxyEndpointsOptions, HttpRequest, HttpResponse, HttpTransport, TransportErrorClassification } from '../httpTransport.js';
+import { classifyFetchError } from './fetchErrorClassification.js';
 
 /** Creates a Dispatcher pool for a given origin. Called by ProxyAgent per-origin. */
 export type PoolClientFactory = (origin: URL, opts?: Record<string, unknown>) => Dispatcher;
@@ -34,6 +35,10 @@ export class UndiciHttpTransport implements HttpTransport {
         });
 
         return this.toHttpResponse(response);
+    }
+
+    classifyError(error: unknown): TransportErrorClassification {
+        return classifyFetchError(error);
     }
 
     close(): Promise<void> {

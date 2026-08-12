@@ -211,4 +211,31 @@ describe('FetchDirectTransport', () => {
             await expect(result.discard()).resolves.toBeUndefined();
         });
     });
+
+    describe('classifyError', () => {
+        it('classifies a DOMException AbortError as cancelled', () => {
+            const error = new DOMException('The operation was aborted.', 'AbortError');
+
+            expect(transport.classifyError(error)).toEqual({ kind: 'cancelled', cause: error });
+        });
+
+        it('classifies an AbortError-named error as cancelled', () => {
+            const error = new Error('aborted');
+            error.name = 'AbortError';
+
+            expect(transport.classifyError(error)).toEqual({ kind: 'cancelled', cause: error });
+        });
+
+        it('classifies an ABORT_ERR-code error as cancelled', () => {
+            const error = Object.assign(new Error('aborted'), { code: 'ABORT_ERR' });
+
+            expect(transport.classifyError(error)).toEqual({ kind: 'cancelled', cause: error });
+        });
+
+        it('classifies everything else as a network failure', () => {
+            const error = new TypeError('fetch failed: ECONNRESET');
+
+            expect(transport.classifyError(error)).toEqual({ kind: 'network', cause: error });
+        });
+    });
 });

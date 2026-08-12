@@ -13,6 +13,7 @@ describe('Endpoint', () => {
 
         const transport = {
             request: jest.fn<UndiciHttpTransport['request']>(),
+            classifyError: jest.fn<HttpTransport['classifyError']>(),
             close: jest.fn<HttpTransport['close']>().mockResolvedValue(undefined),
         } satisfies HttpTransport;
 
