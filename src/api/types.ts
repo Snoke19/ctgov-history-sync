@@ -23,3 +23,13 @@ export interface StudiesPageResponse {
     studies: Study[];
     nextPageToken?: string;
 }
+
+export interface TrialDetail {
+    protocolSection?: {
+        identificationModule?: {
+            nctId?: string;
+            briefTitle?: string;
+        };
+    };
+    history?: unknown;
+}

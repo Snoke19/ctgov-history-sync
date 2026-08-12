@@ -96,7 +96,7 @@ describe('parseOkResponseBody', () => {
         await expect(promise).rejects.toBeInstanceOf(TrialFetchError);
         await expect(promise).rejects.toMatchObject({ status: 200, isTransient: false });
         await expect(promise).rejects.toMatchObject({
-            cause: expect.objectContaining({ message: expect.stringMatching(/Invalid JSON response/) }),
+            cause: expect.any(SyntaxError),
         });
         expect(response.discard).toHaveBeenCalledTimes(1);
     });
@@ -108,19 +108,25 @@ describe('parseOkResponseBody', () => {
         const result = await parseOkResponseBody(response, 'https://api.test');
 
         expect(result).toEqual({ nctId: 'NCT00000001' });
-        expect(warnSpy).toHaveBeenCalledTimes(1);
-        expect(warnSpy).toHaveBeenCalledWith('Unexpected Content-Type "%s" for %s', 'text/html', 'https://api.test');
-    });
+            expect(warnSpy).toHaveBeenCalledTimes(1);
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ url: 'https://api.test', status: 200, contentType: 'text/html' }),
+                'Unexpected Content-Type',
+            );
+        });
 
-    it('warns when the Content-Type header is missing entirely', async () => {
-        const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
-        const response = makeResponse({ headers: makeHeaders() });
+        it('warns when the Content-Type header is missing entirely', async () => {
+            const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+            const response = makeResponse({ headers: makeHeaders() });
 
-        await parseOkResponseBody(response, 'https://api.test');
+            await parseOkResponseBody(response, 'https://api.test');
 
-        expect(warnSpy).toHaveBeenCalledTimes(1);
-        expect(warnSpy).toHaveBeenCalledWith('Unexpected Content-Type "%s" for %s', '', 'https://api.test');
-    });
+            expect(warnSpy).toHaveBeenCalledTimes(1);
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ url: 'https://api.test', status: 200, contentType: '' }),
+                'Unexpected Content-Type',
+            );
+        });
 
     it('does not warn for an application/json Content-Type', async () => {
         const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);

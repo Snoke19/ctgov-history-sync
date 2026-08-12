@@ -7,10 +7,17 @@ export class TrialError extends Error {
     override cause?: unknown;
 
     constructor(message: string, options: TrialErrorOptions = {}) {
-        super(message);
-
+        // Use native Error cause when available so stack traces and tools
+        // see the underlying error consistently.
+        // Node's Error constructor accepts an options object { cause }.
+        // Call super with the cause when present and also set this.cause
+        // for environments that may not surface it automatically.
         if (options.cause !== undefined) {
+            // @ts-expect-error - some TS lib targets may not include the second arg overload
+            super(message, { cause: options.cause });
             this.cause = options.cause;
+        } else {
+            super(message);
         }
     }
 }

@@ -91,4 +91,10 @@ export const ACQUIRE_TIMEOUT = env.int(
 // ---------------------------------------------------------------------------
 // Validate required fields
 // ---------------------------------------------------------------------------
-validateConfig({ apiBaseUrl: API_BASE_URL, apiDetailUrl: API_DETAIL_URL });
+// Validation was previously executed at module import time which runs during
+// plain `import` and can throw unexpectedly for consumers. Export an explicit
+// helper so the application startup path can call it after environment files
+// have been loaded.
+export function ensureValidConfig(): void {
+    validateConfig({ apiBaseUrl: API_BASE_URL, apiDetailUrl: API_DETAIL_URL });
+}

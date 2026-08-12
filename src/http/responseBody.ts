@@ -56,7 +56,9 @@ export async function parseOkResponseBody(response: HttpResponse, url: string): 
 
         const cause = error instanceof Error ? error : new Error(String(error));
 
-        throw new TrialFetchError(url, new Error(`Invalid JSON response: ${cause.message}`), response.status, false);
+        // Preserve the original parse error as the cause so callers can inspect
+        // the stack and original error type.
+        throw new TrialFetchError(url, cause, response.status, false);
     }
 }
 
@@ -64,6 +66,6 @@ function warnOnUnexpectedContentType(response: HttpResponse, url: string): void 
     const contentType = response.headers.get('Content-Type') ?? '';
 
     if (!contentType.includes('application/json')) {
-        logger.warn('Unexpected Content-Type "%s" for %s', contentType, url);
+        logger.warn({ url, status: response.status, contentType }, 'Unexpected Content-Type');
     }
 }

@@ -15,7 +15,7 @@ export interface ApiClientDependencies {
 export interface ApiClient {
     fetchStudiesPage(params?: FetchStudiesPageParams): Promise<StudiesPageResponse>;
 
-    fetchTrialDetail(nctId: string, params?: FetchTrialDetailParams): Promise<unknown>;
+    fetchTrialDetail(nctId: string, params?: FetchTrialDetailParams): Promise<import('./types.js').TrialDetail>;
 }
 
 export function createApiClient({ fetchJson }: ApiClientDependencies): ApiClient {
@@ -26,18 +26,21 @@ export function createApiClient({ fetchJson }: ApiClientDependencies): ApiClient
         return data as StudiesPageResponse;
     }
 
-    async function fetchTrialDetail(nctId: string, params: FetchTrialDetailParams = {}): Promise<unknown> {
-        validateNctId(nctId);
+    async function fetchTrialDetail(nctId: string, params: FetchTrialDetailParams = {}): Promise<import('./types.js').TrialDetail> {
+        // Normalize input before validation and request-building so callers may
+        // pass case-insensitive or whitespace-padded values.
+        const normalized = nctId.trim().toUpperCase();
+        validateNctId(normalized);
 
-        const url = new UrlBuilder(API_DETAIL_URL).path(nctId).queryParams(params).build();
+        const url = new UrlBuilder(API_DETAIL_URL).path(normalized).queryParams(params).build();
 
         const data = await fetchJson(url, { allow404: true });
 
         if (data === null) {
-            throw new TrialNotFoundError(nctId);
+            throw new TrialNotFoundError(normalized);
         }
 
-        return data;
+        return data as import('./types.js').TrialDetail;
     }
 
     return { fetchStudiesPage, fetchTrialDetail };
