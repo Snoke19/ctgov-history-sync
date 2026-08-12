@@ -58,7 +58,10 @@ export class TokenBucket extends Limiter {
         capacity: number,
         windowMs: number,
         now: Clock = () => sharedClock.now(),
-        sleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        sleep: SleepFn = (ms) =>
+            new Promise((resolve) => {
+                setTimeout(resolve, ms);
+            }),
     ) {
         super();
 

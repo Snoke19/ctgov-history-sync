@@ -21,6 +21,9 @@ export default [
             },
         },
         settings: {
+            'import/resolver': {
+                typescript: true,
+            },
             node: {
                 version: '>=20.3.0',
             },

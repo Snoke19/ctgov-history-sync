@@ -14,7 +14,10 @@ export class Retry<T> implements BusinessOperation<T> {
         op: BusinessOperation<T>,
         maxRetries: number,
         delayMs: number | ((attempt: number, error: BusinessException) => number),
-        sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        sleep: (ms: number) => Promise<void> = (ms) =>
+            new Promise((resolve) => {
+                setTimeout(resolve, ms);
+            }),
         ...ignoreTests: Array<(error: BusinessException) => boolean>
     ) {
         this.op = op;
@@ -35,7 +38,7 @@ export class Retry<T> implements BusinessOperation<T> {
     }
 
     async perform(): Promise<T> {
-        do {
+        while (this.attemptsCount < this.maxRetries) {
             try {
                 return await this.op.perform();
             } catch (e) {
@@ -46,7 +49,7 @@ export class Retry<T> implements BusinessOperation<T> {
                 const error = e as BusinessException;
                 this.errors.push(error);
 
-                if (this.attemptsCount >= this.maxRetries || !this.shouldRetry(error)) {
+                if (!this.shouldRetry(error)) {
                     throw error;
                 }
 
@@ -57,6 +60,8 @@ export class Retry<T> implements BusinessOperation<T> {
 
                 await this.sleep(Math.max(0, delay));
             }
-        } while (true);
+        }
+
+        return await this.op.perform();
     }
 }

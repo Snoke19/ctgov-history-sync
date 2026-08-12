@@ -31,7 +31,10 @@ export interface RandomSource {
 
 /** Production defaults — real time, real Math.random. */
 export const defaultSleeper: Sleeper = {
-    sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+    sleep: (ms: number) =>
+        new Promise((resolve) => {
+            setTimeout(resolve, ms);
+        }),
 };
 
 /** Production default — real time, real Math.random. */
