@@ -1,7 +1,14 @@
 import { describe, expect, it } from '@jest/globals';
-import { defaultRetryPolicyConfig, RetryPolicyConfig, shouldRetry } from '../../../../src/http/retry/retryPolicy.js';
+import {
+    calculateBackoff,
+    defaultRetryPolicyConfig,
+    parseRetryAfterHeader,
+    RetryPolicyConfig,
+    shouldRetry,
+} from '../../../../src/http/retry/retryPolicy.js';
 import { HttpException, NetworkException, TimeoutException } from '../../../../src/http/retry/exceptions.js';
 import { BusinessException } from '../../../../src/http/retry/businessException.js';
+import { BACKOFF_CAP_MS, RETRY_BASE_DELAY_MS } from '../../../../src/config/config.js';
 
 describe('shouldRetry', () => {
     const baseConfig: RetryPolicyConfig = {
@@ -78,5 +85,96 @@ describe('shouldRetry', () => {
             expect(typeof defaultRetryPolicyConfig.retryOnTimeout).toBe('boolean');
             expect(defaultRetryPolicyConfig.retryableStatusCodes instanceof Set).toBe(true);
         });
+    });
+});
+
+describe('calculateBackoff', () => {
+    it('returns exponential backoff for first retry (attempt 0)', () => {
+        const backoff = calculateBackoff(0, null, () => 0);
+        expect(backoff).toBe(RETRY_BASE_DELAY_MS);
+    });
+
+    it('doubles the base delay for each subsequent retry', () => {
+        const attempt0 = calculateBackoff(0, null, () => 0);
+        const attempt1 = calculateBackoff(1, null, () => 0);
+        const attempt2 = calculateBackoff(2, null, () => 0);
+
+        expect(attempt1).toBe(attempt0 * 2);
+        expect(attempt2).toBe(attempt0 * 4);
+    });
+
+    it('adds up to 50% random jitter', () => {
+        const withoutJitter = calculateBackoff(0, null, () => 0);
+        const withMaxJitter = calculateBackoff(0, null, () => 1);
+
+        expect(withoutJitter).toBe(RETRY_BASE_DELAY_MS);
+        expect(withMaxJitter).toBe(RETRY_BASE_DELAY_MS + RETRY_BASE_DELAY_MS * 0.5);
+    });
+
+    it('caps backoff at BACKOFF_CAP_MS', () => {
+        const backoff = calculateBackoff(20, null, () => 0);
+        expect(backoff).toBeLessThanOrEqual(BACKOFF_CAP_MS);
+    });
+
+    it('honors Retry-After header value', () => {
+        const backoff = calculateBackoff(0, 2000);
+        expect(backoff).toBe(2000);
+    });
+
+    it('caps Retry-After at BACKOFF_CAP_MS', () => {
+        const hugeRetryAfter = 86_400_000; // 24 hours
+        const backoff = calculateBackoff(0, hugeRetryAfter);
+        expect(backoff).toBe(BACKOFF_CAP_MS);
+    });
+
+    it('falls back to exponential backoff when Retry-After is null', () => {
+        const backoff = calculateBackoff(0, null, () => 0);
+        expect(backoff).toBe(RETRY_BASE_DELAY_MS);
+    });
+
+    it('falls back to exponential backoff when Retry-After is 0', () => {
+        const backoff = calculateBackoff(0, 0, () => 0);
+        expect(backoff).toBe(RETRY_BASE_DELAY_MS);
+    });
+
+    it('falls back to exponential backoff when Retry-After is negative', () => {
+        const backoff = calculateBackoff(0, -1000, () => 0);
+        expect(backoff).toBe(RETRY_BASE_DELAY_MS);
+    });
+});
+
+describe('parseRetryAfterHeader', () => {
+    function makeResponse(headers: Record<string, string>) {
+        return {
+            headers: {
+                get: (name: string) => headers[name] ?? null,
+            },
+        } as any;
+    }
+
+    it('returns null when header is absent', () => {
+        expect(parseRetryAfterHeader(makeResponse({}))).toBeNull();
+    });
+
+    it('parses delay-seconds format', () => {
+        const result = parseRetryAfterHeader(makeResponse({ 'Retry-After': '5' }));
+        expect(result).toBe(5000);
+    });
+
+    it('parses HTTP-date format', () => {
+        const futureMs = Date.now() + 3000;
+        const dateStr = new Date(futureMs).toUTCString();
+        const result = parseRetryAfterHeader(makeResponse({ 'Retry-After': dateStr }));
+        expect(result).toBeGreaterThanOrEqual(2500);
+        expect(result).toBeLessThanOrEqual(3500);
+    });
+
+    it('returns 0 for a past HTTP-date', () => {
+        const pastStr = new Date(0).toUTCString();
+        expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': pastStr }))).toBe(0);
+    });
+
+    it('returns null for unparsable values', () => {
+        expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': 'garbage' }))).toBeNull();
     });
 });

@@ -53,7 +53,7 @@ export function isIdempotent(method: string, override?: boolean): boolean {
  * Calculates the delay before the next retry attempt.
  *
  * Priority:
- *   1. Server-supplied Retry-After value (exact, in ms).
+ *   1. Server-supplied Retry-After value (exact, in ms), capped at BACKOFF_CAP_MS.
  *   2. Exponential backoff: base × 2^attempt, plus up to 50% random jitter.
  *   3. Capped at BACKOFF_CAP_MS.
  *
@@ -68,7 +68,7 @@ export function calculateBackoff(
     retryAfterMs: number | null,
     random: () => number = Math.random,
 ): number {
-    if (retryAfterMs !== null && retryAfterMs > 0) return retryAfterMs;
+    if (retryAfterMs !== null && retryAfterMs > 0) return Math.min(retryAfterMs, BACKOFF_CAP_MS);
 
     const base = RETRY_BASE_DELAY_MS * 2 ** attempt;
     const jitter = random() * base * 0.5;
