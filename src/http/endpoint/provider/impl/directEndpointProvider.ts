@@ -10,6 +10,14 @@ export class DirectEndpointProvider implements EndpointProvider {
 
     build(_options: HttpClientOptions, createLimiter: () => Limiter): Endpoint[] {
         logger.debug('DirectEndpointProvider: building single direct endpoint');
-        return [new Endpoint('direct', createLimiter(), this.transportFactory.create())];
+
+        // Create transport first so it can be closed if limiter creation fails.
+        const transport = this.transportFactory.create();
+        try {
+            return [new Endpoint('direct', createLimiter(), transport)];
+        } catch (err) {
+            void transport.close();
+            throw err;
+        }
     }
 }

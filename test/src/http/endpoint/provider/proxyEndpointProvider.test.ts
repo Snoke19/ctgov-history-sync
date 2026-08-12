@@ -211,23 +211,26 @@ describe('ProxyEndpointProvider', () => {
             expect(() => provider.build(makeOptions(), createLimiter)).toThrow(err);
         });
 
-        it('orphans the limiter when transportFactory.create throws mid-array', () => {
+        it('closes previously created endpoints when transportFactory.create throws mid-array', () => {
+            const t0 = makeTransport();
             const limiter0 = makeLimiter();
             const limiter1 = makeLimiter();
 
             urlParser.parse.mockReturnValue(['http://p:1', 'http://p:2']);
             createLimiter.mockReturnValueOnce(limiter0).mockReturnValueOnce(limiter1);
-            transportFactory.create.mockReturnValueOnce(makeTransport()).mockImplementationOnce(() => {
+            transportFactory.create.mockReturnValueOnce(t0).mockImplementationOnce(() => {
                 throw new Error('transport failed');
             });
 
             expect(() => provider.build(makeOptions(), createLimiter)).toThrow('transport failed');
 
-            expect(createLimiter).toHaveBeenCalledTimes(1);
+            // The first endpoint's transport was closed to prevent socket/timer leaks.
+            expect(t0.close).toHaveBeenCalledTimes(1);
+            // The second limiter was never used (iteration didn't complete).
             expect(limiter1.tryAcquire).not.toHaveBeenCalled();
         });
 
-        it('leaks previously created endpoints if createLimiter throws mid-array', () => {
+        it('closes previously created endpoints if createLimiter throws mid-array', () => {
             const t0 = makeTransport();
             const t1 = makeTransport();
             urlParser.parse.mockReturnValue(['a', 'b', 'c']);
@@ -241,6 +244,9 @@ describe('ProxyEndpointProvider', () => {
 
             expect(() => provider.build(makeOptions(), createLimiter)).toThrow('limiter failed');
 
+            // Both successfully created endpoints had their transports closed.
+            expect(t0.close).toHaveBeenCalledTimes(1);
+            expect(t1.close).toHaveBeenCalledTimes(1);
             expect(transportFactory.create).toHaveBeenCalledTimes(3);
         });
 

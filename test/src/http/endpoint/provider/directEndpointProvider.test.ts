@@ -30,7 +30,7 @@ describe('DirectEndpointProvider', () => {
     });
 
     describe('build - call order & arguments', () => {
-        it('calls createLimiter before transportFactory.create', () => {
+        it('calls transportFactory.create before createLimiter', () => {
             const callOrder: string[] = [];
             createLimiter.mockImplementation(() => {
                 callOrder.push('limiter');
@@ -44,7 +44,7 @@ describe('DirectEndpointProvider', () => {
             const provider = new DirectEndpointProvider(transportFactory);
             provider.build({} as HttpClientOptions, createLimiter);
 
-            expect(callOrder).toEqual(['limiter', 'transport']);
+            expect(callOrder).toEqual(['transport', 'limiter']);
         });
 
         it('invokes createLimiter with no arguments', () => {
@@ -99,6 +99,8 @@ describe('DirectEndpointProvider', () => {
     describe('build - error handling & resource leaks', () => {
         it('propagates error when createLimiter throws', () => {
             const error = new Error('Limiter creation failed');
+            const closeMock = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+            transportFactory.create.mockImplementation(() => ({ close: closeMock } as unknown as HttpTransport));
             createLimiter.mockImplementation(() => {
                 throw error;
             });
@@ -106,12 +108,13 @@ describe('DirectEndpointProvider', () => {
             const provider = new DirectEndpointProvider(transportFactory);
 
             expect(() => provider.build({} as HttpClientOptions, createLimiter)).toThrow(error);
-            expect(transportFactory.create).not.toHaveBeenCalled();
+            expect(transportFactory.create).toHaveBeenCalledTimes(1);
+            expect(createLimiter).toHaveBeenCalledTimes(1);
+            expect(closeMock).toHaveBeenCalledTimes(1);
         });
 
         it('propagates error when transportFactory.create throws', () => {
             const error = new Error('Transport creation failed');
-            createLimiter.mockReturnValue({} as Limiter);
             transportFactory.create.mockImplementation(() => {
                 throw error;
             });
@@ -119,40 +122,34 @@ describe('DirectEndpointProvider', () => {
             const provider = new DirectEndpointProvider(transportFactory);
 
             expect(() => provider.build({} as HttpClientOptions, createLimiter)).toThrow(error);
-            expect(createLimiter).toHaveBeenCalledTimes(1);
+            expect(transportFactory.create).toHaveBeenCalledTimes(1);
+            expect(createLimiter).not.toHaveBeenCalled();
         });
 
-        it('leaks the limiter when transportFactory.create throws (BUG: orphaned resource)', () => {
-            // If createLimiter allocates resources (timers, connections, memory) and
-            // transportFactory.create throws, the limiter is created but never
-            // returned inside an Endpoint, so any cleanup logic on it is unreachable.
-            const limiter: Limiter = {
-                tryAcquire: jest.fn().mockReturnValue(true),
-                timeUntilToken: jest.fn().mockReturnValue(0),
-            } as unknown as Limiter;
-
-            createLimiter.mockReturnValue(limiter);
-            transportFactory.create.mockImplementation(() => {
-                throw new Error('Transport creation failed');
+        it('closes the transport when createLimiter throws', () => {
+            const error = new Error('Limiter creation failed');
+            const closeMock = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+            const transport = { close: closeMock } as unknown as HttpTransport;
+            createLimiter.mockImplementation(() => {
+                throw error;
             });
+            transportFactory.create.mockImplementation(() => transport);
 
             const provider = new DirectEndpointProvider(transportFactory);
 
-            expect(() => provider.build({} as HttpClientOptions, createLimiter)).toThrow('Transport creation failed');
-
-            expect(createLimiter).toHaveBeenCalledTimes(1);
-            // The limiter was instantiated but never handed to an Endpoint.
-            // If it holds active resources (timers, connections, memory pools),
-            // they are now orphaned because nothing can call cleanup on it.
-            expect(limiter.tryAcquire).not.toHaveBeenCalled();
+            expect(() => provider.build({} as HttpClientOptions, createLimiter)).toThrow(error);
+            expect(transportFactory.create).toHaveBeenCalledTimes(1);
+            expect(closeMock).toHaveBeenCalledTimes(1);
         });
 
-        it('throws when createLimiter parameter is undefined', () => {
-            transportFactory.create.mockReturnValue({} as HttpTransport);
+        it('closes transport and throws when createLimiter parameter is undefined', () => {
+            const closeMock = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+            transportFactory.create.mockImplementation(() => ({ close: closeMock } as unknown as HttpTransport));
             const provider = new DirectEndpointProvider(transportFactory);
 
             expect(() => provider.build({} as unknown as HttpClientOptions, undefined as unknown as () => Limiter)).toThrow();
-            expect(transportFactory.create).not.toHaveBeenCalled();
+            expect(transportFactory.create).toHaveBeenCalledTimes(1);
+            expect(closeMock).toHaveBeenCalledTimes(1);
         });
     });
 
