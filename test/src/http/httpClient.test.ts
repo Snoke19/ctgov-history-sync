@@ -8,6 +8,7 @@ import { FetchDirectTransport } from '../../../src/http/endpoint/transport/impl/
 import { NetworkException, TimeoutException } from '../../../src/http/retry/exceptions.js';
 import { HttpClientOptions } from '../../../src/http/types/http.js';
 import type { HttpClient } from '../../../src/http/httpClient.js';
+import { EndpointManager } from '../../../src/http/endpoint/manager/endpointManager.js';
 
 const API_URL = 'http://api.test';
 
@@ -80,6 +81,140 @@ describe('HttpClient Integration', () => {
 
     afterEach(() => {
         jest.restoreAllMocks();
+    });
+
+    it('forwards shrinking deadline budget to endpoint acquisition on each retry', async () => {
+        const acquireSpy = jest.spyOn(EndpointManager.prototype, 'acquireEndpoint');
+
+        jest.spyOn(globalThis, 'fetch')
+            .mockRejectedValueOnce(new TypeError('fetch failed'))
+            .mockRejectedValueOnce(new TypeError('fetch failed'))
+            .mockRejectedValueOnce(new TypeError('fetch failed'));
+
+        const client = makeClient();
+        const deadline = Date.now() + 5000;
+
+        await expect(client.fetchJson(`${API_URL}/budget`, { deadline, maxRetries: 2 })).rejects.toBeInstanceOf(
+            NetworkException,
+        );
+
+        expect(acquireSpy).toHaveBeenCalledTimes(3); // initial + 2 retries
+
+        const firstRemaining = acquireSpy.mock.calls[0]![0] as number;
+        const secondRemaining = acquireSpy.mock.calls[1]![0] as number;
+        const thirdRemaining = acquireSpy.mock.calls[2]![0] as number;
+
+        // Each retry must see a smaller (or equal) remaining budget, never a fresh window
+        expect(secondRemaining).toBeLessThanOrEqual(firstRemaining);
+        expect(thirdRemaining).toBeLessThanOrEqual(secondRemaining);
+
+        acquireSpy.mockRestore();
+    });
+
+    it('does NOT retry 500 on PUT when idempotent: false is explicitly set', async () => {
+        const fetchMock = jest
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(jsonResponse('Server Error', 500, {}, 'Internal Server Error'));
+
+        const client = makeClient();
+
+        await expect(
+            client.fetchJson(`${API_URL}/put-no-retry`, {
+                method: 'PUT',
+                idempotent: false,
+                maxRetries: 3,
+            }),
+        ).rejects.toMatchObject({ status: 500 });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries 429 with Retry-After HTTP-date format', async () => {
+        const futureDate = new Date(Date.now() + 2000).toUTCString();
+
+        const fetchMock = jest
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValueOnce(
+                jsonResponse('Rate Limited', 429, { 'Retry-After': futureDate }, 'Too Many Requests'),
+            )
+            .mockResolvedValueOnce(jsonResponse({ success: true }));
+
+        const client = makeClient();
+
+        const result = await client.fetchJson<{ success: boolean }>(`${API_URL}/rate-limited-date`, {
+            maxRetries: 2,
+        });
+
+        expect(result).toEqual({ success: true });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('performs exactly one attempt when maxRetries is 0', async () => {
+        const fetchMock = jest
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(jsonResponse('Bad Gateway', 502, {}, 'Bad Gateway'));
+
+        const client = makeClient();
+
+        await expect(client.fetchJson(`${API_URL}/no-retry`, { maxRetries: 0 })).rejects.toMatchObject({ status: 502 });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns null for 404 on a retry attempt when allow404 is true', async () => {
+        const fetchMock = jest
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValueOnce(jsonResponse('Service Unavailable', 503, {}, 'Service Unavailable'))
+            .mockResolvedValueOnce(jsonResponse({ error: 'Not Found' }, 404, {}, 'Not Found'));
+
+        const client = makeClient();
+
+        const result = await client.fetchJson(`${API_URL}/transient-then-404`, {
+            allow404: true,
+            maxRetries: 2,
+        });
+
+        expect(result).toBeNull();
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws TrialFetchError and does NOT retry on invalid JSON body', async () => {
+        const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+            new Response('500 Internal Server Error', {
+                status: 200,
+                statusText: 'OK',
+                headers: { 'content-type': 'application/json' },
+            }),
+        );
+
+        const client = makeClient();
+
+        await expect(client.fetchJson(`${API_URL}/bad-json`)).rejects.toBeInstanceOf(TrialFetchError);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows custom headers to override Accept and User-Agent defaults', async () => {
+        const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
+        const client = makeClient();
+
+        await client.fetchJson(`${API_URL}/headers`, {
+            headers: {
+                Accept: 'text/plain',
+                'User-Agent': 'CustomAgent/1.0',
+                'X-Custom': 'value',
+            },
+        });
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            `${API_URL}/headers`,
+            expect.objectContaining({
+                headers: {
+                    Accept: 'text/plain',
+                    'User-Agent': 'CustomAgent/1.0',
+                    'X-Custom': 'value',
+                },
+            }),
+        );
     });
 
     describe('Happy Path & Response Parsing', () => {
