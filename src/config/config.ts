@@ -59,13 +59,10 @@ export const PROXY_POOL_CONFIG: ProxyPoolConfig = Object.freeze({
     connectTimeout: PROXY_POOL_CONNECT_TIMEOUT,
 });
 
-export interface ConnectionConfig {
+export interface ProxyPoolConfig {
     readonly connections: number;
     readonly maxConnections: number;
     readonly connectTimeout: number;
-}
-
-export interface ProxyPoolConfig extends ConnectionConfig {
     readonly pipelining: number;
     readonly keepAliveTimeout: number;
     readonly headersTimeout: number;
@@ -75,11 +72,21 @@ export interface ProxyPoolConfig extends ConnectionConfig {
 // ---------------------------------------------------------------------------
 // rateLimit
 // ---------------------------------------------------------------------------
-export const RATE_LIMIT_CAPACITY = env.int('PROXY_RATE_LIMIT_CAPACITY', defaults.RATE_LIMIT_CAPACITY, {
-    positive: true,
-});
-export const RATE_LIMIT_WINDOW = env.int('PROXY_RATE_LIMIT_WINDOW_MS', defaults.RATE_LIMIT_WINDOW, { positive: true });
-export const ACQUIRE_TIMEOUT = env.int('PROXY_ACQUIRE_TIMEOUT_MS', defaults.ACQUIRE_TIMEOUT, { positive: true });
+export const RATE_LIMIT_CAPACITY = env.int(
+    'RATE_LIMIT_CAPACITY',
+    defaults.RATE_LIMIT_CAPACITY,
+    { positive: true, fallbackKey: 'PROXY_RATE_LIMIT_CAPACITY' },
+);
+export const RATE_LIMIT_WINDOW = env.int(
+    'RATE_LIMIT_WINDOW_MS',
+    defaults.RATE_LIMIT_WINDOW,
+    { positive: true, fallbackKey: 'PROXY_RATE_LIMIT_WINDOW_MS' },
+);
+export const ACQUIRE_TIMEOUT = env.int(
+    'ACQUIRE_TIMEOUT_MS',
+    defaults.ACQUIRE_TIMEOUT,
+    { positive: true, fallbackKey: 'PROXY_ACQUIRE_TIMEOUT_MS' },
+);
 
 // ---------------------------------------------------------------------------
 // Validate required fields

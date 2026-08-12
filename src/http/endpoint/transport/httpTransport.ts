@@ -2,16 +2,6 @@ import { ProxyPoolConfig } from '../../../config/config.js';
 
 /**
  * Abstraction over a specific HTTP library (undici, axios, node-fetch, etc.).
- *
- * The `request` method intentionally accepts `unknown` to avoid coupling
- * the interface to the types of a specific library. Each implementation performs
- * internal type casting.
- *
- * To add axios in the future:
- *   1. Create `AxiosHttpTransport` that implements this interface.
- *   2. Create `AxiosTransportFactory` that implements `TransportFactory`.
- *   3. Pass it to `ProxyEndpointFactory` instead of (or alongside)
- *      `UndiciTransportFactory`.
  */
 export interface HttpTransport {
     request(options: HttpRequest): Promise<HttpResponse>;

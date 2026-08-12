@@ -35,8 +35,6 @@ export class TrialNotFoundError extends TrialError {
 
 export class TrialFetchError extends TrialError {
     override name: string = 'TrialFetchError';
-    retryAfterMs: number | null = null;
-    proxyUrl: string | null = null;
     readonly url: string;
     readonly status: number | null;
     readonly isTransient: boolean;

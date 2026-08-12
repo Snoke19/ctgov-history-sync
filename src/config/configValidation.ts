@@ -25,8 +25,8 @@ const getEnv = (key: string): string | undefined => {
 };
 
 export const env = {
-    int: (key: string, fallback: number, opts: { positive?: boolean } = {}): number => {
-        const raw = getEnv(key);
+    int: (key: string, fallback: number, opts: { positive?: boolean; fallbackKey?: string } = {}): number => {
+        const raw = getEnv(key) ?? (opts.fallbackKey ? getEnv(opts.fallbackKey) : undefined);
         const value = raw === undefined ? fallback : parseStrictInt(raw, key);
         if (opts.positive) assertPositiveInt(value, key);
         return value;

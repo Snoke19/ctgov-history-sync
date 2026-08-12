@@ -1,14 +1,6 @@
 import { QueryParams, QueryParamValue } from './types/http.js';
 
-export interface IUrlBuilder {
-    path(segment: string): this;
-    queryParam(key: string, value: QueryParamValue | null | undefined): this;
-    queryParams(params?: QueryParams): this;
-    build(): string;
-    toString(): string;
-}
-
-export class UrlBuilder implements IUrlBuilder {
+export class UrlBuilder {
     private readonly base: string;
     private readonly segments: string[] = [];
     private readonly params: Record<string, string> = {};

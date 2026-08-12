@@ -9,8 +9,6 @@ interface Assertions {
 
     assertPattern(value: string, pattern: RegExp, message: string): void;
 
-    assertFormat(value: unknown, pattern: RegExp, message: string): void;
-
     assertInteger(value: number, name: string, opts?: { min?: number; max?: number; label?: string }): void;
 }
 
@@ -30,10 +28,6 @@ function makeAssertions(ErrorType: ErrorCtor): Assertions {
 
         assertPattern(value: string, pattern: RegExp, message: string): void {
             if (!pattern.test(value.trim())) fail(message);
-        },
-
-        assertFormat(value: unknown, pattern: RegExp, message: string): void {
-            if (typeof value !== 'string' || !pattern.test(value.trim())) fail(message);
         },
 
         assertInteger(value: number, name: string, opts: { min?: number; max?: number; label?: string } = {}): void {
@@ -59,17 +53,13 @@ export function assertPositiveInt(value: number, name: string): void {
 
 const trialAssertions: Assertions = makeAssertions(TrialValidationError);
 
-const PATTERNS = {
-    nctId: /^NCT\d{8}$/i,
-    geo: /^distance\(-?\d+(\.\d+)?,-?\d+(\.\d+)?,\d+(\.\d+)?(km|mi)?\)$/,
-    geoDecay: /^func:(gauss|exp|linear),scale:(\d+(\.\d+)?(km|mi)),offset:(\d+(\.\d+)?(km|mi)),decay:(\d+(\.\d+)?)$/,
-} as const;
+const NCT_ID_PATTERN = /^NCT\d{8}$/i;
 
 export function validateNctId(value: string): void {
     trialAssertions.assertNonEmptyString(value, 'nctId');
     trialAssertions.assertPattern(
         value,
-        PATTERNS.nctId,
+        NCT_ID_PATTERN,
         `Invalid nctId format. Expected: NCT followed by 8 digits. Got: "${value}"`,
     );
 }

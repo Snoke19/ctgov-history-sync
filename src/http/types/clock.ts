@@ -1,23 +1,9 @@
 /**
- * Abstraction over time so tests can run without real setTimeout / Date.now.
- * EndpointManager already supports injected sleep — this extends the pattern
- * to Retry (backoff) and TokenBucket (rate-limit window tracking).
+ * Shared clock and sleeper for the HTTP layer.
  *
- * THIS is the single clock source AND the single sleep implementation for the
- * entire HTTP layer. FetchOperation (fetch deadline budgets), EndpointManager
- * (endpoint acquisition deadlines) and TokenBucket (rate-limit refill windows)
- * must all measure time on this one source, and EndpointManager, TokenBucket
- * and Retry must all suspend on this one sleeper. Do NOT introduce a second
- * time base (e.g. performance.now()) or a second sleep helper (e.g. an inline
- * `new Promise(resolve => setTimeout(resolve, ms))` wrapper or a separate
- * `timers/promises.setTimeout`) for deadline math — mixing epoch and
- * process-relative timestamps produces meaningless deadlines that are
- * impossible to reason about, and duplicate sleepers drift out of sync with
- * each other.
- *
- * The default clock is Date.now() (epoch ms), which matches the documented
- * semantics of `FetchJsonRequestOptions.deadline` ("Absolute deadline (epoch
- * ms)").
+ * All time-dependent components (FetchOperation, EndpointManager,
+ * TokenBucket, Retry) must use this single clock source and sleeper.
+ * Mixing time bases produces meaningless deadlines.
  */
 
 export interface Clock {
