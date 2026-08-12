@@ -75,10 +75,13 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             callerSignal?.addEventListener('abort', forwardAbort, { once: true });
         }
 
+        let succeeded = false;
         try {
             const remainingMs = this.getRemainingBudget(deadline, timeoutMs);
             const endpoint = await this.acquireEndpoint(remainingMs, controller.signal);
-            return await this.executeRequest(endpoint, controller.signal);
+            const response = await this.executeRequest(endpoint, controller.signal);
+            succeeded = true;
+            return response;
         } catch (error) {
             if (isAbortError(error)) {
                 throw classifyAbortError(error, this.url, this.options.signal, timeoutMs);
@@ -87,9 +90,13 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         } finally {
             clearTimeout(timeoutId);
             callerSignal?.removeEventListener('abort', forwardAbort);
-            // Release the composite explicitly so nothing keeps a reference to
-            // the controller (and its signal) once the request is done.
-            controller.abort();
+            // Only abort on the failure path. On success the caller still
+            // needs the response body stream; aborting here would destroy it
+            // (undici-backed fetch rejects response.json() with AbortError).
+            // On success the detached controller is garbage-collected.
+            if (!succeeded) {
+                controller.abort();
+            }
         }
     }
 
