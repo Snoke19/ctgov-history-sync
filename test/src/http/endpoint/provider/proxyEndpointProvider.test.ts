@@ -1,14 +1,12 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { ProxyPoolConfig } from '../../../../../src/config/config.js';
 import { ConfigurationError } from '../../../../../src/error/errors.js';
-import { Endpoint } from '../../../../../src/http/endpoint/endpoint.js';
 import { ProxyUrlParser } from '../../../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
 import { ProxyTransportFactory } from '../../../../../src/http/endpoint/transport/factory/proxyTransportFactory.js';
 import {
     CreateProxyEndpointsOptions,
     HttpTransport,
 } from '../../../../../src/http/endpoint/transport/httpTransport.js';
-import { Limiter } from '../../../../../src/http/limiter/limiter.js';
 import { HttpClientOptions } from '../../../../../src/http/types/http.js';
 import * as validation from '../../../../../src/utils/validation.js';
 
@@ -25,16 +23,10 @@ const { ProxyEndpointProvider } =
 describe('ProxyEndpointProvider', () => {
     let transportFactory: jest.Mocked<ProxyTransportFactory>;
     let urlParser: jest.Mocked<ProxyUrlParser>;
-    let createLimiter: jest.Mock<() => Limiter>;
     let provider: InstanceType<typeof ProxyEndpointProvider>;
 
-    const makeLimiter = (): Limiter =>
-        ({
-            tryAcquire: jest.fn().mockReturnValue(true),
-            timeUntilToken: jest.fn().mockReturnValue(0),
-        }) as unknown as Limiter;
-
-    const makeTransport = (): HttpTransport => ({ close: jest.fn() }) as unknown as HttpTransport;
+    const makeTransport = (): HttpTransport =>
+        ({ close: jest.fn<() => Promise<void>>().mockResolvedValue(undefined) }) as unknown as HttpTransport;
 
     type MakeOptionsOverrides = {
         concurrency?: number | undefined;
@@ -71,34 +63,41 @@ describe('ProxyEndpointProvider', () => {
 
         transportFactory = { create: jest.fn() } as unknown as jest.Mocked<ProxyTransportFactory>;
         urlParser = { parse: jest.fn() } as unknown as jest.Mocked<ProxyUrlParser>;
-        createLimiter = jest.fn<() => Limiter>(makeLimiter);
         transportFactory.create.mockImplementation(makeTransport);
 
         provider = new ProxyEndpointProvider(transportFactory, urlParser);
     });
 
     describe('happy path', () => {
-        it('builds one endpoint per parsed proxy URL', () => {
+        it('returns one definition per parsed proxy URL, keyed by the URL', () => {
             const urls = ['http://proxy1:8080', 'http://proxy2:8080'];
             urlParser.parse.mockReturnValue(urls);
 
-            const result = provider.build(makeOptions({ proxyUrls: urls.join(',') }), createLimiter);
+            const result = provider.build(makeOptions({ proxyUrls: urls.join(',') }));
 
-            expect(result).toHaveLength(2);
-            result.forEach((ep) => expect(ep).toBeInstanceOf(Endpoint));
+            expect(result.map((d) => d.id)).toEqual(urls);
         });
 
-        it('passes the correct CreateProxyEndpointsOptions to the transport factory', () => {
+        it('does not create transports during build() — creation is deferred to createTransport', () => {
+            urlParser.parse.mockReturnValue(['http://proxy1:8080']);
+
+            provider.build(makeOptions());
+
+            expect(transportFactory.create).not.toHaveBeenCalled();
+        });
+
+        it('passes the correct CreateProxyEndpointsOptions to the transport factory on createTransport', () => {
             urlParser.parse.mockReturnValue(['socks5://proxy:1080']);
 
-            provider.build(
+            const [definition] = provider.build(
                 makeOptions({
                     concurrency: 3,
                     poolConfig: { maxConnections: 20 },
                     proxyUrls: 'socks5://proxy:1080',
                 }),
-                createLimiter,
             );
+
+            definition!.createTransport();
 
             expect(transportFactory.create).toHaveBeenCalledWith(
                 'socks5://proxy:1080',
@@ -110,27 +109,21 @@ describe('ProxyEndpointProvider', () => {
             );
         });
 
-        it('assigns each proxy URL to its corresponding endpoint instance', () => {
+        it('creates each proxy transport with its own URL', () => {
             const urls = ['http://a:1', 'http://b:2'];
             urlParser.parse.mockReturnValue(urls);
 
-            const result = provider.build(makeOptions(), createLimiter);
+            const definitions = provider.build(makeOptions());
+            definitions.forEach((d) => d.createTransport());
 
-            expect(result.map((e) => e.url)).toEqual(urls);
-        });
-
-        it('creates a fresh limiter for every endpoint', () => {
-            urlParser.parse.mockReturnValue(['p1', 'p2', 'p3']);
-
-            provider.build(makeOptions(), createLimiter);
-
-            expect(createLimiter).toHaveBeenCalledTimes(3);
+            expect(transportFactory.create).toHaveBeenNthCalledWith(1, 'http://a:1', expect.any(Object));
+            expect(transportFactory.create).toHaveBeenNthCalledWith(2, 'http://b:2', expect.any(Object));
         });
 
         it('falls back to empty string when proxyUrls is undefined', () => {
             urlParser.parse.mockReturnValue(['http://proxy:8080']);
 
-            provider.build(makeOptions({ proxyUrls: undefined }), createLimiter);
+            provider.build(makeOptions({ proxyUrls: undefined }));
 
             expect(urlParser.parse).toHaveBeenCalledWith('');
         });
@@ -140,21 +133,19 @@ describe('ProxyEndpointProvider', () => {
         it('delegates concurrency validation to assertPositiveInt', () => {
             urlParser.parse.mockReturnValue(['http://p:1']);
 
-            provider.build(makeOptions({ concurrency: 7 }), createLimiter);
+            provider.build(makeOptions({ concurrency: 7 }));
 
             expect(assertPositiveInt).toHaveBeenCalledWith(7, 'concurrency');
         });
 
         it('throws ConfigurationError when poolConfig is missing', () => {
-            expect(() => provider.build(makeOptions({ poolConfig: undefined }), createLimiter)).toThrow(
-                ConfigurationError,
-            );
+            expect(() => provider.build(makeOptions({ poolConfig: undefined }))).toThrow(ConfigurationError);
         });
 
         it('throws ConfigurationError when urlParser returns an empty array', () => {
             urlParser.parse.mockReturnValue([]);
 
-            expect(() => provider.build(makeOptions({ proxyUrls: '' }), createLimiter)).toThrow(
+            expect(() => provider.build(makeOptions({ proxyUrls: '' }))).toThrow(
                 new ConfigurationError('No valid proxy URLs were configured.'),
             );
         });
@@ -164,90 +155,19 @@ describe('ProxyEndpointProvider', () => {
                 throw new Error('concurrency must be a positive integer');
             });
 
-            expect(() => provider.build(makeOptions({ concurrency: 0 }), createLimiter)).toThrow(
+            expect(() => provider.build(makeOptions({ concurrency: 0 }))).toThrow(
                 'concurrency must be a positive integer',
             );
         });
-    });
 
-    describe('error handling & resource safety', () => {
         it('does not call urlParser.parse if assertPositiveInt throws', () => {
             assertPositiveInt.mockImplementation(() => {
                 throw new Error('bad concurrency');
             });
 
-            expect(() => provider.build(makeOptions({ concurrency: -1 }), createLimiter)).toThrow();
+            expect(() => provider.build(makeOptions({ concurrency: -1 }))).toThrow();
 
             expect(urlParser.parse).not.toHaveBeenCalled();
-            expect(createLimiter).not.toHaveBeenCalled();
-        });
-
-        it('does not call createLimiter or transportFactory if urlParser returns empty', () => {
-            urlParser.parse.mockReturnValue([]);
-
-            expect(() => provider.build(makeOptions({ proxyUrls: '' }), createLimiter)).toThrow();
-
-            expect(createLimiter).not.toHaveBeenCalled();
-            expect(transportFactory.create).not.toHaveBeenCalled();
-        });
-
-        it('propagates error when createLimiter throws', () => {
-            urlParser.parse.mockReturnValue(['http://p:1', 'http://p:2']);
-            const err = new Error('limiter OOM');
-            createLimiter.mockImplementation(() => {
-                throw err;
-            });
-
-            expect(() => provider.build(makeOptions(), createLimiter)).toThrow(err);
-        });
-
-        it('propagates error when transportFactory.create throws', () => {
-            urlParser.parse.mockReturnValue(['http://p:1']);
-            const err = new Error('transport init failed');
-            transportFactory.create.mockImplementation(() => {
-                throw err;
-            });
-
-            expect(() => provider.build(makeOptions(), createLimiter)).toThrow(err);
-        });
-
-        it('closes previously created endpoints when transportFactory.create throws mid-array', () => {
-            const t0 = makeTransport();
-            const limiter0 = makeLimiter();
-            const limiter1 = makeLimiter();
-
-            urlParser.parse.mockReturnValue(['http://p:1', 'http://p:2']);
-            createLimiter.mockReturnValueOnce(limiter0).mockReturnValueOnce(limiter1);
-            transportFactory.create.mockReturnValueOnce(t0).mockImplementationOnce(() => {
-                throw new Error('transport failed');
-            });
-
-            expect(() => provider.build(makeOptions(), createLimiter)).toThrow('transport failed');
-
-            // The first endpoint's transport was closed to prevent socket/timer leaks.
-            expect(t0.close).toHaveBeenCalledTimes(1);
-            // The second limiter was never used (iteration didn't complete).
-            expect(limiter1.tryAcquire).not.toHaveBeenCalled();
-        });
-
-        it('closes previously created endpoints if createLimiter throws mid-array', () => {
-            const t0 = makeTransport();
-            const t1 = makeTransport();
-            urlParser.parse.mockReturnValue(['a', 'b', 'c']);
-            createLimiter
-                .mockReturnValueOnce(makeLimiter())
-                .mockReturnValueOnce(makeLimiter())
-                .mockImplementationOnce(() => {
-                    throw new Error('limiter failed');
-                });
-            transportFactory.create.mockReturnValueOnce(t0).mockReturnValueOnce(t1);
-
-            expect(() => provider.build(makeOptions(), createLimiter)).toThrow('limiter failed');
-
-            // Both successfully created endpoints had their transports closed.
-            expect(t0.close).toHaveBeenCalledTimes(1);
-            expect(t1.close).toHaveBeenCalledTimes(1);
-            expect(transportFactory.create).toHaveBeenCalledTimes(3);
         });
 
         it('propagates error when urlParser.parse throws', () => {
@@ -256,52 +176,57 @@ describe('ProxyEndpointProvider', () => {
                 throw err;
             });
 
-            expect(() => provider.build(makeOptions({ proxyUrls: 'bad' }), createLimiter)).toThrow(err);
+            expect(() => provider.build(makeOptions({ proxyUrls: 'bad' }))).toThrow(err);
         });
     });
 
-    describe('constructor safety', () => {
-        it('accepts undefined factories without throwing (defers failure)', () => {
-            expect(
-                () =>
-                    new ProxyEndpointProvider(
-                        undefined as unknown as ProxyTransportFactory,
-                        undefined as unknown as ProxyUrlParser,
-                    ),
-            ).not.toThrow();
-        });
-
-        it('throws at build time when transportFactory is undefined', () => {
-            const invalidProvider = new ProxyEndpointProvider(undefined as unknown as ProxyTransportFactory, urlParser);
-            urlParser.parse.mockReturnValue(['x']);
-
-            expect(() => invalidProvider.build(makeOptions(), createLimiter)).toThrow();
-        });
-
+    describe('error handling & resource safety', () => {
         it('throws at build time when urlParser is undefined', () => {
             const invalidProvider = new ProxyEndpointProvider(transportFactory, undefined as unknown as ProxyUrlParser);
 
-            expect(() => invalidProvider.build(makeOptions(), createLimiter)).toThrow();
+            expect(() => invalidProvider.build(makeOptions())).toThrow();
+        });
+
+        it('defers a missing transportFactory failure to createTransport time', () => {
+            const invalidProvider = new ProxyEndpointProvider(
+                undefined as unknown as ProxyTransportFactory,
+                urlParser,
+            );
+            urlParser.parse.mockReturnValue(['x']);
+
+            const [definition] = invalidProvider.build(makeOptions());
+
+            expect(() => definition!.createTransport()).toThrow();
+        });
+
+        it('propagates error when transportFactory.create throws on createTransport', () => {
+            urlParser.parse.mockReturnValue(['http://p:1']);
+            const err = new Error('transport init failed');
+            transportFactory.create.mockImplementation(() => {
+                throw err;
+            });
+
+            const [definition] = provider.build(makeOptions());
+
+            expect(() => definition!.createTransport()).toThrow(err);
         });
     });
 
     describe('idempotency & freshness', () => {
-        it('returns new endpoint instances on every build call', () => {
+        it('returns fresh definition instances on every build call', () => {
             urlParser.parse.mockReturnValue(['http://p:1']);
 
-            const r1 = provider.build(makeOptions(), createLimiter);
-            const r2 = provider.build(makeOptions(), createLimiter);
+            const r1 = provider.build(makeOptions());
+            const r2 = provider.build(makeOptions());
 
             expect(r1[0]).not.toBe(r2[0]);
-            expect(createLimiter).toHaveBeenCalledTimes(2);
-            expect(transportFactory.create).toHaveBeenCalledTimes(2);
         });
 
         it('re-parses proxyUrls on every build call', () => {
             urlParser.parse.mockReturnValue(['http://p:1']);
 
-            provider.build(makeOptions({ proxyUrls: 'a' }), createLimiter);
-            provider.build(makeOptions({ proxyUrls: 'b' }), createLimiter);
+            provider.build(makeOptions({ proxyUrls: 'a' }));
+            provider.build(makeOptions({ proxyUrls: 'b' }));
 
             expect(urlParser.parse).toHaveBeenCalledTimes(2);
             expect(urlParser.parse).toHaveBeenNthCalledWith(1, 'a');
@@ -314,7 +239,8 @@ describe('ProxyEndpointProvider', () => {
             const urls = ['a', 'b', 'c', 'd'];
             urlParser.parse.mockReturnValue(urls);
 
-            provider.build(makeOptions({ concurrency: 2 }), createLimiter);
+            const definitions = provider.build(makeOptions({ concurrency: 2 }));
+            definitions.forEach((d) => d.createTransport());
 
             const lastCall = transportFactory.create.mock.calls[3]!;
             const lastOptions = lastCall[1] as CreateProxyEndpointsOptions;

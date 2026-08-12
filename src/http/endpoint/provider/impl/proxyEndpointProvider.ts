@@ -1,12 +1,10 @@
 import { ConfigurationError } from '../../../../error/errors.js';
 import { assertPositiveInt } from '../../../../utils/validation.js';
-import type { Limiter } from '../../../limiter/limiter.js';
 import type { HttpClientOptions } from '../../../types/http.js';
-import { Endpoint } from '../../endpoint.js';
 import { ProxyUrlParser } from '../../proxy/httpProxyUrlParser.js';
 import { ProxyTransportFactory } from '../../transport/factory/proxyTransportFactory.js';
 import { CreateProxyEndpointsOptions } from '../../transport/httpTransport.js';
-import { EndpointProvider } from '../endpointProvider.js';
+import { EndpointDefinition, EndpointProvider } from '../endpointProvider.js';
 
 export class ProxyEndpointProvider implements EndpointProvider {
     constructor(
@@ -14,7 +12,7 @@ export class ProxyEndpointProvider implements EndpointProvider {
         private readonly urlParser: ProxyUrlParser,
     ) {}
 
-    build(options: HttpClientOptions, createLimiter: () => Limiter): Endpoint[] {
+    build(options: HttpClientOptions): EndpointDefinition[] {
         assertPositiveInt(options.concurrency, 'concurrency');
 
         if (!options.poolConfig) {
@@ -33,24 +31,9 @@ export class ProxyEndpointProvider implements EndpointProvider {
             poolConfig: options.poolConfig,
         };
 
-        const endpoints: Endpoint[] = [];
-        try {
-            for (const urlProxy of urls) {
-                const transport = this.transportFactory.create(urlProxy, transportOptions);
-                try {
-                    endpoints.push(new Endpoint(urlProxy, createLimiter(), transport));
-                } catch (err) {
-                    void transport.close();
-                    throw err;
-                }
-            }
-        } catch (err) {
-            // Close all endpoints constructed so far to prevent socket/timer leaks.
-            for (const endpoint of endpoints) {
-                void endpoint.close();
-            }
-            throw err;
-        }
-        return endpoints;
+        return urls.map((urlProxy) => ({
+            id: urlProxy,
+            createTransport: () => this.transportFactory.create(urlProxy, transportOptions),
+        }));
     }
 }

@@ -1,23 +1,19 @@
 import { logger } from '../../../../config/logging.js';
-import { Limiter } from '../../../limiter/limiter.js';
 import { HttpClientOptions } from '../../../types/http.js';
-import { Endpoint } from '../../endpoint.js';
 import { DirectTransportFactory } from '../../transport/factory/directTransportFactory.js';
-import { EndpointProvider } from '../endpointProvider.js';
+import { EndpointDefinition, EndpointProvider } from '../endpointProvider.js';
 
 export class DirectEndpointProvider implements EndpointProvider {
     constructor(private readonly transportFactory: DirectTransportFactory) {}
 
-    build(_options: HttpClientOptions, createLimiter: () => Limiter): Endpoint[] {
+    build(_options: HttpClientOptions): EndpointDefinition[] {
         logger.debug('DirectEndpointProvider: building single direct endpoint');
 
-        // Create transport first so it can be closed if limiter creation fails.
-        const transport = this.transportFactory.create();
-        try {
-            return [new Endpoint('direct', createLimiter(), transport)];
-        } catch (err) {
-            void transport.close();
-            throw err;
-        }
+        return [
+            {
+                id: 'direct',
+                createTransport: () => this.transportFactory.create(),
+            },
+        ];
     }
 }
