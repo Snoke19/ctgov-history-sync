@@ -26,7 +26,7 @@ export class UrlBuilder implements IUrlBuilder {
     }
 
     public queryParam(key: string, value: QueryParamValue | null | undefined): this {
-        if (value !== null) {
+        if (value !== null && value !== undefined) {
             this.params[key] = String(value);
         }
         return this;

@@ -47,6 +47,10 @@ describe('UrlBuilder', () => {
         it('omits null values', () => {
             expect(new UrlBuilder('https://api.test').queryParam('q', null).build()).toBe('https://api.test');
         });
+
+        it('omits undefined values', () => {
+            expect(new UrlBuilder('https://api.test').queryParam('q', undefined).build()).toBe('https://api.test');
+        });
     });
 
     describe('queryParams', () => {
