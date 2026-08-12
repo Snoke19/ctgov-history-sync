@@ -49,24 +49,31 @@ export class TrialFetchError extends TrialError {
     }
 }
 
-export interface TrialTimeoutOptions {
-    totalBudgetMs?: number | null;
+export class HttpException extends TrialError {
+    override name: string = 'HttpException';
+
+    constructor(
+        message: string,
+        readonly status: number,
+        readonly retryAfterMs?: number,
+    ) {
+        super(message);
+    }
 }
 
-export class TrialTimeoutError extends TrialError {
-    override name: string = 'TrialTimeoutError';
-    readonly url: string;
-    readonly timeoutMs: number;
-    readonly totalBudgetMs: number | null;
-    proxyUrl: string | null = null;
+export class NetworkException extends TrialError {
+    override name: string = 'NetworkException';
 
-    constructor(url: string, timeoutMs: number, { totalBudgetMs = null }: TrialTimeoutOptions = {}) {
-        const budgetNote =
-            totalBudgetMs !== null && totalBudgetMs !== timeoutMs ? ` (total budget ${totalBudgetMs}ms)` : '';
-        super(`Fetch timed out after ${timeoutMs}ms${budgetNote}: ${url}`);
-        this.url = url;
-        this.timeoutMs = timeoutMs;
-        this.totalBudgetMs = totalBudgetMs;
+    constructor(message: string, cause?: unknown) {
+        super(message, { cause });
+    }
+}
+
+export class TimeoutException extends TrialError {
+    override name: string = 'TimeoutException';
+
+    constructor(message: string) {
+        super(message);
     }
 }
 

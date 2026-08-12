@@ -1,4 +1,11 @@
 import { describe, expect, it } from '@jest/globals';
+import { BACKOFF_CAP_MS, RETRY_BASE_DELAY_MS } from '../../../../src/config/config.js';
+import {
+    HttpException,
+    NetworkException,
+    TimeoutException,
+    TrialError,
+} from '../../../../src/error/errors.js';
 import {
     calculateBackoff,
     defaultRetryPolicyConfig,
@@ -6,9 +13,6 @@ import {
     RetryPolicyConfig,
     shouldRetry,
 } from '../../../../src/http/retry/retryPolicy.js';
-import { HttpException, NetworkException, TimeoutException } from '../../../../src/http/retry/exceptions.js';
-import { BusinessException } from '../../../../src/http/retry/businessException.js';
-import { BACKOFF_CAP_MS, RETRY_BASE_DELAY_MS } from '../../../../src/config/config.js';
 
 describe('shouldRetry', () => {
     const baseConfig: RetryPolicyConfig = {
@@ -72,9 +76,9 @@ describe('shouldRetry', () => {
         });
     });
 
-    describe('unknown BusinessException', () => {
+    describe('unknown TrialError', () => {
         it('never retries', () => {
-            const error = new BusinessException('something weird');
+            const error = new TrialError('something weird');
             expect(shouldRetry(error, 'GET', baseConfig)).toBe(false);
         });
     });

@@ -1,4 +1,5 @@
 import { MAX_RETRIES } from '../config/config.js';
+import { HttpException } from '../error/errors.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
@@ -6,7 +7,6 @@ import { HttpResponse } from './endpoint/transport/httpTransport.js';
 import { DefaultLimiterFactory } from './limiter/factory/defaultLimiterFactory.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { parseOkResponseBody } from './responseBody.js';
-import { HttpException } from './retry/exceptions.js';
 import { FetchOperation } from './retry/fetchOperation.js';
 import { Retry } from './retry/retry.js';
 import { calculateBackoff, defaultRetryPolicyConfig, shouldRetry } from './retry/retryPolicy.js';

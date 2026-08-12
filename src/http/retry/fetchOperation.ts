@@ -1,14 +1,19 @@
 import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../../config/config.js';
-import { CallerAbortedError, EndpointAcquisitionTimeoutError } from '../../error/errors.js';
+import {
+    CallerAbortedError,
+    EndpointAcquisitionTimeoutError,
+    HttpException,
+    NetworkException,
+    TimeoutException,
+    TrialError,
+} from '../../error/errors.js';
 import { EndpointHandle } from '../endpoint/endpoint.js';
 import { EndpointManager } from '../endpoint/manager/endpointManager.js';
 import { HttpResponse } from '../endpoint/transport/httpTransport.js';
 import { drainBody } from '../responseBody.js';
 import { defaultClock } from '../types/clock.js';
 import { FetchJsonRequestOptions } from '../types/http.js';
-import { BusinessException } from './businessException.js';
 import { BusinessOperation } from './businessOperation.js';
-import { HttpException, NetworkException, TimeoutException } from './exceptions.js';
 import { parseRetryAfterHeader } from './retryPolicy.js';
 
 function isAbortError(error: unknown): boolean {
@@ -88,7 +93,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 signal,
             });
         } catch (error) {
-            if (error instanceof BusinessException) throw error;
+            if (error instanceof TrialError) throw error;
             throw this.normalizeTransportError(error);
         }
 

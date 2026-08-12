@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
-import { NetworkException, TimeoutException } from '../../../../src/http/retry/exceptions.js';
+import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
 import { EndpointManager } from '../../../../src/http/endpoint/manager/endpointManager.js';
 import { API_URL, makeClient } from './helpers.js';
 

@@ -9,7 +9,7 @@ import {
     RATE_LIMIT_WINDOW,
 } from './config/config.js';
 import { logger } from './config/logging.js';
-import { TrialFetchError, TrialNotFoundError, TrialTimeoutError } from './error/errors.js';
+import { HttpException, NetworkException, TimeoutException, TrialFetchError, TrialNotFoundError } from './error/errors.js';
 import { ProxyEndpointProvider } from './http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from './http/endpoint/proxy/httpProxyUrlParser.js';
 import { UndiciTransportFactory } from './http/endpoint/transport/impl/undiciProxyTransport.js';
@@ -73,8 +73,18 @@ async function fetchTrialSafe(nctId: string) {
             return null;
         }
 
-        if (err instanceof TrialTimeoutError) {
+        if (err instanceof TimeoutException) {
             logger.warn(`Timeout: ${nctId}`);
+            return null;
+        }
+
+        if (err instanceof HttpException) {
+            logger.warn(`HTTP ${err.status}: ${nctId}`);
+            return null;
+        }
+
+        if (err instanceof NetworkException) {
+            logger.warn(`Network error: ${nctId} — ${getErrorMessage(err.cause)}`);
             return null;
         }
 

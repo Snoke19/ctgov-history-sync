@@ -1,11 +1,11 @@
-import { BusinessException } from './businessException.js';
+import { TrialError } from '../../error/errors.js';
 import { BusinessOperation } from './businessOperation.js';
 
 export class Retry<T> implements BusinessOperation<T> {
     private readonly op: BusinessOperation<T>;
     private readonly maxRetries: number;
-    private readonly shouldRetry: (error: BusinessException) => boolean;
-    private readonly delayMs: number | ((attempt: number, error: BusinessException) => number);
+    private readonly shouldRetry: (error: TrialError) => boolean;
+    private readonly delayMs: number | ((attempt: number, error: TrialError) => number);
     private readonly sleep: (ms: number) => Promise<void>;
     private attemptsCount = 0;
 
@@ -20,8 +20,8 @@ export class Retry<T> implements BusinessOperation<T> {
     constructor(
         op: BusinessOperation<T>,
         maxRetries: number,
-        shouldRetry: (error: BusinessException) => boolean,
-        delayMs: number | ((attempt: number, error: BusinessException) => number),
+        shouldRetry: (error: TrialError) => boolean,
+        delayMs: number | ((attempt: number, error: TrialError) => number),
         sleep: (ms: number) => Promise<void> = (ms) =>
             new Promise((resolve) => {
                 setTimeout(resolve, ms);
@@ -39,11 +39,11 @@ export class Retry<T> implements BusinessOperation<T> {
             try {
                 return await this.op.perform();
             } catch (e) {
-                if (!(e instanceof BusinessException)) {
+                if (!(e instanceof TrialError)) {
                     throw e;
                 }
 
-                const error = e as BusinessException;
+                const error = e as TrialError;
 
                 if (!this.shouldRetry(error)) {
                     throw error;

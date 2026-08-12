@@ -5,9 +5,8 @@ import {
     RETRY_ON_TIMEOUT,
     RETRYABLE_STATUS_CODES,
 } from '../../config/config.js';
+import { HttpException, NetworkException, TimeoutException, TrialError } from '../../error/errors.js';
 import { HttpResponse } from '../endpoint/transport/httpTransport.js';
-import { BusinessException } from './businessException.js';
-import { HttpException, NetworkException, TimeoutException } from './exceptions.js';
 
 /**
  * Configurable retry policy. All fields are plain values, so the object
@@ -107,7 +106,7 @@ export function parseRetryAfterHeader(response: HttpResponse): number | null {
  *                     5xx additionally requires the request to be idempotent.
  */
 export function shouldRetry(
-    error: BusinessException,
+    error: TrialError,
     method: string,
     config: RetryPolicyConfig,
     idempotent?: boolean,
