@@ -2,9 +2,6 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { createApiClient, FetchJsonOptions } from '../../../src/api/api.js';
 import { TrialNotFoundError, TrialValidationError } from '../../../src/error/errors.js';
 
-// Explicit test-only URLs, injected via ApiClientDependencies so the tests
-// never depend on the configuration-derived API_BASE_URL / API_DETAIL_URL.
-// Editing .env.test can therefore no longer silently rewrite these assertions.
 const TEST_BASE_URL = 'http://api.test/v2/studies';
 const TEST_DETAIL_URL = 'http://api.test/v2/studies/detail';
 
@@ -16,6 +13,21 @@ describe('ApiClient', () => {
     function makeApi(fetchJson: ReturnType<typeof createFetchJsonMock>) {
         return createApiClient({ fetchJson, apiBaseUrl: TEST_BASE_URL, apiDetailUrl: TEST_DETAIL_URL });
     }
+
+    it('normalizes the NCT ID before constructing the detail URL', async () => {
+        const fetchJson = jest.fn<(url: string, options?: FetchJsonOptions) => Promise<unknown>>().mockResolvedValue({
+            protocolSection: {},
+        });
+
+        const client = createApiClient({
+            fetchJson,
+            apiDetailUrl: 'https://example.test/studies',
+        });
+
+        await client.fetchTrialDetail(' nct12345678 ');
+
+        expect(fetchJson).toHaveBeenCalledWith('https://example.test/studies/NCT12345678', { allow404: true });
+    });
 
     describe('fetchStudiesPage', () => {
         it('builds a URL from page params and returns the parsed response', async () => {

@@ -26,6 +26,10 @@ describe('assertPositiveInt', () => {
 });
 
 describe('validateNctId', () => {
+    it('returns the canonical NCT ID', () => {
+        expect(validateNctId(' nct12345678 ')).toBe('NCT12345678');
+    });
+
     it('accepts a valid nctId', () => {
         expect(() => validateNctId('NCT12345678')).not.toThrow();
     });

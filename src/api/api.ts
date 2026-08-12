@@ -44,14 +44,14 @@ export function createApiClient({
     }
 
     async function fetchTrialDetail(nctId: string, params: FetchTrialDetailParams = {}): Promise<unknown> {
-        validateNctId(nctId);
+        const normalizedNctId = validateNctId(nctId);
 
-        const url = new UrlBuilder(apiDetailUrl).path(nctId).queryParams(params).build();
+        const url = new UrlBuilder(apiDetailUrl).path(normalizedNctId).queryParams(params).build();
 
         const data = await fetchJson(url, { allow404: true });
 
         if (data === null) {
-            throw new TrialNotFoundError(nctId);
+            throw new TrialNotFoundError(normalizedNctId);
         }
 
         return data;

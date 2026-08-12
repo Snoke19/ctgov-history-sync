@@ -62,11 +62,16 @@ const trialAssertions: Assertions = makeAssertions(TrialValidationError);
 
 const NCT_ID_PATTERN = /^NCT\d{8}$/i;
 
-export function validateNctId(value: string): void {
+export function validateNctId(value: string): string {
     trialAssertions.assertNonEmptyString(value, 'nctId');
+
+    const normalized = value.trim().toUpperCase();
+
     trialAssertions.assertPattern(
-        value,
+        normalized,
         NCT_ID_PATTERN,
         `Invalid nctId format. Expected: NCT followed by 8 digits. Got: "${value}"`,
     );
+
+    return normalized;
 }
