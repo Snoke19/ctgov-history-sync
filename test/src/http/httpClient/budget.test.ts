@@ -1,11 +1,39 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
 import { EndpointManager } from '../../../../src/http/endpoint/manager/endpointManager.js';
-import { API_URL, createFakes, makeClient } from './helpers.js';
+import { API_URL, createFakes, jsonResponse, makeClient } from './helpers.js';
 
 describe('HttpClient deadline budget', () => {
     afterEach(() => {
         jest.restoreAllMocks();
+    });
+
+    it('does not sleep past the global deadline when Retry-After exceeds the remaining budget', async () => {
+        const fakes = createFakes();
+
+        const fetchMock = jest
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValueOnce(
+                jsonResponse({ error: 'rate limited' }, 429, { 'Retry-After': '30' }, 'Too Many Requests'),
+            );
+
+        const client = makeClient({
+            clock: fakes.clock,
+            sleep: fakes.sleep,
+            random: fakes.random,
+        });
+
+        const promise = client.fetchJson(`${API_URL}/deadline-backoff`, {
+            deadline: 1000,
+            maxRetries: 1,
+        });
+
+        // First request fails immediately; the retry-after is 30s,
+        // but only 1s remains in the global request budget.
+        await expect(promise).rejects.toBeInstanceOf(TimeoutException);
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fakes.clock.now()).toBe(1000);
     });
 
     it('forwards shrinking deadline budget to endpoint acquisition on each retry', async () => {

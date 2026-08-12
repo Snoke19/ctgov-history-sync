@@ -96,9 +96,10 @@ export function calculateBackoff(attempt: number, retryAfterMs: number | null, o
  * @returns Milliseconds to wait, or null if the header is absent.
  *          Returns 0 if the parsed date is already in the past.
  */
-export function parseRetryAfterHeader(response: HttpResponse): number | null {
+export function parseRetryAfterHeader(response: HttpResponse, now: number = Date.now()): number | null {
     const raw = response.headers.get('Retry-After');
     if (!raw) return null;
+
     const value = raw.trim();
 
     if (/^[+-]?\d/.test(value)) {
@@ -115,8 +116,11 @@ export function parseRetryAfterHeader(response: HttpResponse): number | null {
         return seconds * 1000;
     }
 
-    const dateMs = Date.parse(raw);
-    if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
+    const dateMs = Date.parse(value);
+
+    if (!Number.isNaN(dateMs)) {
+        return Math.max(0, dateMs - now);
+    }
 
     return null;
 }

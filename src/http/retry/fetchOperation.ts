@@ -156,7 +156,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         }
 
         if (!response.ok) {
-            const retryAfter = parseRetryAfterHeader(response);
+            const retryAfter = parseRetryAfterHeader(response, this.clock());
 
             await drainBody(response);
 

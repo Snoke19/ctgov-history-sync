@@ -1,5 +1,11 @@
 import { BACKOFF_CAP_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
-import { CallerAbortedError, ConfigurationError, HttpException, NetworkException } from '../error/errors.js';
+import {
+    CallerAbortedError,
+    ConfigurationError,
+    HttpException,
+    NetworkException,
+    TimeoutException,
+} from '../error/errors.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
@@ -11,7 +17,7 @@ import { FetchOperation } from './retry/fetchOperation.js';
 import { Retry } from './retry/retry.js';
 import { calculateBackoff, defaultRetryPolicyConfig, shouldRetry } from './retry/retryPolicy.js';
 import type { RetryPolicyConfig } from './retry/retryPolicy.js';
-import { defaultRandom, defaultSleeper } from './types/clock.js';
+import { defaultClock, defaultRandom, defaultSleeper } from './types/clock.js';
 import type { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
 
 export interface HttpClient {
@@ -52,6 +58,7 @@ export function createHttpClient(
         const operation = new FetchOperation(endpointManager, url, options, clientOptions.clock?.now);
         const retry = buildRetry(
             operation,
+            url,
             options,
             clientOptions.sleep ?? defaultSleeper.sleep,
             clientOptions.random ?? defaultRandom.random,
@@ -95,6 +102,7 @@ export function createHttpClient(
 
     function buildRetry(
         operation: FetchOperation,
+        url: string,
         options: FetchJsonRequestOptions,
         sleep: (ms: number) => Promise<void>,
         random: () => number,
@@ -115,17 +123,33 @@ export function createHttpClient(
             );
         }
 
+        const clock = clientOptions.clock?.now ?? defaultClock.now;
+        const deadline = options.deadline;
+
         return new Retry<HttpResponse>(
             operation,
             options.maxRetries ?? MAX_RETRIES,
             (error) => shouldRetry(error, effectiveConfig),
             (attempt, error) => {
                 const retryAfterMs = error instanceof HttpException ? (error.retryAfterMs ?? null) : null;
-                return calculateBackoff(attempt, retryAfterMs, {
+
+                const delay = calculateBackoff(attempt, retryAfterMs, {
                     random,
                     baseDelayMs: effectiveConfig.baseDelayMs,
                     backoffCapMs: effectiveConfig.backoffCapMs,
                 });
+
+                if (deadline === undefined) {
+                    return delay;
+                }
+
+                const remainingMs = deadline - clock();
+
+                if (remainingMs <= 0) {
+                    throw new TimeoutException(`Deadline exhausted: ${url}`);
+                }
+
+                return Math.min(delay, remainingMs);
             },
             sleep,
             options.signal,

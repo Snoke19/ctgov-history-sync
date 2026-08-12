@@ -10,6 +10,25 @@ describe('Retry', () => {
         return { perform } as unknown as BusinessOperation<string>;
     }
 
+    it('accepts maxRetries: 0', async () => {
+        const op = makeOp(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
+        const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
+
+        await expect(new Retry(op, 0, () => true, 1, sleep).perform()).rejects.toBeInstanceOf(HttpException);
+
+        expect(op.perform).toHaveBeenCalledTimes(1);
+        expect(sleep).not.toHaveBeenCalled();
+    });
+
+    it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])('rejects invalid maxRetries: %s', (maxRetries) => {
+        const op = makeOp(jest.fn<() => Promise<string>>());
+        const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>();
+
+        expect(() => new Retry(op, maxRetries, () => true, 1, sleep)).toThrow(
+            'maxRetries must be a non-negative integer',
+        );
+    });
+
     it('returns the operation result on the first successful attempt', async () => {
         const op = makeOp(jest.fn<() => Promise<string>>().mockResolvedValue('ok'));
         const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>();
@@ -121,7 +140,9 @@ describe('Retry', () => {
 
     it('rethrows a sleep rejection when the signal is not aborted', async () => {
         const op = makeOp(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
-        const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockRejectedValue(new Error('sleep boom'));
+        const sleep = jest
+            .fn<(ms: number, signal?: AbortSignal) => Promise<void>>()
+            .mockRejectedValue(new Error('sleep boom'));
 
         const promise = new Retry(op, 2, () => true, 1, sleep).perform();
 

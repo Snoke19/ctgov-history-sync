@@ -10,7 +10,6 @@ export class Retry<T> implements BusinessOperation<T> {
     private readonly delayMs: number | ((attempt: number, error: TrialError) => number);
     private readonly sleep: Sleeper['sleep'];
     private readonly signal: AbortSignal | undefined;
-    private attemptsCount = 0;
 
     /**
      * @param op          The operation to execute, retried on failure.
@@ -32,6 +31,10 @@ export class Retry<T> implements BusinessOperation<T> {
         sleep: Sleeper['sleep'] = defaultSleeper.sleep,
         signal?: AbortSignal,
     ) {
+        if (!Number.isInteger(maxRetries) || maxRetries < 0) {
+            throw new TypeError('maxRetries must be a non-negative integer');
+        }
+
         this.op = op;
         this.maxRetries = maxRetries;
         this.shouldRetry = shouldRetry;
@@ -41,30 +44,31 @@ export class Retry<T> implements BusinessOperation<T> {
     }
 
     async perform(): Promise<T> {
-        while (this.attemptsCount < this.maxRetries) {
+        let retryCount = 0;
+
+        while (true) {
             try {
                 return await this.op.perform();
-            } catch (e) {
-                if (!(e instanceof TrialError)) {
-                    throw e;
+            } catch (error) {
+                if (!(error instanceof TrialError)) {
+                    throw error;
                 }
-
-                const error = e as TrialError;
 
                 if (!this.shouldRetry(error)) {
                     throw error;
                 }
 
-                this.attemptsCount++;
+                if (retryCount >= this.maxRetries) {
+                    throw error;
+                }
 
-                const delay =
-                    typeof this.delayMs === 'function' ? this.delayMs(this.attemptsCount - 1, error) : this.delayMs;
+                const delay = typeof this.delayMs === 'function' ? this.delayMs(retryCount, error) : this.delayMs;
+
+                retryCount++;
 
                 await this.abortableSleep(Math.max(0, delay));
             }
         }
-
-        return await this.op.perform();
     }
 
     /**

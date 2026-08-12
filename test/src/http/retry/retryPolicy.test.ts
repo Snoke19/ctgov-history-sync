@@ -173,16 +173,17 @@ describe('parseRetryAfterHeader', () => {
     });
 
     it('parses HTTP-date format', () => {
-        const futureMs = Date.now() + 3000;
-        const dateStr = new Date(futureMs).toUTCString();
-        const result = parseRetryAfterHeader(makeResponse({ 'Retry-After': dateStr }));
-        expect(result).toBeGreaterThanOrEqual(2000);
-        expect(result).toBeLessThanOrEqual(4000);
+        const now = Date.parse('2026-08-13T00:00:00Z');
+        const dateStr = new Date(now + 3000).toUTCString();
+
+        expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': dateStr }), now)).toBe(3000);
     });
 
     it('returns 0 for a past HTTP-date', () => {
-        const pastStr = new Date(0).toUTCString();
-        expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': pastStr }))).toBe(0);
+        const now = Date.parse('2026-08-13T00:00:00Z');
+        const past = new Date(now - 3000).toUTCString();
+
+        expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': past }), now)).toBe(0);
     });
 
     it('returns null for unparsable values', () => {
