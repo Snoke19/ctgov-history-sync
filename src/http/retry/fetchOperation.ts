@@ -19,6 +19,18 @@ function isAbortError(error: unknown): boolean {
     return false;
 }
 
+function classifyAbortError(
+    error: unknown,
+    url: string,
+    callerSignal: AbortSignal | undefined,
+    timeoutMs: number,
+): NetworkException | TimeoutException {
+    if (callerSignal?.aborted) {
+        return new NetworkException(`Request cancelled by caller: ${url}`, error);
+    }
+    return new TimeoutException(`Request timed out after ${timeoutMs}ms: ${url}`);
+}
+
 export class FetchOperation implements BusinessOperation<HttpResponse> {
     constructor(
         private readonly endpointManager: EndpointManager,
@@ -43,10 +55,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             return await this.executeRequest(endpoint, signal);
         } catch (error) {
             if (isAbortError(error)) {
-                if (this.options.signal?.aborted) {
-                    throw new NetworkException(`Request cancelled by caller: ${this.url}`, error);
-                }
-                throw new TimeoutException(`Request timed out after ${timeoutMs}ms: ${this.url}`);
+                throw classifyAbortError(error, this.url, this.options.signal, timeoutMs);
             }
             throw error;
         } finally {
@@ -107,10 +116,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
 
         if (isAbortError(error)) {
-            if (this.options.signal?.aborted) {
-                return new NetworkException(`Request cancelled by caller: ${this.url}`, error);
-            }
-            return new TimeoutException(`Request timed out after ${timeoutMs}ms: ${this.url}`);
+            return classifyAbortError(error, this.url, this.options.signal, timeoutMs);
         }
 
         return new NetworkException(`Network failure: ${this.url}`, error);
