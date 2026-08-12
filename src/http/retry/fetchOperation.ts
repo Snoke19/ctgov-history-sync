@@ -17,34 +17,12 @@ import { FetchJsonRequestOptions } from '../types/http.js';
 import { BusinessOperation } from './businessOperation.js';
 import { parseRetryAfterHeader } from './retryPolicy.js';
 
-function isAbortError(error: unknown): boolean {
-    if (error instanceof CallerAbortedError) return true;
-    // The shared sleeper (clock.ts) rejects with an AbortError-named Error
-    // when its signal aborts mid-wait. Errors from a transport never reach
-    // here — they are classified in executeRequest.
-    if (error !== null && typeof error === 'object' && 'name' in error && error.name === 'AbortError') return true;
-    return false;
-}
-
-function classifyAbortError(
-    error: unknown,
-    url: string,
-    callerSignal: AbortSignal | undefined,
-    timeoutMs: number,
-): NetworkException | TimeoutException {
-    if (callerSignal?.aborted) {
-        return new NetworkException(`Request cancelled by caller: ${url}`, error);
-    }
-    return new TimeoutException(`Request timed out after ${timeoutMs}ms: ${url}`);
-}
+type AbortReason = 'caller' | 'timeout';
 
 export class FetchOperation implements BusinessOperation<HttpResponse> {
     /**
-     * @param clock   Clock source for budget/deadline math. Defaults to the
-     *                shared HTTP-layer clock (`Date.now()`, epoch ms) — the
-     *                same source EndpointManager and TokenBucket use, so a
-     *                single injected clock can never drift against the
-     *                deadline arithmetic.
+     * @param clock Clock source for budget/deadline math. Defaults to the
+     * shared HTTP-layer clock (`Date.now()`).
      */
     constructor(
         private readonly endpointManager: EndpointManager,
@@ -59,16 +37,24 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
         const controller = new AbortController();
 
-        // Compose the caller's signal into the controller we own instead of
-        // AbortSignal.any, which keeps an abort listener attached to the
-        // caller's (possibly long-lived) signal until IT aborts — on every
-        // successful request that listener would otherwise accumulate. We
-        // attach our own listener and always detach it in `finally`.
-        // The `{ once: true }` only guards against stray duplicate events;
-        // the successful-path cleanup is the removeEventListener below.
+        /**
+         * Tracks the semantic reason for the controller abort.
+         *
+         * The transport must not infer this from the concrete error object,
+         * because the underlying library may use completely different error
+         * representations.
+         */
+        let abortReason: AbortReason | undefined;
+
         const callerSignal = this.options.signal;
-        const forwardAbort = (): void => controller.abort();
+
+        const forwardAbort = (): void => {
+            abortReason = 'caller';
+            controller.abort();
+        };
+
         if (callerSignal?.aborted) {
+            abortReason = 'caller';
             controller.abort();
         } else {
             callerSignal?.addEventListener('abort', forwardAbort, { once: true });
@@ -76,31 +62,47 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
         let succeeded = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
         try {
             const remainingMs = this.getRemainingBudget(deadline, timeoutMs);
-            // Bound the per-attempt timer by the remaining budget so the
-            // global deadline is respected end-to-end.
-            const attemptTimeoutMs = Math.min(timeoutMs, remainingMs);
-            timeoutId = setTimeout(() => controller.abort(), attemptTimeoutMs);
+
+            /**
+             * This timer represents OUR timeout, not a transport timeout.
+             * Therefore the transport receives a normal AbortSignal and does
+             * not need to know anything about timeout timers.
+             */
+            timeoutId = setTimeout(() => {
+                abortReason = 'timeout';
+                controller.abort();
+            }, remainingMs);
 
             const endpoint = await this.acquireEndpoint(remainingMs, controller.signal);
-            const response = await this.executeRequest(endpoint, controller.signal);
+
+            const response = await this.executeRequest(endpoint, controller.signal, () => abortReason);
+
             succeeded = true;
             return response;
         } catch (error) {
-            if (isAbortError(error)) {
-                throw classifyAbortError(error, this.url, this.options.signal, timeoutMs);
+            /**
+             * Endpoint acquisition can observe our aborted controller directly
+             * and produce the canonical domain-level CallerAbortedError.
+             */
+            if (error instanceof CallerAbortedError) {
+                throw this.mapAbortReason(error, abortReason, timeoutMs);
             }
+
             throw error;
         } finally {
             if (timeoutId !== undefined) {
                 clearTimeout(timeoutId);
             }
+
             callerSignal?.removeEventListener('abort', forwardAbort);
-            // Only abort on the failure path. On success the caller still
-            // needs the response body stream; aborting here would destroy it
-            // (undici-backed fetch rejects response.json() with AbortError).
-            // On success the detached controller is garbage-collected.
+
+            /**
+             * Only abort on failure. On success the response body may still
+             * need to be consumed.
+             */
             if (!succeeded) {
                 controller.abort();
             }
@@ -109,9 +111,11 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
     private getRemainingBudget(deadline: number, totalBudgetMs: number): number {
         const remainingMs = deadline - this.clock();
+
         if (remainingMs <= 0) {
             throw new TimeoutException(`Deadline exhausted (budget: ${totalBudgetMs}ms): ${this.url}`);
         }
+
         return remainingMs;
     }
 
@@ -122,12 +126,18 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             if (error instanceof EndpointAcquisitionTimeoutError) {
                 throw new TimeoutException(`Endpoint acquisition timed out after ${remainingMs}ms: ${this.url}`);
             }
+
             throw error;
         }
     }
 
-    private async executeRequest(endpoint: EndpointHandle, signal: AbortSignal): Promise<HttpResponse> {
+    private async executeRequest(
+        endpoint: EndpointHandle,
+        signal: AbortSignal,
+        getAbortReason: () => AbortReason | undefined,
+    ): Promise<HttpResponse> {
         const method = this.options.method ?? 'GET';
+
         let response: HttpResponse;
 
         try {
@@ -139,13 +149,18 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 signal,
             });
         } catch (error) {
-            if (error instanceof TrialError) throw error;
-            throw this.classifyTransportError(endpoint.transport, error);
+            if (error instanceof TrialError) {
+                throw error;
+            }
+
+            throw this.classifyTransportError(endpoint.transport, error, getAbortReason());
         }
 
         if (!response.ok) {
             const retryAfter = parseRetryAfterHeader(response);
+
             await drainBody(response);
+
             throw new HttpException(
                 `HTTP ${response.status} ${response.statusText} — ${method} ${this.url}`,
                 response.status,
@@ -156,15 +171,44 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         return response;
     }
 
+    private classifyTransportError(
+        transport: HttpTransport,
+        error: unknown,
+        abortReason: AbortReason | undefined,
+    ): NetworkException | TimeoutException {
+        const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
+        const classification = transport.classifyError(error);
+
+        switch (classification.kind) {
+            case 'timeout':
+                return new TimeoutException(`Request timed out after ${timeoutMs}ms: ${this.url}`);
+
+            case 'cancelled':
+                return this.mapAbortReason(classification.cause, abortReason, timeoutMs);
+
+            case 'network':
+                return new NetworkException(`Network failure: ${this.url}`, classification.cause);
+        }
+    }
+
+    private mapAbortReason(
+        cause: unknown,
+        abortReason: AbortReason | undefined,
+        timeoutMs: number,
+    ): NetworkException | TimeoutException {
+        if (abortReason === 'caller') {
+            return new NetworkException(`Request cancelled by caller: ${this.url}`, cause);
+        }
+
+        return new TimeoutException(`Request timed out after ${timeoutMs}ms: ${this.url}`);
+    }
+
     private buildHeaders(): Record<string, string> {
         const defaults: Record<string, string> = {
             Accept: 'application/json',
             'User-Agent': DEFAULT_USER_AGENT,
         };
 
-        // Normalize caller headers: lowercase keys that collide with our
-        // defaults are rewritten to the canonical casing so both casings
-        // are never sent.
         const KNOWN_KEYS = new Map([
             ['accept', 'Accept'],
             ['user-agent', 'User-Agent'],
@@ -176,22 +220,5 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         }
 
         return defaults;
-    }
-
-    private classifyTransportError(transport: HttpTransport, error: unknown): NetworkException | TimeoutException {
-        const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
-        const classification = transport.classifyError(error);
-
-        switch (classification.kind) {
-            case 'timeout':
-                return new TimeoutException(`Request timed out after ${timeoutMs}ms: ${this.url}`);
-            case 'cancelled':
-                // The transport only knows the signal aborted; whether that
-                // was our per-attempt timeout timer or a forwarded caller
-                // abort is decided here from the caller's signal.
-                return classifyAbortError(classification.cause, this.url, this.options.signal, timeoutMs);
-            case 'network':
-                return new NetworkException(`Network failure: ${this.url}`, classification.cause);
-        }
     }
 }

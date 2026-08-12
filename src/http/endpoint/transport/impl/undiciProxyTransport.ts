@@ -4,8 +4,13 @@ import { ProxyPoolConfig } from '../../../../config/config.js';
 import { createPoolFactory } from '../../../poolFactory.js';
 import { resolveConnections } from '../../proxy/resolveConnections.js';
 import { ProxyTransportFactory } from '../factory/proxyTransportFactory.js';
-import { CreateProxyEndpointsOptions, HttpRequest, HttpResponse, HttpTransport, TransportErrorClassification } from '../httpTransport.js';
-import { classifyFetchError } from './fetchErrorClassification.js';
+import {
+    CreateProxyEndpointsOptions,
+    HttpRequest,
+    HttpResponse,
+    HttpTransport,
+    TransportErrorClassification,
+} from '../httpTransport.js';
 
 /** Creates a Dispatcher pool for a given origin. Called by ProxyAgent per-origin. */
 export type PoolClientFactory = (origin: URL, opts?: Record<string, unknown>) => Dispatcher;
@@ -38,7 +43,22 @@ export class UndiciHttpTransport implements HttpTransport {
     }
 
     classifyError(error: unknown): TransportErrorClassification {
-        return classifyFetchError(error);
+        if (
+            error !== null &&
+            typeof error === 'object' &&
+            (('name' in error && error.name === 'AbortError') ||
+                ('code' in error && (error as NodeJS.ErrnoException).code === 'ABORT_ERR'))
+        ) {
+            return {
+                kind: 'cancelled',
+                cause: error,
+            };
+        }
+
+        return {
+            kind: 'network',
+            cause: error,
+        };
     }
 
     close(): Promise<void> {
@@ -66,11 +86,7 @@ export class UndiciHttpTransport implements HttpTransport {
  * Factory that produces {@link UndiciHttpTransport} instances wired to a
  * specific proxy URL and shared pool configuration.
  *
- * This class is the **only** place in the endpoint layer that knows about
- * undici. Constructor parameters are test seams:
- *
- *   - `poolCreator`  – stub to avoid creating real TCP pools.
- *   - `agentCreator` – stub to avoid real proxy handshakes.
+ * This class is the only place in the endpoint layer that knows about undici.
  */
 export class UndiciTransportFactory implements ProxyTransportFactory {
     constructor(
@@ -80,10 +96,14 @@ export class UndiciTransportFactory implements ProxyTransportFactory {
 
     create(proxyUrl: string, options: CreateProxyEndpointsOptions): HttpTransport {
         const connections = resolveConnections(options.proxyCount, options.concurrency, options.poolConfig);
+
         const poolFactory = this.poolCreator(options.poolConfig);
 
         const clientFactory: PoolClientFactory = (origin, opts) =>
-            poolFactory(origin, { ...opts, connections } as Parameters<typeof poolFactory>[1]);
+            poolFactory(origin, {
+                ...opts,
+                connections,
+            } as Parameters<typeof poolFactory>[1]);
 
         const agent = this.agentCreator(proxyUrl, clientFactory);
 
@@ -92,5 +112,8 @@ export class UndiciTransportFactory implements ProxyTransportFactory {
 }
 
 function defaultAgentCreator(uri: string, clientFactory: PoolClientFactory): ProxyAgent {
-    return new ProxyAgent({ uri, clientFactory: clientFactory as (origin: URL, opts: object) => Dispatcher });
+    return new ProxyAgent({
+        uri,
+        clientFactory: clientFactory as (origin: URL, opts: object) => Dispatcher,
+    });
 }

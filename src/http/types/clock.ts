@@ -1,3 +1,5 @@
+import { CallerAbortedError } from '../../error/errors.js';
+
 /**
  * Shared clock and sleeper for the HTTP layer.
  *
@@ -27,12 +29,6 @@ export interface RandomSource {
     random(): number;
 }
 
-function abortError(): Error {
-    const error = new Error('The operation was aborted.');
-    error.name = 'AbortError';
-    return error;
-}
-
 /**
  * Production default — real time, cooperative early-exit on cancellation.
  *
@@ -44,20 +40,34 @@ export const defaultSleeper: Sleeper = {
     sleep: (ms, signal) =>
         new Promise<void>((resolve, reject) => {
             if (signal?.aborted) {
-                reject(abortError());
-            } else {
-                const onAbort = (): void => {
-                    clearTimeout(timer);
-                    reject(abortError());
-                };
-
-                const timer = setTimeout(() => {
-                    signal?.removeEventListener('abort', onAbort);
-                    resolve();
-                }, ms);
-
-                signal?.addEventListener('abort', onAbort, { once: true });
+                reject(new CallerAbortedError());
+                return;
             }
+
+            let settled = false;
+
+            const cleanup = (): void => {
+                clearTimeout(timer);
+                signal?.removeEventListener('abort', onAbort);
+            };
+
+            const onAbort = (): void => {
+                if (settled) return;
+
+                settled = true;
+                cleanup();
+                reject(new CallerAbortedError());
+            };
+
+            const timer = setTimeout(() => {
+                if (settled) return;
+
+                settled = true;
+                cleanup();
+                resolve();
+            }, ms);
+
+            signal?.addEventListener('abort', onAbort, { once: true });
         }),
 };
 
