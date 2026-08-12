@@ -16,8 +16,12 @@ export const FETCH_TIMEOUT_MS = env.int('FETCH_TIMEOUT_MS', defaults.FETCH_TIMEO
 export const DEFAULT_RETRY_AFTER_MS = env.int('DEFAULT_RETRY_AFTER_MS', defaults.DEFAULT_RETRY_AFTER_MS);
 export const RETRY_BASE_DELAY_MS = env.int('RETRY_BASE_DELAY_MS', defaults.RETRY_BASE_DELAY_MS);
 export const MAX_RETRIES = env.int('MAX_RETRIES', defaults.MAX_RETRIES);
-export const RETRYABLE_STATUS_CODES = parseStatusCodes('RETRYABLE_STATUS_CODES', defaults.RETRYABLE_STATUS_CODES);
-export const RETRY_AFTER_STATUS_CODES = parseStatusCodes('RETRY_AFTER_STATUS_CODES', defaults.RETRY_AFTER_STATUS_CODES);
+export const RETRYABLE_STATUS_CODES: ReadonlySet<number> = Object.freeze(
+    parseStatusCodes('RETRYABLE_STATUS_CODES', defaults.RETRYABLE_STATUS_CODES),
+);
+export const RETRY_AFTER_STATUS_CODES: ReadonlySet<number> = Object.freeze(
+    parseStatusCodes('RETRY_AFTER_STATUS_CODES', defaults.RETRY_AFTER_STATUS_CODES),
+);
 export const BACKOFF_CAP_MS = env.int('BACKOFF_CAP_MS', defaults.BACKOFF_CAP_MS);
 export const DEFAULT_USER_AGENT = env.str('DEFAULT_USER_AGENT', defaults.DEFAULT_USER_AGENT);
 export const ERROR_BODY_PREVIEW_LENGTH = env.int('ERROR_BODY_PREVIEW_LENGTH', defaults.ERROR_BODY_PREVIEW_LENGTH);

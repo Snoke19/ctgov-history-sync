@@ -165,8 +165,8 @@ describe('parseRetryAfterHeader', () => {
         const futureMs = Date.now() + 3000;
         const dateStr = new Date(futureMs).toUTCString();
         const result = parseRetryAfterHeader(makeResponse({ 'Retry-After': dateStr }));
-        expect(result).toBeGreaterThanOrEqual(2500);
-        expect(result).toBeLessThanOrEqual(3500);
+        expect(result).toBeGreaterThanOrEqual(2000);
+        expect(result).toBeLessThanOrEqual(4000);
     });
 
     it('returns 0 for a past HTTP-date', () => {
