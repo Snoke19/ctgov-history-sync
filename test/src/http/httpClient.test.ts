@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 import { TrialFetchError } from '../../../src/error/errors.js';
 import { createHttpClient } from '../../../src/http/httpClient.js';
@@ -75,10 +75,6 @@ function makeClient(optionsOverrides: Partial<HttpClientOptions> = {}): HttpClie
 }
 
 describe('HttpClient Integration', () => {
-    beforeEach(() => {
-        jest.restoreAllMocks();
-    });
-
     afterEach(() => {
         jest.restoreAllMocks();
     });
@@ -404,13 +400,14 @@ describe('HttpClient Integration', () => {
 
             expect(fetchMock).toHaveBeenCalledTimes(1);
 
-            const [url, options] = fetchMock.mock.calls[0]!;
-
-            expect(url).toBe(`${API_URL}/mutate`);
-            expect(options).toMatchObject({
-                method: 'POST',
-                body,
-            });
+            expect(fetchMock).toHaveBeenNthCalledWith(
+                1,
+                `${API_URL}/mutate`,
+                expect.objectContaining({
+                    method: 'POST',
+                    body,
+                }),
+            );
         });
 
         it('retries 500 error on POST request when idempotent: true is explicitly provided', async () => {
@@ -676,9 +673,7 @@ describe('HttpClient Integration', () => {
                 client.fetchJson(`${API_URL}/cancelled`, {
                     signal: controller.signal,
                 }),
-            ).rejects.toMatchObject({
-                message: expect.stringContaining('cancelled'),
-            });
+            ).rejects.toBeInstanceOf(NetworkException);
 
             expect(fetchMock).not.toHaveBeenCalled();
         });
