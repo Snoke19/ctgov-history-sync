@@ -1,5 +1,5 @@
+import { getEventListeners } from 'node:events';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-
 import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
 import { EndpointManager } from '../../../../src/http/endpoint/manager/endpointManager.js';
 import { API_URL, createFakes, jsonResponse, makeClient } from './helpers.js';
@@ -159,7 +159,8 @@ describe('HttpClient network & timeout failures', () => {
         jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
             return new Promise((_, reject) => {
                 const signal = init?.signal as AbortSignal | undefined;
-                let safetyTimer: NodeJS.Timeout | undefined;
+
+                const safetyTimer = setTimeout(() => reject(new Error('should not reach')), 1000);
 
                 if (signal) {
                     const onAbort = () => {
@@ -172,7 +173,6 @@ describe('HttpClient network & timeout failures', () => {
                     }
                     signal.addEventListener('abort', onAbort, { once: true });
                 }
-                safetyTimer = setTimeout(() => reject(new Error('should not reach')), 1000);
             });
         });
 
@@ -185,6 +185,23 @@ describe('HttpClient network & timeout failures', () => {
                 maxRetries: 1,
             }),
         ).rejects.toBeInstanceOf(NetworkException);
+    });
+
+    it('detaches its abort listener from a shared caller signal after a successful request', async () => {
+        jest.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(jsonResponse({ ok: true })));
+
+        const controller = new AbortController();
+        const client = makeClient();
+
+        for (let i = 0; i < 3; i++) {
+            // A long-lived caller signal shared across many requests must not
+            // accumulate abort listeners with every successful request.
+            const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/leak-${i}`, {
+                signal: controller.signal,
+            });
+            expect(result).toEqual({ ok: true });
+            expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+        }
     });
 
     it('throttles requests when useRateLimit is enabled', async () => {

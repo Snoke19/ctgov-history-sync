@@ -60,14 +60,25 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-        const signal = this.options.signal
-            ? AbortSignal.any([controller.signal, this.options.signal])
-            : controller.signal;
+        // Compose the caller's signal into the controller we own instead of
+        // AbortSignal.any, which keeps an abort listener attached to the
+        // caller's (possibly long-lived) signal until IT aborts — on every
+        // successful request that listener would otherwise accumulate. We
+        // attach our own listener and always detach it in `finally`.
+        // The `{ once: true }` only guards against stray duplicate events;
+        // the successful-path cleanup is the removeEventListener below.
+        const callerSignal = this.options.signal;
+        const forwardAbort = (): void => controller.abort();
+        if (callerSignal?.aborted) {
+            controller.abort();
+        } else {
+            callerSignal?.addEventListener('abort', forwardAbort, { once: true });
+        }
 
         try {
             const remainingMs = this.getRemainingBudget(deadline, timeoutMs);
-            const endpoint = await this.acquireEndpoint(remainingMs, signal);
-            return await this.executeRequest(endpoint, signal);
+            const endpoint = await this.acquireEndpoint(remainingMs, controller.signal);
+            return await this.executeRequest(endpoint, controller.signal);
         } catch (error) {
             if (isAbortError(error)) {
                 throw classifyAbortError(error, this.url, this.options.signal, timeoutMs);
@@ -75,6 +86,10 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             throw error;
         } finally {
             clearTimeout(timeoutId);
+            callerSignal?.removeEventListener('abort', forwardAbort);
+            // Release the composite explicitly so nothing keeps a reference to
+            // the controller (and its signal) once the request is done.
+            controller.abort();
         }
     }
 
