@@ -6,19 +6,19 @@ import { defaults } from './defaults.js';
 // ---------------------------------------------------------------------------
 export const API_BASE_URL = env.str('API_BASE_URL', defaults.API_BASE_URL);
 export const API_DETAIL_URL = env.str('API_DETAIL_URL', defaults.API_DETAIL_URL);
-export const PAGE_SIZE = env.int('PAGE_SIZE', defaults.PAGE_SIZE);
+export const PAGE_SIZE = env.int('PAGE_SIZE', defaults.PAGE_SIZE, { positive: true });
 
 // ---------------------------------------------------------------------------
 // http
 // ---------------------------------------------------------------------------
-export const CONCURRENCY = env.int('CONCURRENCY', defaults.CONCURRENCY);
-export const FETCH_TIMEOUT_MS = env.int('FETCH_TIMEOUT_MS', defaults.FETCH_TIMEOUT_MS);
-export const RETRY_BASE_DELAY_MS = env.int('RETRY_BASE_DELAY_MS', defaults.RETRY_BASE_DELAY_MS);
-export const MAX_RETRIES = env.int('MAX_RETRIES', defaults.MAX_RETRIES);
+export const CONCURRENCY = env.int('CONCURRENCY', defaults.CONCURRENCY, { positive: true });
+export const FETCH_TIMEOUT_MS = env.int('FETCH_TIMEOUT_MS', defaults.FETCH_TIMEOUT_MS, { positive: true });
+export const RETRY_BASE_DELAY_MS = env.int('RETRY_BASE_DELAY_MS', defaults.RETRY_BASE_DELAY_MS, { positive: true });
+export const MAX_RETRIES = env.int('MAX_RETRIES', defaults.MAX_RETRIES, { positive: true });
 export const RETRYABLE_STATUS_CODES: ReadonlySet<number> = Object.freeze(
     parseStatusCodes('RETRYABLE_STATUS_CODES', defaults.RETRYABLE_STATUS_CODES),
 );
-export const BACKOFF_CAP_MS = env.int('BACKOFF_CAP_MS', defaults.BACKOFF_CAP_MS);
+export const BACKOFF_CAP_MS = env.int('BACKOFF_CAP_MS', defaults.BACKOFF_CAP_MS, { positive: true });
 export const DEFAULT_USER_AGENT = env.str('DEFAULT_USER_AGENT', defaults.DEFAULT_USER_AGENT);
 export const RETRY_ON_TIMEOUT = env.bool('RETRY_ON_TIMEOUT', defaults.RETRY_ON_TIMEOUT);
 export const RETRY_ON_NETWORK_ERROR = env.bool('RETRY_ON_NETWORK_ERROR', defaults.RETRY_ON_NETWORK_ERROR);
@@ -27,16 +27,27 @@ export const RETRY_ON_NETWORK_ERROR = env.bool('RETRY_ON_NETWORK_ERROR', default
 // proxy
 // ---------------------------------------------------------------------------
 export const PROXY_URLS = env.str('PROXY_URLS', defaults.PROXY_URLS);
-export const PROXY_POOL_CONNECTIONS = env.int('PROXY_POOL_CONNECTIONS', defaults.PROXY_POOL_CONNECTIONS);
-export const MAX_POOL_CONNECTIONS = env.int('MAX_POOL_CONNECTIONS', defaults.MAX_POOL_CONNECTIONS);
-export const PROXY_POOL_PIPELINING = env.int('PROXY_POOL_PIPELINING', defaults.PROXY_POOL_PIPELINING);
+export const PROXY_POOL_CONNECTIONS = env.int('PROXY_POOL_CONNECTIONS', defaults.PROXY_POOL_CONNECTIONS, {
+    positive: true,
+});
+export const MAX_POOL_CONNECTIONS = env.int('MAX_POOL_CONNECTIONS', defaults.MAX_POOL_CONNECTIONS, { positive: true });
+export const PROXY_POOL_PIPELINING = env.int('PROXY_POOL_PIPELINING', defaults.PROXY_POOL_PIPELINING, {
+    positive: true,
+});
 export const PROXY_POOL_KEEP_ALIVE_TIMEOUT = env.int(
     'PROXY_POOL_KEEP_ALIVE_TIMEOUT_MS',
     defaults.PROXY_POOL_KEEP_ALIVE_TIMEOUT,
+    { positive: true },
 );
-export const PROXY_POOL_HEADERS_TIMEOUT = env.int('PROXY_POOL_HEADERS_TIMEOUT_MS', defaults.PROXY_POOL_HEADERS_TIMEOUT);
-export const PROXY_POOL_BODY_TIMEOUT = env.int('PROXY_POOL_BODY_TIMEOUT_MS', defaults.PROXY_POOL_BODY_TIMEOUT);
-export const PROXY_POOL_CONNECT_TIMEOUT = env.int('PROXY_POOL_CONNECT_TIMEOUT_MS', defaults.PROXY_POOL_CONNECT_TIMEOUT);
+export const PROXY_POOL_HEADERS_TIMEOUT = env.int('PROXY_POOL_HEADERS_TIMEOUT_MS', defaults.PROXY_POOL_HEADERS_TIMEOUT, {
+    positive: true,
+});
+export const PROXY_POOL_BODY_TIMEOUT = env.int('PROXY_POOL_BODY_TIMEOUT_MS', defaults.PROXY_POOL_BODY_TIMEOUT, {
+    positive: true,
+});
+export const PROXY_POOL_CONNECT_TIMEOUT = env.int('PROXY_POOL_CONNECT_TIMEOUT_MS', defaults.PROXY_POOL_CONNECT_TIMEOUT, {
+    positive: true,
+});
 
 export const PROXY_POOL_CONFIG: ProxyPoolConfig = Object.freeze({
     connections: PROXY_POOL_CONNECTIONS,
@@ -64,9 +75,11 @@ export interface ProxyPoolConfig extends ConnectionConfig {
 // ---------------------------------------------------------------------------
 // rateLimit
 // ---------------------------------------------------------------------------
-export const RATE_LIMIT_CAPACITY = env.int('PROXY_RATE_LIMIT_CAPACITY', defaults.RATE_LIMIT_CAPACITY);
-export const RATE_LIMIT_WINDOW = env.int('PROXY_RATE_LIMIT_WINDOW_MS', defaults.RATE_LIMIT_WINDOW);
-export const ACQUIRE_TIMEOUT = env.int('PROXY_ACQUIRE_TIMEOUT_MS', defaults.ACQUIRE_TIMEOUT);
+export const RATE_LIMIT_CAPACITY = env.int('PROXY_RATE_LIMIT_CAPACITY', defaults.RATE_LIMIT_CAPACITY, {
+    positive: true,
+});
+export const RATE_LIMIT_WINDOW = env.int('PROXY_RATE_LIMIT_WINDOW_MS', defaults.RATE_LIMIT_WINDOW, { positive: true });
+export const ACQUIRE_TIMEOUT = env.int('PROXY_ACQUIRE_TIMEOUT_MS', defaults.ACQUIRE_TIMEOUT, { positive: true });
 
 // ---------------------------------------------------------------------------
 // Validate required fields
