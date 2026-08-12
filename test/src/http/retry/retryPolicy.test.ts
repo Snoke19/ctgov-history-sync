@@ -6,6 +6,7 @@ import {
     TimeoutException,
     TrialError,
 } from '../../../../src/error/errors.js';
+import { HttpResponse } from '../../../../src/http/endpoint/transport/httpTransport.js';
 import {
     calculateBackoff,
     defaultRetryPolicyConfig,
@@ -153,7 +154,7 @@ describe('parseRetryAfterHeader', () => {
             headers: {
                 get: (name: string) => headers[name] ?? null,
             },
-        } as any;
+        } as unknown as HttpResponse;
     }
 
     it('returns null when header is absent', () => {

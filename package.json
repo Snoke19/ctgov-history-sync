@@ -7,8 +7,8 @@
         "start": "node --env-file=.env src/index.ts",
         "test": "node --env-file=.env.test --experimental-vm-modules node_modules/jest/bin/jest.js",
         "test:watch": "node --env-file=.env.test --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
-        "lint": "eslint src/",
-        "lint:fix": "eslint src/ --fix",
+        "lint": "eslint src/ test/",
+        "lint:fix": "eslint src/ test/ --fix",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
     },

@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Limiter } from '../../../../../src/http/limiter/limiter.js';
-import { ProxyTransportFactory } from '../../../../../src/http/endpoint/transport/factory/proxyTransportFactory.js';
-import { ProxyUrlParser } from '../../../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
-import { HttpClientOptions } from '../../../../../src/http/types/http.js';
 import { ProxyPoolConfig } from '../../../../../src/config/config.js';
-import { Endpoint } from '../../../../../src/http/endpoint/endpoint.js';
 import { ConfigurationError } from '../../../../../src/error/errors.js';
-import * as validation from '../../../../../src/utils/validation.js';
+import { Endpoint } from '../../../../../src/http/endpoint/endpoint.js';
+import { ProxyUrlParser } from '../../../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
+import { ProxyTransportFactory } from '../../../../../src/http/endpoint/transport/factory/proxyTransportFactory.js';
 import {
     CreateProxyEndpointsOptions,
     HttpTransport,
 } from '../../../../../src/http/endpoint/transport/httpTransport.js';
+import { Limiter } from '../../../../../src/http/limiter/limiter.js';
+import { HttpClientOptions } from '../../../../../src/http/types/http.js';
+import * as validation from '../../../../../src/utils/validation.js';
 
 const assertPositiveInt = jest.fn();
 

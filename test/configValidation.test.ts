@@ -1,6 +1,6 @@
-import { ConfigurationError } from '../src/error/errors.js';
-import { env, parseStatusCodes, validateConfig } from '../src/config/configValidation.js';
 import { afterAll, beforeEach, describe, expect, it } from '@jest/globals';
+import { env, parseStatusCodes, validateConfig } from '../src/config/configValidation.js';
+import { ConfigurationError } from '../src/error/errors.js';
 
 describe('configValidation', () => {
     const ORIGINAL_ENV = process.env;

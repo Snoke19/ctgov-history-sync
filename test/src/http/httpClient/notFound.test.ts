@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-
 import { API_URL, jsonResponse, makeClient } from './helpers.js';
 
 describe('HttpClient 404 & null handling', () => {

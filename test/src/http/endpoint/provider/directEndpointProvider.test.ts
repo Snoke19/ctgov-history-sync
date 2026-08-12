@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Limiter } from '../../../../../src/http/limiter/limiter.js';
 import { DirectEndpointProvider } from '../../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
-import { HttpTransport } from '../../../../../src/http/endpoint/transport/httpTransport.js';
-import { HttpClientOptions } from '../../../../../src/http/types/http.js';
 import { DirectTransportFactory } from '../../../../../src/http/endpoint/transport/factory/directTransportFactory.js';
+import { HttpTransport } from '../../../../../src/http/endpoint/transport/httpTransport.js';
+import { Limiter } from '../../../../../src/http/limiter/limiter.js';
+import { HttpClientOptions } from '../../../../../src/http/types/http.js';
 
 describe('DirectEndpointProvider', () => {
     let createLimiter: jest.Mock<() => Limiter>;
@@ -25,7 +25,7 @@ describe('DirectEndpointProvider', () => {
 
         it('throws at build time when transportFactory was undefined', () => {
             const provider = new DirectEndpointProvider(undefined as unknown as DirectTransportFactory);
-            expect(() => provider.build({} as any, createLimiter)).toThrow();
+            expect(() => provider.build({} as unknown as HttpClientOptions, createLimiter)).toThrow();
         });
     });
 
@@ -89,10 +89,10 @@ describe('DirectEndpointProvider', () => {
 
             const provider = new DirectEndpointProvider(transportFactory);
 
-            expect(provider.build({ concurrency: 1 } as any, createLimiter)).toHaveLength(1);
-            expect(provider.build({ concurrency: 999, timeout: 0 } as any, createLimiter)).toHaveLength(1);
+            expect(provider.build({ concurrency: 1 } as unknown as HttpClientOptions, createLimiter)).toHaveLength(1);
+            expect(provider.build({ concurrency: 999, timeout: 0 } as unknown as HttpClientOptions, createLimiter)).toHaveLength(1);
             expect(provider.build({} as HttpClientOptions, createLimiter)).toHaveLength(1);
-            expect(provider.build(undefined as any, createLimiter)).toHaveLength(1);
+            expect(provider.build(undefined as unknown as HttpClientOptions, createLimiter)).toHaveLength(1);
         });
     });
 
@@ -151,14 +151,14 @@ describe('DirectEndpointProvider', () => {
             transportFactory.create.mockReturnValue({} as HttpTransport);
             const provider = new DirectEndpointProvider(transportFactory);
 
-            expect(() => provider.build({} as any, undefined as any)).toThrow();
+            expect(() => provider.build({} as unknown as HttpClientOptions, undefined as unknown as () => Limiter)).toThrow();
             expect(transportFactory.create).not.toHaveBeenCalled();
         });
     });
 
     describe('build - input safety', () => {
         it('does not mutate the provided HttpClientOptions object', () => {
-            const options = { foo: 'bar', nested: { value: 42 } } as any;
+            const options = { foo: 'bar', nested: { value: 42 } } as unknown as HttpClientOptions;
             createLimiter.mockReturnValue({} as Limiter);
             transportFactory.create.mockReturnValue({} as HttpTransport);
 

@@ -1,19 +1,19 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import { Dispatcher, ProxyAgent } from 'undici';
 import { ProxyPoolConfig } from '../../../src/config/config.js';
+import { ConfigurationError } from '../../../src/error/errors.js';
 import { EndpointFactory } from '../../../src/http/endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from '../../../src/http/endpoint/manager/endpointManagerFactory.js';
 import { ProxyEndpointProvider } from '../../../src/http/endpoint/provider/impl/proxyEndpointProvider.js';
-import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
-import { HttpClientOptions } from '../../../src/http/types/http.js';
-import { ConfigurationError } from '../../../src/error/errors.js';
-import { Dispatcher, ProxyAgent } from 'undici';
+import { HttpProxyUrlParser } from '../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
 import {
     AgentCreatorFn,
     PoolClientFactory,
     PoolCreatorFn,
     UndiciTransportFactory,
 } from '../../../src/http/endpoint/transport/impl/undiciProxyTransport.js';
-import { HttpProxyUrlParser } from '../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
+import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
+import { HttpClientOptions } from '../../../src/http/types/http.js';
 
 /**
  * Builds an UndiciTransportFactory that never opens real sockets.
@@ -99,7 +99,7 @@ describe('Proxy + Undici construction chain', () => {
         const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
-        delete (options as any).poolConfig;
+        delete (options as unknown as Record<string, unknown>).poolConfig;
 
         expect(() => new EndpointManagerFactory(factory).create(options)).toThrow(ConfigurationError);
         expect(() => new EndpointManagerFactory(factory).create(options)).toThrow('poolConfig');
@@ -128,7 +128,7 @@ describe('Proxy + Undici construction chain', () => {
         const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
-        delete (options as any).acquireTimeout;
+        delete (options as unknown as Record<string, unknown>).acquireTimeout;
 
         expect(() => new EndpointManagerFactory(factory).create(options)).toThrow();
     });
@@ -137,7 +137,7 @@ describe('Proxy + Undici construction chain', () => {
         const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
         const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
-        delete (options as any).concurrency;
+        delete (options as unknown as Record<string, unknown>).concurrency;
 
         expect(() => new EndpointManagerFactory(factory).create(options)).toThrow();
     });
@@ -151,7 +151,7 @@ describe('Proxy + Undici construction chain', () => {
             useRateLimit: true,
             rateLimitWindow: 60000,
         });
-        delete (options as any).rateLimitCapacity;
+        delete (options as unknown as Record<string, unknown>).rateLimitCapacity;
 
         expect(() => new EndpointManagerFactory(factory).create(options)).toThrow();
     });
@@ -163,7 +163,7 @@ describe('Proxy + Undici construction chain', () => {
             useRateLimit: true,
             rateLimitCapacity: 40,
         });
-        delete (options as any).rateLimitWindow;
+        delete (options as unknown as Record<string, unknown>).rateLimitWindow;
 
         expect(() => new EndpointManagerFactory(factory).create(options)).toThrow();
     });

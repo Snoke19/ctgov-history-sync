@@ -1,10 +1,10 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { Limiter } from '../../../../src/http/limiter/limiter.js';
-import { LimiterFactory } from '../../../../src/http/limiter/factory/limiterFactory.js';
 import { Endpoint } from '../../../../src/http/endpoint/endpoint.js';
-import { EndpointProvider } from '../../../../src/http/endpoint/provider/endpointProvider.js';
-import { HttpClientOptions } from '../../../../src/http/types/http.js';
 import { EndpointFactory } from '../../../../src/http/endpoint/endpointFactory.js';
+import { EndpointProvider } from '../../../../src/http/endpoint/provider/endpointProvider.js';
+import { LimiterFactory } from '../../../../src/http/limiter/factory/limiterFactory.js';
+import { Limiter } from '../../../../src/http/limiter/limiter.js';
+import { HttpClientOptions } from '../../../../src/http/types/http.js';
 
 describe('EndpointFactory', () => {
     const createStubs = () => {

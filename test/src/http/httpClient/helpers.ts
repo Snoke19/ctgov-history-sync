@@ -1,6 +1,6 @@
-import { createHttpClient } from '../../../../src/http/httpClient.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { FetchDirectTransportFactory } from '../../../../src/http/endpoint/transport/factory/fetchDirectTransportFactory.js';
+import { createHttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClientOptions } from '../../../../src/http/types/http.js';
 

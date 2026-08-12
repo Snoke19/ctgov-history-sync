@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { EndpointManager } from '../../../../../src/http/endpoint/manager/endpointManager.js';
 import {
     CallerAbortedError,
     ConfigurationError,
     EndpointAcquisitionTimeoutError,
 } from '../../../../../src/error/errors.js';
 import { Endpoint, EndpointHandle } from '../../../../../src/http/endpoint/endpoint.js';
+import { EndpointManager } from '../../../../../src/http/endpoint/manager/endpointManager.js';
 import { HttpTransport } from '../../../../../src/http/endpoint/transport/httpTransport.js';
 
 const makeHandle = (url = 'http://fake', id?: string): EndpointHandle => ({
@@ -14,6 +14,7 @@ const makeHandle = (url = 'http://fake', id?: string): EndpointHandle => ({
     ...(id ? { id } : {}),
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock helper needs loose typing for jest.Mock compatibility
 const makeEndpoint = (overrides?: Partial<Record<keyof Endpoint, any>>): jest.Mocked<Endpoint> =>
     ({
         url: 'http://fake',
@@ -439,7 +440,9 @@ describe('EndpointManager', () => {
                 makeEndpoint({
                     close: jest.fn(() => {
                         callOrder.push(id);
-                        return new Promise<void>((resolve) => resolvers.push(resolve));
+                        return new Promise<void>((resolve) => {
+                            resolvers.push(resolve);
+                        });
                     }),
                 });
 

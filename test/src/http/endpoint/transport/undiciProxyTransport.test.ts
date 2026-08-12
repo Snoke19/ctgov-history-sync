@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-
-import type { HttpRequest } from '../../../../../src/http/endpoint/transport/httpTransport.js';
 import type { ProxyAgent, Response } from 'undici';
+import type { HttpRequest } from '../../../../../src/http/endpoint/transport/httpTransport.js';
 
 const mockFetch = jest.fn<(url: string, options?: RequestInit) => Promise<Response>>();
 

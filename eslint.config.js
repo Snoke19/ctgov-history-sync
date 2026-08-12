@@ -25,7 +25,7 @@ export default [
                 typescript: true,
             },
             node: {
-                version: '>=20.3.0',
+                version: '>=22.19.0',
             },
         },
         rules: {
@@ -48,6 +48,11 @@ export default [
             'n/no-unpublished-import': 'off',
             'n/prefer-global/process': ['error', 'always'],
             'n/no-missing-import': 'error',
+            // Undici 8 requires Node >=22.19.0; @types/node@26 supplies the
+            // type definitions.  The plugin does not model backported globals
+            // (fetch, Headers, ReadableStream) correctly for ^22.15.0, so we
+            // disable the rule — TypeScript catches missing globals instead.
+            'n/no-unsupported-features/node-builtins': 'off',
 
             'import/no-unresolved': 'error',
             'import/named': 'error',

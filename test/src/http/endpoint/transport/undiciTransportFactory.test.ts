@@ -1,14 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { Dispatcher, ProxyAgent } from 'undici';
 import { ProxyPoolConfig } from '../../../../../src/config/config.js';
 import { CreateProxyEndpointsOptions } from '../../../../../src/http/endpoint/transport/httpTransport.js';
-
 import type {
     AgentCreatorFn,
     PoolClientFactory,
     PoolCreatorFn,
     UndiciTransportFactory as UndiciTransportFactoryType,
 } from '../../../../../src/http/endpoint/transport/impl/undiciProxyTransport.js';
-import { Dispatcher, ProxyAgent } from 'undici';
 
 const mockResolveConnections = jest.fn();
 

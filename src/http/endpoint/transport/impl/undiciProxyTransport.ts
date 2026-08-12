@@ -7,7 +7,7 @@ import { ProxyTransportFactory } from '../factory/proxyTransportFactory.js';
 import { CreateProxyEndpointsOptions, HttpRequest, HttpResponse, HttpTransport } from '../httpTransport.js';
 
 /** Creates a Dispatcher pool for a given origin. Called by ProxyAgent per-origin. */
-export type PoolClientFactory = (origin: URL, opts?: Record<string, any>) => Dispatcher;
+export type PoolClientFactory = (origin: URL, opts?: Record<string, unknown>) => Dispatcher;
 
 /** Transforms pool config into a PoolClientFactory. */
 export type PoolCreatorFn = (config: ProxyPoolConfig) => PoolClientFactory;
@@ -77,7 +77,8 @@ export class UndiciTransportFactory implements ProxyTransportFactory {
         const connections = resolveConnections(options.proxyCount, options.concurrency, options.poolConfig);
         const poolFactory = this.poolCreator(options.poolConfig);
 
-        const clientFactory: PoolClientFactory = (origin, opts) => poolFactory(origin, { ...opts, connections });
+        const clientFactory: PoolClientFactory = (origin, opts) =>
+            poolFactory(origin, { ...opts, connections } as Parameters<typeof poolFactory>[1]);
 
         const agent = this.agentCreator(proxyUrl, clientFactory);
 
@@ -86,5 +87,5 @@ export class UndiciTransportFactory implements ProxyTransportFactory {
 }
 
 function defaultAgentCreator(uri: string, clientFactory: PoolClientFactory): ProxyAgent {
-    return new ProxyAgent({ uri, clientFactory });
+    return new ProxyAgent({ uri, clientFactory: clientFactory as (origin: URL, opts: object) => Dispatcher });
 }

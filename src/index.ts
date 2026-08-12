@@ -1,4 +1,5 @@
 import { createApiClient } from './api/api.js';
+import { Study } from './api/types.js';
 import {
     ACQUIRE_TIMEOUT,
     CONCURRENCY,
@@ -33,7 +34,7 @@ const httpClient = createHttpClient(
 const api = createApiClient(httpClient);
 
 // State for checkpoint
-let pageToken: string | undefined = '';
+let resumePageToken: string | undefined = '';
 let pageNum = 1;
 
 async function withConcurrency<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>) {
@@ -108,34 +109,38 @@ function getErrorMessage(error: unknown): string {
 }
 
 // Register SIGINT handler once at the start
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
     logger.info('Interrupted, saving checkpoint…');
+    // eslint-disable-next-line n/no-process-exit -- intentional immediate termination on Ctrl-C
     process.exit(0);
 });
 
 async function main(): Promise<void> {
+    const initialToken = resumePageToken;
     const firstPage = await api.fetchStudiesPage({
         pageSize: PAGE_SIZE,
         countTotal: true,
         'query.term': DATE_RANGE,
-        ...(pageToken && { pageToken }),
+        ...(initialToken && { pageToken: initialToken }),
     });
 
-    if (!pageToken) {
+    if (!initialToken) {
         // First page of fresh scrape
-        pageToken = firstPage.nextPageToken;
+        // eslint-disable-next-line require-atomic-updates -- initialToken is a local snapshot; SIGINT writes resumePageToken safely
+        resumePageToken = firstPage.nextPageToken;
     }
 
     let currentStudies = firstPage.studies ?? [];
+    let nextToken = initialToken ?? firstPage.nextPageToken;
 
     while (true) {
         logger.info(
-            `Processing page ${pageNum} (${currentStudies.length} studies, pageToken=${pageToken ?? 'none'})...`,
+            `Processing page ${pageNum} (${currentStudies.length} studies, pageToken=${nextToken ?? 'none'})...`,
         );
 
         const nctIds = currentStudies
-            .map((study: any) => study.protocolSection?.identificationModule?.nctId)
-            .filter((id: any): id is string => id !== undefined);
+            .map((study: Study) => study.protocolSection?.identificationModule?.nctId)
+            .filter((id): id is string => id !== undefined);
 
         const details = await withConcurrency(nctIds, CONCURRENCY, fetchTrialSafe);
 
@@ -145,25 +150,28 @@ async function main(): Promise<void> {
             `Page ${pageNum}: Fetched ${nctIds.length}, Saved ${validDetails.length}, Failed ${nctIds.length - validDetails.length}`,
         );
 
-        if (!pageToken) {
+        if (!nextToken) {
             break;
         }
 
         const nextPage = await api.fetchStudiesPage({
             pageSize: PAGE_SIZE,
-            pageToken,
+            pageToken: nextToken,
             countTotal: true,
             'query.term': DATE_RANGE,
         });
 
-        pageToken = nextPage.nextPageToken;
         currentStudies = nextPage.studies ?? [];
+        nextToken = nextPage.nextPageToken;
         pageNum++;
 
         if (currentStudies.length === 0) {
             break;
         }
     }
+
+    // eslint-disable-next-line require-atomic-updates -- checkpoint written once at function end
+    resumePageToken = nextToken;
 }
 
 async function run(): Promise<void> {

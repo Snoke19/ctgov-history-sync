@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-
-import { createHttpClient } from '../../../../src/http/httpClient.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { FetchDirectTransportFactory } from '../../../../src/http/endpoint/transport/factory/fetchDirectTransportFactory.js';
 import { FetchDirectTransport } from '../../../../src/http/endpoint/transport/impl/fetchDirectTransport.js';
+import { createHttpClient } from '../../../../src/http/httpClient.js';
 import { API_URL, ENDPOINT_1, ENDPOINT_2, createDefaultOptions, jsonResponse, makeClient } from './helpers.js';
 
 describe('HttpClient endpoint lifecycle & resource management', () => {

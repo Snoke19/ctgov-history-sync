@@ -1,6 +1,6 @@
-import { TokenBucket } from '../../../../src/http/limiter/impl/tokenBucket.js';
-import { ConfigurationError, TokenBucketTimeoutError } from '../../../../src/error/errors.js';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { ConfigurationError, TokenBucketTimeoutError } from '../../../../src/error/errors.js';
+import { TokenBucket } from '../../../../src/http/limiter/impl/tokenBucket.js';
 
 /**
  * These tests treat TokenBucket as a black box: only the constructor and its
