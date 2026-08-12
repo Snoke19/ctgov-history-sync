@@ -1,18 +1,18 @@
+import { MAX_RETRIES } from '../config/config.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
 import { HttpResponse } from './endpoint/transport/httpTransport.js';
-import { FetchOperation } from './retry/fetchOperation.js';
 import { DefaultLimiterFactory } from './limiter/factory/defaultLimiterFactory.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { parseOkResponseBody } from './responseBody.js';
 import { HttpException } from './retry/exceptions.js';
+import { FetchOperation } from './retry/fetchOperation.js';
 import { Retry } from './retry/retry.js';
 import { calculateBackoff, defaultRetryPolicyConfig, shouldRetry } from './retry/retryPolicy.js';
 import type { RetryPolicyConfig } from './retry/retryPolicy.js';
-import type { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
-import { MAX_RETRIES } from '../config/config.js';
 import { defaultRandom, defaultSleeper } from './types/clock.js';
+import type { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
 
 export interface HttpClient {
     /**

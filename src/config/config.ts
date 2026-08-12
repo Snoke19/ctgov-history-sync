@@ -1,5 +1,5 @@
-import { defaults } from './defaults.js';
 import { env, parseStatusCodes, validateConfig } from './configValidation.js';
+import { defaults } from './defaults.js';
 
 // ---------------------------------------------------------------------------
 // api

@@ -10,10 +10,10 @@ import {
 } from './config/config.js';
 import { logger } from './config/logging.js';
 import { TrialFetchError, TrialNotFoundError, TrialTimeoutError } from './error/errors.js';
-import { createHttpClient } from './http/httpClient.js';
 import { ProxyEndpointProvider } from './http/endpoint/provider/impl/proxyEndpointProvider.js';
-import { UndiciTransportFactory } from './http/endpoint/transport/impl/undiciProxyTransport.js';
 import { HttpProxyUrlParser } from './http/endpoint/proxy/httpProxyUrlParser.js';
+import { UndiciTransportFactory } from './http/endpoint/transport/impl/undiciProxyTransport.js';
+import { createHttpClient } from './http/httpClient.js';
 
 const DATE_RANGE = 'AREA[StartDate]RANGE[07/15/2026, 07/18/2026]';
 

@@ -1,10 +1,10 @@
 import { fetch, ProxyAgent } from 'undici';
 import type { Dispatcher } from 'undici';
-import { CreateProxyEndpointsOptions, HttpRequest, HttpResponse, HttpTransport } from '../httpTransport.js';
-import { ProxyTransportFactory } from '../factory/proxyTransportFactory.js';
 import { ProxyPoolConfig } from '../../../../config/config.js';
-import { resolveConnections } from '../../proxy/resolveConnections.js';
 import { createPoolFactory } from '../../../poolFactory.js';
+import { resolveConnections } from '../../proxy/resolveConnections.js';
+import { ProxyTransportFactory } from '../factory/proxyTransportFactory.js';
+import { CreateProxyEndpointsOptions, HttpRequest, HttpResponse, HttpTransport } from '../httpTransport.js';
 
 /** Creates a Dispatcher pool for a given origin. Called by ProxyAgent per-origin. */
 export type PoolClientFactory = (origin: URL, opts?: Record<string, any>) => Dispatcher;

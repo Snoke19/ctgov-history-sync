@@ -1,9 +1,9 @@
-import { defaultClock as sharedClock } from '../../types/clock.js';
 import { setTimeout as nodeTimersSleep } from 'node:timers/promises';
-import { Endpoint, EndpointHandle } from '../endpoint.js';
+import { logger } from '../../../config/logging.js';
 import { CallerAbortedError, ConfigurationError, EndpointAcquisitionTimeoutError } from '../../../error/errors.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
-import { logger } from '../../../config/logging.js';
+import { defaultClock as sharedClock } from '../../types/clock.js';
+import { Endpoint, EndpointHandle } from '../endpoint.js';
 
 type ClockFn = () => number;
 type SleepFn = (ms: number, signal?: AbortSignal) => Promise<void>;
