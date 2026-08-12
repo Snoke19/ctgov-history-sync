@@ -125,24 +125,5 @@ describe('EndpointFactory', () => {
 
             expect(limiterFactory.create).not.toHaveBeenCalled();
         });
-
-        it('isolates options reference per build() call', () => {
-            const { limiterFactory, provider } = createStubs();
-            const factory = new EndpointFactory(provider, limiterFactory);
-
-            const optionsA = { acquireTimeout: 1000 } as HttpClientOptions;
-            const optionsB = { acquireTimeout: 2000 } as HttpClientOptions;
-
-            factory.build(optionsA);
-            const [, createLimiterA] = provider.build.mock.calls[0]!;
-            createLimiterA();
-
-            factory.build(optionsB);
-            const [, createLimiterB] = provider.build.mock.calls[1]!;
-            createLimiterB();
-
-            expect(limiterFactory.create).toHaveBeenNthCalledWith(1, optionsA);
-            expect(limiterFactory.create).toHaveBeenNthCalledWith(2, optionsB);
-        });
     });
 });

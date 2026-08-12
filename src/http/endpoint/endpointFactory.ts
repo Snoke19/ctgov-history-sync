@@ -21,8 +21,7 @@ export class EndpointFactory {
     ) {}
 
     build(options: HttpClientOptions): Endpoint[] {
-        const snapshot = { ...options };
-        const createLimiter = (): Limiter => this.limiterFactory.create(snapshot);
+        const createLimiter = (): Limiter => this.limiterFactory.create(options);
         return this.provider.build(options, createLimiter);
     }
 }
