@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
 import { EndpointManager } from '../../../../src/http/endpoint/manager/endpointManager.js';
-import { API_URL, makeClient } from './helpers.js';
+import { API_URL, createFakes, makeClient } from './helpers.js';
 
 describe('HttpClient deadline budget', () => {
     afterEach(() => {
@@ -18,7 +18,11 @@ describe('HttpClient deadline budget', () => {
             .mockRejectedValueOnce(new TypeError('fetch failed'));
 
         const client = makeClient();
-        const deadline = Date.now() + 5000;
+        // Deadline is relative to the injected clock (createDefaultOptions
+        // seeds FakeClock at 0). Each retry's backoff sleep advances that same
+        // clock (FakeSleeper), so the remaining budget must shrink without any
+        // real Date.now involvement.
+        const deadline = 5000;
 
         await expect(client.fetchJson(`${API_URL}/budget`, { deadline, maxRetries: 2 })).rejects.toBeInstanceOf(
             NetworkException,
@@ -39,17 +43,18 @@ describe('HttpClient deadline budget', () => {
 
     it('throws TimeoutException when the deadline budget is exhausted between retries', async () => {
         // Time starts with 5s of budget remaining; the expiry on the failed
-        // request pushes the clock past the deadline that the retry would need.
-        let currentTime = 1_000_000;
+        // request pushes the injected clock past the deadline that the retry
+        // would need. The clock is injected through HttpClientOptions, the
+        // same source FetchOperation uses for the deadline arithmetic.
+        const fakes = createFakes();
+        fakes.clock.advance(1_000_000);
 
         const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(() => {
-            currentTime = 1_006_001;
+            fakes.clock.advance(6_001);
             return Promise.reject(new TypeError('fetch failed: ECONNRESET'));
         });
 
-        const client = makeClient();
-
-        jest.spyOn(Date, 'now').mockImplementation(() => currentTime);
+        const client = makeClient({ clock: fakes.clock, sleep: fakes.sleep, random: fakes.random });
 
         await expect(
             client.fetchJson(`${API_URL}/deadline-exhausted`, {

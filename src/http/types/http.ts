@@ -23,7 +23,11 @@ export interface HttpClientOptions {
     /** Override Math.random (e.g. deterministic backoff in tests). */
     random?: RandomSource['random'];
 
-    /** Override Date.now (e.g. for rate-limit tests). */
+    /**
+     * Override Date.now for the whole HTTP layer: deadline budget math
+     * (FetchOperation), endpoint acquisition (EndpointManager) and rate-limit
+     * refill windows (TokenBucket) all measure time on this one source.
+     */
     clock?: Clock;
 }
 

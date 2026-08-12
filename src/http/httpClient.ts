@@ -38,7 +38,7 @@ export function createHttpClient(
     const endpointManager = new EndpointManagerFactory(endpointFactory).create(clientOptions);
 
     async function fetchResponse(url: string, options: FetchJsonRequestOptions): Promise<HttpResponse | null> {
-        const operation = new FetchOperation(endpointManager, url, options);
+        const operation = new FetchOperation(endpointManager, url, options, clientOptions.clock?.now);
         const retry = buildRetry(
             operation,
             options,

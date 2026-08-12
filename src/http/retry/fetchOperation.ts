@@ -12,6 +12,7 @@ import { EndpointManager } from '../endpoint/manager/endpointManager.js';
 import { HttpResponse } from '../endpoint/transport/httpTransport.js';
 import { drainBody } from '../responseBody.js';
 import { defaultClock } from '../types/clock.js';
+import type { Clock } from '../types/clock.js';
 import { FetchJsonRequestOptions } from '../types/http.js';
 import { BusinessOperation } from './businessOperation.js';
 import { parseRetryAfterHeader } from './retryPolicy.js';
@@ -38,15 +39,23 @@ function classifyAbortError(
 }
 
 export class FetchOperation implements BusinessOperation<HttpResponse> {
+    /**
+     * @param clock   Clock source for budget/deadline math. Defaults to the
+     *                shared HTTP-layer clock (`Date.now()`, epoch ms) — the
+     *                same source EndpointManager and TokenBucket use, so a
+     *                single injected clock can never drift against the
+     *                deadline arithmetic.
+     */
     constructor(
         private readonly endpointManager: EndpointManager,
         private readonly url: string,
         private readonly options: FetchJsonRequestOptions,
+        private readonly clock: Clock['now'] = defaultClock.now,
     ) {}
 
     async perform(): Promise<HttpResponse> {
         const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
-        const deadline = this.options.deadline ?? defaultClock.now() + timeoutMs;
+        const deadline = this.options.deadline ?? this.clock() + timeoutMs;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -56,7 +65,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             : controller.signal;
 
         try {
-            const remainingMs = getRemainingBudget(deadline, this.url, timeoutMs);
+            const remainingMs = this.getRemainingBudget(deadline, timeoutMs);
             const endpoint = await this.acquireEndpoint(remainingMs, signal);
             return await this.executeRequest(endpoint, signal);
         } catch (error) {
@@ -67,6 +76,14 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         } finally {
             clearTimeout(timeoutId);
         }
+    }
+
+    private getRemainingBudget(deadline: number, totalBudgetMs: number): number {
+        const remainingMs = deadline - this.clock();
+        if (remainingMs <= 0) {
+            throw new TimeoutException(`Deadline exhausted (budget: ${totalBudgetMs}ms): ${this.url}`);
+        }
+        return remainingMs;
     }
 
     private async acquireEndpoint(remainingMs: number, signal: AbortSignal): Promise<EndpointHandle> {
@@ -127,12 +144,4 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
         return new NetworkException(`Network failure: ${this.url}`, error);
     }
-}
-
-function getRemainingBudget(deadline: number, url: string, totalBudgetMs: number): number {
-    const remainingMs = deadline - defaultClock.now();
-    if (remainingMs <= 0) {
-        throw new TimeoutException(`Deadline exhausted (budget: ${totalBudgetMs}ms): ${url}`);
-    }
-    return remainingMs;
 }
