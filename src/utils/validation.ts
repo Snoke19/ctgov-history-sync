@@ -73,7 +73,3 @@ export function validateNctId(value: string): void {
         `Invalid nctId format. Expected: NCT followed by 8 digits. Got: "${value}"`,
     );
 }
-
-export function validatePageSize(value: number): void {
-    trialAssertions.assertInteger(value, 'pageSize', { min: 1 });
-}

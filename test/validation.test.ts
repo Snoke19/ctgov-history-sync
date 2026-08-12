@@ -1,6 +1,6 @@
-import { ConfigurationError, TrialValidationError } from '../src/error/errors.js';
-import { assertPositiveInt, validateNctId, validatePageSize } from '../src/utils/validation.js';
 import { describe, expect, it } from '@jest/globals';
+import { ConfigurationError, TrialValidationError } from '../src/error/errors.js';
+import { assertPositiveInt, validateNctId } from '../src/utils/validation.js';
 
 describe('assertPositiveInt', () => {
     it('does not throw for a positive integer', () => {
@@ -59,27 +59,5 @@ describe('validateNctId', () => {
         expect(() => validateNctId('bad-id')).toThrow(
             'Invalid nctId format. Expected: NCT followed by 8 digits. Got: "bad-id"',
         );
-    });
-});
-
-describe('validatePageSize', () => {
-    it('accepts a positive integer', () => {
-        expect(() => validatePageSize(10)).not.toThrow();
-    });
-
-    it('accepts 1 as the minimum valid value', () => {
-        expect(() => validatePageSize(1)).not.toThrow();
-    });
-
-    it('throws TrialValidationError for zero', () => {
-        expect(() => validatePageSize(0)).toThrow(TrialValidationError);
-    });
-
-    it('throws TrialValidationError for negative numbers', () => {
-        expect(() => validatePageSize(-3)).toThrow(TrialValidationError);
-    });
-
-    it('throws TrialValidationError for non-integers', () => {
-        expect(() => validatePageSize(2.5)).toThrow(TrialValidationError);
     });
 });
