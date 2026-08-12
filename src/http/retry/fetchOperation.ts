@@ -9,6 +9,7 @@ import { parseRetryAfterHeader } from './retryPolicy.js';
 import { FetchJsonRequestOptions } from '../types/http.js';
 import { BusinessOperation } from './businessOperation.js';
 import { drainBody } from '../responseBody.js';
+import { defaultClock } from '../types/clock.js';
 
 function isAbortError(error: unknown): boolean {
     if (error instanceof CallerAbortedError) return true;
@@ -40,7 +41,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
     async perform(): Promise<HttpResponse> {
         const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
-        const deadline = this.options.deadline ?? Date.now() + timeoutMs;
+        const deadline = this.options.deadline ?? defaultClock.now() + timeoutMs;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -124,7 +125,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 }
 
 function getRemainingBudget(deadline: number, url: string, totalBudgetMs: number): number {
-    const remainingMs = deadline - Date.now();
+    const remainingMs = deadline - defaultClock.now();
     if (remainingMs <= 0) {
         throw new TimeoutException(`Deadline exhausted (budget: ${totalBudgetMs}ms): ${url}`);
     }

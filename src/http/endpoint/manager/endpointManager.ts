@@ -1,4 +1,4 @@
-import { performance } from 'node:perf_hooks';
+import { defaultClock as sharedClock } from '../../types/clock.js';
 import { setTimeout as nodeTimersSleep } from 'node:timers/promises';
 import { Endpoint, EndpointHandle } from '../endpoint.js';
 import { CallerAbortedError, ConfigurationError, EndpointAcquisitionTimeoutError } from '../../../error/errors.js';
@@ -9,8 +9,10 @@ type ClockFn = () => number;
 type SleepFn = (ms: number, signal?: AbortSignal) => Promise<void>;
 
 // Production defaults are module-level so they are not re-created per instance
-// and do not appear in test output as noise.
-const defaultClock: ClockFn = () => performance.now();
+// and do not appear in test output as noise. The clock delegates to the shared
+// HTTP-layer clock (Date.now epoch) so this manager measures time on the same
+// source as FetchOperation's fetch budgets and TokenBucket's refill windows.
+const defaultClock: ClockFn = () => sharedClock.now();
 const defaultSleep: SleepFn = (ms, signal) =>
     nodeTimersSleep(ms, undefined, signal !== undefined ? { signal } : undefined);
 
@@ -24,7 +26,9 @@ export class EndpointManager {
     /**
      * @param endpoints       Pre-built endpoint list (at least one required).
      * @param acquireTimeout  Default timeout in ms for {@link acquireEndpoint}.
-     * @param clock           Wall-clock source. Defaults to `performance.now()`.
+     * @param clock           Clock source. Defaults to the shared HTTP-layer clock
+     *                        (`Date.now()`, epoch ms) — the same source used for
+     *                        fetch deadline budgets and rate-limit windows.
      *                        Inject a fake in tests to drive timing deterministically.
      * @param sleep           Async delay. Defaults to `timers/promises.setTimeout`.
      *                        Inject a jest.fn() in tests to skip real waits.
@@ -52,6 +56,21 @@ export class EndpointManager {
         return this.endpoints.length;
     }
 
+    /**
+     * Acquires an endpoint within a relative time budget.
+     *
+     * `timeoutMs` is a RELATIVE duration in milliseconds, never an absolute
+     * timestamp. The internal deadline is computed on `this.clock`
+     * (`clock() + timeoutMs`) and only elapsed time is ever compared, so it
+     * is valid on any clock origin. FetchOperation forwards the REMAINING
+     * budget from its own epoch deadline (see `FetchJsonRequestOptions.deadline`)
+     * as a relative value — the two layers share one time source and never
+     * mix absolute timestamps across layer boundaries.
+     *
+     * @throws {EndpointAcquisitionTimeoutError} If no endpoint becomes
+     *   available within `timeoutMs`.
+     * @throws {CallerAbortedError} If `signal` is aborted before acquisition.
+     */
     async acquireEndpoint(timeoutMs = this.acquireTimeout, signal: AbortSignal): Promise<EndpointHandle> {
         const deadline = this.clock() + timeoutMs;
 

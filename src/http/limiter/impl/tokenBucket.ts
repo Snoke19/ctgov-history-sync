@@ -1,4 +1,4 @@
-import { performance } from 'node:perf_hooks';
+import { defaultClock as sharedClock } from '../../types/clock.js';
 import { TokenBucketTimeoutError } from '../../../error/errors.js';
 import { Limiter } from '../limiter.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
@@ -47,15 +47,17 @@ export class TokenBucket extends Limiter {
      *   tokens.
      * @param windowMs - Time window over which `capacity`
      *   tokens are replenished, in milliseconds.
-     * @param now - Function returning a
-     *   monotonic timestamp in milliseconds. Intended primarily for testing.
+     * @param now - Function returning a timestamp from the shared HTTP-layer
+     *   clock (defaults to `Date.now()` epoch ms), consistent with the clock
+     *   EndpointManager passes into `tryAcquire`/`timeUntilToken`. Intended
+     *   primarily for testing.
      * @throws {TypeError} If `capacity` is not a positive integer, or
      *   `windowMs` is not a positive finite number.
      */
     constructor(
         capacity: number,
         windowMs: number,
-        now: Clock = () => performance.now(),
+        now: Clock = () => sharedClock.now(),
         sleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     ) {
         super();
