@@ -1,5 +1,5 @@
 import { MAX_RETRIES } from '../config/config.js';
-import { HttpException } from '../error/errors.js';
+import { CallerAbortedError, HttpException, NetworkException } from '../error/errors.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
@@ -49,6 +49,13 @@ export function createHttpClient(
         try {
             return await retry.perform();
         } catch (error) {
+            // A caller abort can surface from a retry backoff wait (the sleeper
+            // wakes up early). Classify it the same way FetchOperation classifies
+            // an abort of an in-flight request, so the public API always reports
+            // caller cancellation as a NetworkException.
+            if (error instanceof CallerAbortedError && options.signal?.aborted) {
+                throw new NetworkException(`Request cancelled by caller: ${url}`, error);
+            }
             // INVARIANT: 404 must NOT be present in retryConfig.retryableStatusCodes.
             // If it were, retry.perform() would loop instead of throwing, and this
             // catch block would never be reached, silently breaking allow404.
@@ -106,6 +113,7 @@ export function createHttpClient(
                 return calculateBackoff(attempt, retryAfterMs, random);
             },
             sleep,
+            options.signal,
         );
     }
 }

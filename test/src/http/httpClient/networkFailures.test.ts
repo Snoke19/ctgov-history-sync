@@ -114,6 +114,45 @@ describe('HttpClient network & timeout failures', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    it('aborts the retry backoff wait immediately when the caller cancels mid-delay', async () => {
+        const fetchMock = jest.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed: ECONNRESET'));
+
+        const controller = new AbortController();
+
+        // A sleep that only ever settles by being aborted — like a real backoff
+        // under the default sleeper, but deterministic. It also asserts the
+        // caller's signal is actually forwarded into the wait.
+        const sleepMock = jest.fn(
+            (_ms: number, signal?: AbortSignal) =>
+                new Promise<void>((_, reject) => {
+                    if (!signal || signal.aborted) {
+                        reject(new DOMException('The operation was aborted.', 'AbortError'));
+                        return;
+                    }
+                    signal.addEventListener(
+                        'abort',
+                        () => reject(new DOMException('The operation was aborted.', 'AbortError')),
+                        { once: true },
+                    );
+                }),
+        );
+
+        const client = makeClient({ sleep: sleepMock });
+
+        const pending = client.fetchJson(`${API_URL}/abort-during-backoff`, {
+            signal: controller.signal,
+            maxRetries: 3,
+        });
+
+        setTimeout(() => controller.abort(), 10);
+
+        await expect(pending).rejects.toBeInstanceOf(NetworkException);
+        // Cancelled at the first backoff wait: no second request is ever issued.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(sleepMock).toHaveBeenCalledWith(expect.any(Number), controller.signal);
+        expect(sleepMock).toHaveBeenCalledTimes(1);
+    });
+
     it('throws NetworkException when caller aborts during request', async () => {
         const controller = new AbortController();
 

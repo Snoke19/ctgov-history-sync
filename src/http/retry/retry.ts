@@ -1,4 +1,4 @@
-import { TrialError } from '../../error/errors.js';
+import { CallerAbortedError, TrialError } from '../../error/errors.js';
 import { defaultSleeper } from '../types/clock.js';
 import type { Sleeper } from '../types/clock.js';
 import { BusinessOperation } from './businessOperation.js';
@@ -9,6 +9,7 @@ export class Retry<T> implements BusinessOperation<T> {
     private readonly shouldRetry: (error: TrialError) => boolean;
     private readonly delayMs: number | ((attempt: number, error: TrialError) => number);
     private readonly sleep: Sleeper['sleep'];
+    private readonly signal: AbortSignal | undefined;
     private attemptsCount = 0;
 
     /**
@@ -19,6 +20,9 @@ export class Retry<T> implements BusinessOperation<T> {
      *                    zero-indexed retry attempt and the last error.
      * @param sleep       Async delay implementation. Defaults to the shared
      *                    HTTP-layer sleeper.
+     * @param signal      Caller-controlled cancellation signal. Forwarded into
+     *                    the backoff sleep so an abort cuts the wait short
+     *                    instead of running it to completion.
      */
     constructor(
         op: BusinessOperation<T>,
@@ -26,12 +30,14 @@ export class Retry<T> implements BusinessOperation<T> {
         shouldRetry: (error: TrialError) => boolean,
         delayMs: number | ((attempt: number, error: TrialError) => number),
         sleep: Sleeper['sleep'] = defaultSleeper.sleep,
+        signal?: AbortSignal,
     ) {
         this.op = op;
         this.maxRetries = maxRetries;
         this.shouldRetry = shouldRetry;
         this.delayMs = delayMs;
         this.sleep = sleep;
+        this.signal = signal;
     }
 
     async perform(): Promise<T> {
@@ -54,10 +60,38 @@ export class Retry<T> implements BusinessOperation<T> {
                 const delay =
                     typeof this.delayMs === 'function' ? this.delayMs(this.attemptsCount - 1, error) : this.delayMs;
 
-                await this.sleep(Math.max(0, delay));
+                await this.abortableSleep(Math.max(0, delay));
             }
         }
 
         return await this.op.perform();
+    }
+
+    /**
+     * Sleep between retries, cutting the wait short if the caller aborts.
+     *
+     * The shared sleeper is abort-aware and rejects early on cancellation;
+     * a rejection is coerced into the canonical {@link CallerAbortedError}.
+     * Injected sleepers that ignore the signal and just resolve are caught by
+     * the re-check, so an abort that arrived during the wait still cancels
+     * before the next attempt.
+     */
+    private async abortableSleep(ms: number): Promise<void> {
+        if (this.signal?.aborted) {
+            throw new CallerAbortedError();
+        }
+
+        try {
+            await this.sleep(ms, this.signal);
+        } catch (error) {
+            if (this.signal?.aborted) {
+                throw new CallerAbortedError();
+            }
+            throw error;
+        }
+
+        if (this.signal?.aborted) {
+            throw new CallerAbortedError();
+        }
     }
 }
