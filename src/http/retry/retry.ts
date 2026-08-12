@@ -1,4 +1,6 @@
 import { TrialError } from '../../error/errors.js';
+import { defaultSleeper } from '../types/clock.js';
+import type { Sleeper } from '../types/clock.js';
 import { BusinessOperation } from './businessOperation.js';
 
 export class Retry<T> implements BusinessOperation<T> {
@@ -6,7 +8,7 @@ export class Retry<T> implements BusinessOperation<T> {
     private readonly maxRetries: number;
     private readonly shouldRetry: (error: TrialError) => boolean;
     private readonly delayMs: number | ((attempt: number, error: TrialError) => number);
-    private readonly sleep: (ms: number) => Promise<void>;
+    private readonly sleep: Sleeper['sleep'];
     private attemptsCount = 0;
 
     /**
@@ -15,17 +17,15 @@ export class Retry<T> implements BusinessOperation<T> {
      * @param shouldRetry  Decides whether a failed attempt warrants another try.
      * @param delayMs     Fixed delay between attempts, or a function of the
      *                    zero-indexed retry attempt and the last error.
-     * @param sleep       Async delay implementation. Defaults to `setTimeout`.
+     * @param sleep       Async delay implementation. Defaults to the shared
+     *                    HTTP-layer sleeper.
      */
     constructor(
         op: BusinessOperation<T>,
         maxRetries: number,
         shouldRetry: (error: TrialError) => boolean,
         delayMs: number | ((attempt: number, error: TrialError) => number),
-        sleep: (ms: number) => Promise<void> = (ms) =>
-            new Promise((resolve) => {
-                setTimeout(resolve, ms);
-            }),
+        sleep: Sleeper['sleep'] = defaultSleeper.sleep,
     ) {
         this.op = op;
         this.maxRetries = maxRetries;

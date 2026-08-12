@@ -1,14 +1,12 @@
 import { TokenBucketTimeoutError } from '../../../error/errors.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
-import { defaultClock as sharedClock } from '../../types/clock.js';
+import { defaultClock, defaultSleeper } from '../../types/clock.js';
+import type { Clock, Sleeper } from '../../types/clock.js';
 import { Limiter } from '../limiter.js';
 
 // Tolerance used to compensate for IEEE-754 floating-point rounding errors
 // when comparing or converting token bucket credit.
 const FLOATING_POINT_TOLERANCE = 1e-9;
-
-type Clock = () => number;
-type SleepFn = (ms: number) => Promise<void>;
 
 /**
  * Token bucket rate limiter using credit-milliseconds.
@@ -37,8 +35,8 @@ export class TokenBucket extends Limiter {
     private readonly msPerToken;
     private creditMs;
     private lastUpdate;
-    private readonly clock: Clock;
-    private readonly sleep: SleepFn;
+    private readonly clock: Clock['now'];
+    private readonly sleep: Sleeper['sleep'];
 
     /**
      * @param capacity - Maximum tokens the bucket can hold. Must be
@@ -51,17 +49,15 @@ export class TokenBucket extends Limiter {
      *   clock (defaults to `Date.now()` epoch ms), consistent with the clock
      *   EndpointManager passes into `tryAcquire`/`timeUntilToken`. Intended
      *   primarily for testing.
+     * @param sleep - Async delay. Defaults to the shared HTTP-layer sleeper.
      * @throws {TypeError} If `capacity` is not a positive integer, or
      *   `windowMs` is not a positive finite number.
      */
     constructor(
         capacity: number,
         windowMs: number,
-        now: Clock = () => sharedClock.now(),
-        sleep: SleepFn = (ms) =>
-            new Promise((resolve) => {
-                setTimeout(resolve, ms);
-            }),
+        now: Clock['now'] = defaultClock.now,
+        sleep: Sleeper['sleep'] = defaultSleeper.sleep,
     ) {
         super();
 

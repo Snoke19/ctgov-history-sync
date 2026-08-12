@@ -1,26 +1,15 @@
-import { setTimeout as nodeTimersSleep } from 'node:timers/promises';
 import { logger } from '../../../config/logging.js';
 import { CallerAbortedError, ConfigurationError, EndpointAcquisitionTimeoutError } from '../../../error/errors.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
-import { defaultClock as sharedClock } from '../../types/clock.js';
+import { defaultClock, defaultSleeper } from '../../types/clock.js';
+import type { Clock, Sleeper } from '../../types/clock.js';
 import { Endpoint, EndpointHandle } from '../endpoint.js';
-
-type ClockFn = () => number;
-type SleepFn = (ms: number, signal?: AbortSignal) => Promise<void>;
-
-// Production defaults are module-level so they are not re-created per instance
-// and do not appear in test output as noise. The clock delegates to the shared
-// HTTP-layer clock (Date.now epoch) so this manager measures time on the same
-// source as FetchOperation's fetch budgets and TokenBucket's refill windows.
-const defaultClock: ClockFn = () => sharedClock.now();
-const defaultSleep: SleepFn = (ms, signal) =>
-    nodeTimersSleep(ms, undefined, signal !== undefined ? { signal } : undefined);
 
 export class EndpointManager {
     private readonly endpoints: readonly Endpoint[];
     private readonly acquireTimeout: number;
-    private readonly clock: ClockFn;
-    private readonly sleep: SleepFn;
+    private readonly clock: Clock['now'];
+    private readonly sleep: Sleeper['sleep'];
     private nextIndex = 0;
 
     /**
@@ -30,14 +19,14 @@ export class EndpointManager {
      *                        (`Date.now()`, epoch ms) — the same source used for
      *                        fetch deadline budgets and rate-limit windows.
      *                        Inject a fake in tests to drive timing deterministically.
-     * @param sleep           Async delay. Defaults to `timers/promises.setTimeout`.
+     * @param sleep           Async delay. Defaults to the shared HTTP-layer sleeper.
      *                        Inject a jest.fn() in tests to skip real waits.
      */
     constructor(
         endpoints: readonly Endpoint[],
         acquireTimeout: number,
-        clock: ClockFn = defaultClock,
-        sleep: SleepFn = defaultSleep,
+        clock: Clock['now'] = defaultClock.now,
+        sleep: Sleeper['sleep'] = defaultSleeper.sleep,
     ) {
         if (endpoints.length === 0) {
             throw new ConfigurationError('EndpointManager requires at least one endpoint.');
