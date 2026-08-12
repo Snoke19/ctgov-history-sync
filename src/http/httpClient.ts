@@ -16,8 +16,9 @@ export interface HttpClient {
     /**
      * Performs an HTTP request and parses the response body as JSON.
      *
-     * Returns null for 204 No Content responses, or for 404 responses
-     * when allow404 is enabled.
+     * Returns null for:
+     * - 204 No Content responses.
+     * - 404 Not Found responses when allow404 is enabled.
      */
     fetchJson<T = unknown>(url: string, options?: FetchJsonRequestOptions): Promise<T | null>;
 
@@ -41,9 +42,9 @@ export function createHttpClient(
         try {
             return await retry.perform();
         } catch (error) {
-            // A 404 is never retried (shouldRetry returns false for it), so when
-            // it arrives here it is the final, definitive response from the server.
-            // Body was already drained inside FetchOperation before the HttpException was thrown.
+            // INVARIANT: 404 must NOT be present in retryConfig.retryableStatusCodes.
+            // If it were, retry.perform() would loop instead of throwing, and this
+            // catch block would never be reached, silently breaking allow404.
             if (options.allow404 && error instanceof HttpException && error.status === 404) {
                 return null;
             }
@@ -54,8 +55,8 @@ export function createHttpClient(
     async function fetchJson<T = unknown>(url: string, options: FetchJsonRequestOptions = {}): Promise<T | null> {
         const response = await fetchResponse(url, options);
 
-        // fetchResponse returns null for allow404 + 404, and for 204 in fetchResponse
-        // All other non-ok responses have already been thrown as HttpException
+        // fetchResponse returns null ONLY for allow404 + 404.
+        // 204 No Content is handled inside parseOkResponseBody, not here.
         if (response === null) return null;
 
         return parseOkResponseBody(response, url) as T;
@@ -70,12 +71,21 @@ export function createHttpClient(
     function buildRetry(operation: FetchOperation, options: FetchJsonRequestOptions): Retry<HttpResponse> {
         const method = options.method ?? 'GET';
 
-        // Per-call override (optional but handy)
         const effectiveConfig: RetryPolicyConfig = {
             retryOnTimeout: options.retryPolicy?.retryOnTimeout ?? retryConfig.retryOnTimeout,
             retryOnNetworkError: options.retryPolicy?.retryOnNetworkError ?? retryConfig.retryOnNetworkError,
             retryableStatusCodes: options.retryPolicy?.retryableStatusCodes ?? retryConfig.retryableStatusCodes,
         };
+
+        // Fail-fast guard: if 404 is ever marked retryable, allow404 semantics break
+        // because the retry loop will consume the 404 instead of throwing it.
+        if (effectiveConfig.retryableStatusCodes.has(404)) {
+            throw new Error(
+                'Invariant violated: 404 must not be in retryableStatusCodes. ' +
+                    'The allow404 option depends on 404 being non-retryable so that ' +
+                    'retry.perform() throws an HttpException instead of looping.',
+            );
+        }
 
         return new Retry<HttpResponse>(
             operation,
