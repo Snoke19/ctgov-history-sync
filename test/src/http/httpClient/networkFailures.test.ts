@@ -1,6 +1,7 @@
 import { getEventListeners } from 'node:events';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
+import { HttpClient } from '../../../../src/http/httpClient.js';
 import { API_URL, createFakes, jsonResponse, makeClient } from './helpers.js';
 
 async function expectRejected<T extends Error>(
@@ -10,6 +11,98 @@ async function expectRejected<T extends Error>(
     const error = await promise.catch((error: unknown) => error);
     expect(error).toBeInstanceOf(errorClass);
     return error as T;
+}
+
+function createAbortError(): DOMException {
+    return new DOMException('The operation was aborted.', 'AbortError');
+}
+
+export function createAbortableFetchMock(): jest.SpiedFunction<typeof fetch> {
+    return jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+        return new Promise((_, reject) => {
+            const signal = init?.signal as AbortSignal | undefined;
+
+            if (!signal) {
+                return;
+            }
+
+            const onAbort = (): void => {
+                reject(createAbortError());
+            };
+
+            if (signal.aborted) {
+                onAbort();
+                return;
+            }
+
+            signal.addEventListener('abort', onAbort, { once: true });
+        });
+    });
+}
+
+export async function withClosedClient(client: HttpClient, callback: () => Promise<void>): Promise<void> {
+    try {
+        await callback();
+    } finally {
+        await client.close();
+    }
+}
+
+export async function waitForAbortSignal(getSignal: () => AbortSignal | undefined): Promise<void> {
+    await new Promise<void>((resolve) => {
+        const check = (): void => {
+            if (getSignal()) {
+                resolve();
+                return;
+            }
+
+            queueMicrotask(check);
+        };
+
+        check();
+    });
+}
+
+export function createAbortableSleepMock(signalRef: {
+    signal?: AbortSignal;
+}): jest.MockedFunction<(ms: number, signal?: AbortSignal) => Promise<void>> {
+    return jest.fn(
+        (_ms: number, signal?: AbortSignal) =>
+            new Promise<void>((_, reject) => {
+                if (!signal || signal.aborted) {
+                    reject(createAbortError());
+                    return;
+                }
+
+                signalRef.signal = signal;
+
+                signal.addEventListener('abort', () => reject(createAbortError()), { once: true });
+            }),
+    );
+}
+
+export function createAbortableRequestMock(onRequestStarted: () => void): jest.SpiedFunction<typeof fetch> {
+    return jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+        return new Promise((_, reject) => {
+            const signal = init?.signal as AbortSignal | undefined;
+
+            if (!signal) {
+                throw new Error('Expected fetch signal');
+            }
+
+            const onAbort = (): void => {
+                reject(createAbortError());
+            };
+
+            if (signal.aborted) {
+                onAbort();
+                return;
+            }
+
+            signal.addEventListener('abort', onAbort, { once: true });
+            onRequestStarted();
+        });
+    });
 }
 
 describe('HttpClient network & timeout failures', () => {
@@ -92,30 +185,10 @@ describe('HttpClient network & timeout failures', () => {
     });
 
     it('throws TimeoutException when HTTP request exceeds timeoutMs', async () => {
-        const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
-            return new Promise((_, reject) => {
-                const signal = init?.signal as AbortSignal | undefined;
-
-                if (!signal) {
-                    return;
-                }
-
-                const onAbort = (): void => {
-                    reject(new DOMException('The operation was aborted.', 'AbortError'));
-                };
-
-                if (signal.aborted) {
-                    onAbort();
-                    return;
-                }
-
-                signal.addEventListener('abort', onAbort, { once: true });
-            });
-        });
-
+        const fetchMock = createAbortableFetchMock();
         const client = await makeClient();
 
-        try {
+        await withClosedClient(client, async () => {
             const error = await expectRejected(
                 client.fetchJson(`${API_URL}/slow`, {
                     timeoutMs: 50,
@@ -126,34 +199,14 @@ describe('HttpClient network & timeout failures', () => {
 
             expect(error.message).toContain('Request timed out after 50ms: http://api.test/slow — cause: {}');
             expect(fetchMock).toHaveBeenCalledTimes(1);
-        } finally {
-            await client.close();
-        }
+        });
     });
 
     it('does NOT retry a timeout when retryPolicy.retryOnTimeout is false', async () => {
-        const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
-            return new Promise((_, reject) => {
-                const signal = init?.signal as AbortSignal | undefined;
-
-                if (signal) {
-                    const onAbort = (): void => {
-                        reject(new DOMException('The operation was aborted.', 'AbortError'));
-                    };
-
-                    if (signal.aborted) {
-                        onAbort();
-                        return;
-                    }
-
-                    signal.addEventListener('abort', onAbort, { once: true });
-                }
-            });
-        });
-
+        const fetchMock = createAbortableFetchMock();
         const client = await makeClient();
 
-        try {
+        await withClosedClient(client, async () => {
             const error = await expectRejected(
                 client.fetchJson(`${API_URL}/timeout-no-retry`, {
                     timeoutMs: 50,
@@ -167,56 +220,25 @@ describe('HttpClient network & timeout failures', () => {
                 'Request timed out after 50ms: http://api.test/timeout-no-retry — cause: {}',
             );
             expect(fetchMock).toHaveBeenCalledTimes(1);
-        } finally {
-            await client.close();
-        }
+        });
     });
 
     it('aborts the retry backoff wait immediately when the caller cancels mid-delay', async () => {
         const fetchMock = jest.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed: ECONNRESET'));
 
         const controller = new AbortController();
-
-        let backoffSignal: AbortSignal | undefined;
-
-        const sleepMock = jest.fn(
-            (_ms: number, signal?: AbortSignal) =>
-                new Promise<void>((_, reject) => {
-                    if (!signal || signal.aborted) {
-                        reject(new DOMException('The operation was aborted.', 'AbortError'));
-                        return;
-                    }
-
-                    backoffSignal = signal;
-
-                    signal.addEventListener(
-                        'abort',
-                        () => reject(new DOMException('The operation was aborted.', 'AbortError')),
-                        { once: true },
-                    );
-                }),
-        );
+        const backoffSignalRef: { signal?: AbortSignal } = {};
+        const sleepMock = createAbortableSleepMock(backoffSignalRef);
 
         const client = await makeClient({ sleep: sleepMock });
 
-        try {
+        await withClosedClient(client, async () => {
             const pending = client.fetchJson(`${API_URL}/abort-during-backoff`, {
                 signal: controller.signal,
                 maxRetries: 3,
             });
 
-            await new Promise<void>((resolve) => {
-                const check = (): void => {
-                    if (backoffSignal) {
-                        resolve();
-                        return;
-                    }
-
-                    queueMicrotask(check);
-                };
-
-                check();
-            });
+            await waitForAbortSignal(() => backoffSignalRef.signal);
 
             controller.abort();
 
@@ -225,53 +247,36 @@ describe('HttpClient network & timeout failures', () => {
             expect(fetchMock).toHaveBeenCalledTimes(1);
             expect(sleepMock).toHaveBeenCalledTimes(1);
             expect(sleepMock).toHaveBeenCalledWith(expect.any(Number), controller.signal);
-        } finally {
-            await client.close();
-        }
+        });
     });
 
     it('throws NetworkException when caller aborts during HTTP request', async () => {
         const controller = new AbortController();
 
-        const requestStarted = new Promise<void>((resolve) => {
-            jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
-                return new Promise((_, reject) => {
-                    const signal = init?.signal as AbortSignal | undefined;
+        let requestStarted = false;
 
-                    if (!signal) {
-                        throw new Error('Expected fetch signal');
-                    }
-
-                    const onAbort = (): void => {
-                        reject(new DOMException('The operation was aborted.', 'AbortError'));
-                    };
-
-                    if (signal.aborted) {
-                        onAbort();
-                        return;
-                    }
-
-                    signal.addEventListener('abort', onAbort, { once: true });
-                    resolve();
-                });
+        const requestStartedPromise = new Promise<void>((resolve) => {
+            createAbortableRequestMock(() => {
+                requestStarted = true;
+                resolve();
             });
         });
 
         const client = await makeClient();
 
-        try {
+        await withClosedClient(client, async () => {
             const pending = client.fetchJson(`${API_URL}/slow`, {
                 signal: controller.signal,
                 maxRetries: 1,
             });
 
-            await requestStarted;
+            await requestStartedPromise;
+            expect(requestStarted).toBe(true);
+
             controller.abort();
 
             await expect(pending).rejects.toBeInstanceOf(NetworkException);
-        } finally {
-            await client.close();
-        }
+        });
     });
 
     it('does not leak abort listeners across requests', async () => {
@@ -280,13 +285,16 @@ describe('HttpClient network & timeout failures', () => {
         const controller = new AbortController();
         const client = await makeClient();
 
-        for (let i = 0; i < 3; i++) {
-            const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/leak-${i}`, {
-                signal: controller.signal,
-            });
-            expect(result).toEqual({ ok: true });
-            expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
-        }
+        await withClosedClient(client, async () => {
+            for (let i = 0; i < 3; i++) {
+                const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/leak-${i}`, {
+                    signal: controller.signal,
+                });
+
+                expect(result).toEqual({ ok: true });
+                expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+            }
+        });
     });
 
     it('enforces the rate limit between requests', async () => {
@@ -306,14 +314,16 @@ describe('HttpClient network & timeout failures', () => {
             wallClock: fakes.wallClock,
         });
 
-        const timeBefore = fakes.monotonicClock.now();
+        await withClosedClient(client, async () => {
+            const timeBefore = fakes.monotonicClock.now();
 
-        await client.fetchJson(`${API_URL}/a`);
-        await client.fetchJson(`${API_URL}/b`);
+            await client.fetchJson(`${API_URL}/a`);
+            await client.fetchJson(`${API_URL}/b`);
 
-        const timeAfter = fakes.monotonicClock.now();
+            const timeAfter = fakes.monotonicClock.now();
 
-        expect(timeAfter - timeBefore).toBe(100);
-        expect(fetchMock).toHaveBeenCalledTimes(2);
+            expect(timeAfter - timeBefore).toBe(100);
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+        });
     });
 });

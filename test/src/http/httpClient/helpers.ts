@@ -98,3 +98,16 @@ export function makeClient(optionsOverrides: Partial<HttpClientOptions> = {}): P
 
     return createHttpClient(createDefaultOptions(optionsOverrides), provider);
 }
+
+export async function withClient(
+    run: (client: HttpClient) => Promise<void>,
+    optionsOverrides: Partial<HttpClientOptions> = {},
+): Promise<void> {
+    const client = await makeClient(optionsOverrides);
+
+    try {
+        await run(client);
+    } finally {
+        await client.close();
+    }
+}
