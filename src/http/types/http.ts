@@ -45,7 +45,6 @@ export interface HttpClientOptions {
  */
 export interface FetchJsonRequestOptions {
     headers?: Record<string, string>;
-    body?: string;
 
     /**
      * Per-request timeout in milliseconds.
