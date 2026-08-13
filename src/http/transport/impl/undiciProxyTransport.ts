@@ -14,21 +14,10 @@ import type {
     TransportErrorClassification,
 } from '../httpTransport.js';
 
-/** Creates a Dispatcher pool for a given origin. Called by ProxyAgent per-origin. */
 export type PoolClientFactory = (origin: URL, opts?: Record<string, unknown>) => Dispatcher;
-
-/** Transforms pool config into a PoolClientFactory. */
 export type PoolCreatorFn = (config: ProxyPoolConfig) => PoolClientFactory;
-
-/** Assembles a ProxyAgent from a URI and clientFactory. */
 export type AgentCreatorFn = (uri: string, clientFactory: PoolClientFactory) => ProxyAgent;
 
-/**
- * Undici ProxyAgent adapter implementing the universal {@link HttpTransport}.
- *
- * Each instance owns a single ProxyAgent. The agent is closed on shutdown
- * to release underlying sockets and timers.
- */
 export class UndiciHttpTransport implements HttpTransport {
     constructor(private readonly agent: ProxyAgent) {}
 
@@ -52,12 +41,6 @@ export class UndiciHttpTransport implements HttpTransport {
     }
 }
 
-/**
- * Factory that produces {@link UndiciHttpTransport} instances wired to a
- * specific proxy URL and shared pool configuration.
- *
- * This class is the only place in the endpoint layer that knows about undici.
- */
 export class UndiciTransportFactory implements ProxyTransportFactory {
     constructor(
         private readonly poolCreator: PoolCreatorFn = createPoolFactory,

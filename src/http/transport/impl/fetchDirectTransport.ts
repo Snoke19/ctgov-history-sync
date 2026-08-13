@@ -1,5 +1,6 @@
 import { adaptHttpResponse } from '../adaptHttpResponse.js';
 import { classifyTransportError } from '../classifyTransportError.js';
+import { DirectTransportFactory } from '../factory/directTransportFactory.js';
 import type { HttpRequest, HttpResponse, HttpTransport, TransportErrorClassification } from '../httpTransport.js';
 
 export class FetchDirectTransport implements HttpTransport {
@@ -18,4 +19,10 @@ export class FetchDirectTransport implements HttpTransport {
     }
 
     async close(): Promise<void> {}
+}
+
+export class FetchDirectTransportFactory implements DirectTransportFactory {
+    create(): HttpTransport {
+        return new FetchDirectTransport();
+    }
 }

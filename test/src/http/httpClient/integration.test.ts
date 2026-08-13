@@ -5,7 +5,7 @@ import { NetworkException, TimeoutException } from '../../../../src/error/errors
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
-import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransportFactory.js';
+import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
 
 /**
  * Full createHttpClient stack against a real TCP server with the real

@@ -1,7 +1,7 @@
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
-import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransportFactory.js';
+import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
 import type { HttpClientOptions } from '../../../../src/http/types/http.js';
 
 export const API_URL = 'http://api.test';
