@@ -8,6 +8,24 @@ describe('HttpClient network & timeout failures', () => {
         jest.restoreAllMocks();
     });
 
+    it('maps an Undici connect timeout to TimeoutException and applies timeout retry policy', async () => {
+        const fetchMock = jest.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
+            Object.assign(new Error('Connect Timeout Error'), {
+                code: 'UND_ERR_CONNECT_TIMEOUT',
+            }),
+        );
+
+        const client = makeClient();
+
+        await expect(
+            client.fetchJson(`${API_URL}/proxy-timeout`, {
+                maxRetries: 0,
+            }),
+        ).rejects.toBeInstanceOf(TimeoutException);
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('surfaces a transport timeout as TimeoutException', async () => {
         const timeoutError = Object.assign(new Error('Headers Timeout Error'), {
             code: 'UND_ERR_HEADERS_TIMEOUT',

@@ -31,6 +31,9 @@ const config = {
             },
         ],
     },
+
+    collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts'],
+    coveragePathIgnorePatterns: ['/node_modules/'],
 };
 
 export default config;
