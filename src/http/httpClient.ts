@@ -7,11 +7,12 @@ import {
     TimeoutException,
 } from '../error/errors.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
-import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
+import { EndpointManager } from './endpoint/manager/endpointManager.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
 import { HttpResponse } from './endpoint/transport/httpTransport.js';
 import { DefaultLimiterFactory } from './limiter/factory/defaultLimiterFactory.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
+import { validateFetchJsonRequestOptions } from './requestValidation.js';
 import { parseOkResponseBody } from './responseBody.js';
 import { FetchOperation } from './retry/fetchOperation.js';
 import { Retry } from './retry/retry.js';
@@ -19,7 +20,6 @@ import { calculateBackoff, defaultRetryPolicyConfig, shouldRetry } from './retry
 import type { RetryPolicyConfig } from './retry/retryPolicy.js';
 import { defaultClock, defaultRandom, defaultSleeper } from './types/clock.js';
 import type { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
-import { validateFetchJsonRequestOptions } from './requestValidation.js';
 
 export interface HttpClient {
     /**
@@ -53,7 +53,14 @@ export function createHttpClient(
     }
 
     const endpointFactory = new EndpointFactory(provider, limiterFactory);
-    const endpointManager = new EndpointManagerFactory(endpointFactory).create(clientOptions);
+    const endpoints = endpointFactory.build(clientOptions);
+
+    const endpointManager = new EndpointManager(
+        endpoints,
+        clientOptions.acquireTimeout,
+        clientOptions.clock?.now,
+        clientOptions.sleep ?? defaultSleeper.sleep,
+    );
 
     async function fetchResponse(url: string, options: FetchJsonRequestOptions): Promise<HttpResponse | null> {
         const operation = new FetchOperation(endpointManager, url, options, clientOptions.clock?.now);

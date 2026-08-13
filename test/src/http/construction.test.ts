@@ -3,7 +3,7 @@ import { Dispatcher, ProxyAgent } from 'undici';
 import { ProxyPoolConfig } from '../../../src/config/config.js';
 import { ConfigurationError } from '../../../src/error/errors.js';
 import { EndpointFactory } from '../../../src/http/endpoint/endpointFactory.js';
-import { EndpointManagerFactory } from '../../../src/http/endpoint/manager/endpointManagerFactory.js';
+import { EndpointManager } from '../../../src/http/endpoint/manager/endpointManager.js';
 import { ProxyEndpointProvider } from '../../../src/http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
 import {
@@ -54,22 +54,25 @@ function createValidOptions(overrides: Partial<HttpClientOptions> = {}): HttpCli
     } as HttpClientOptions;
 }
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+function createManager(options: HttpClientOptions = createValidOptions()): EndpointManager {
+    const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
+    const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
+
+    const endpoints = factory.build(options);
+
+    return new EndpointManager(endpoints, options.acquireTimeout, options.clock?.now, options.sleep);
+}
 
 describe('Proxy + Undici construction chain', () => {
     it('builds successfully with rate limiting disabled', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
-        const manager = new EndpointManagerFactory(factory).create(createValidOptions());
+        const manager = createManager(createValidOptions());
 
         expect(manager).toBeDefined();
-        expect(manager.endpointCount).toBe(2); // one endpoint per proxy URL
+        expect(manager.endpointCount).toBe(2);
     });
 
     it('builds successfully with rate limiting enabled', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
-        const manager = new EndpointManagerFactory(factory).create(
+        const manager = createManager(
             createValidOptions({
                 useRateLimit: true,
                 rateLimitCapacity: 40,
@@ -82,9 +85,7 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('creates exactly one endpoint per valid proxy URL', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
-        const manager = new EndpointManagerFactory(factory).create(
+        const manager = createManager(
             createValidOptions({
                 proxyUrls: 'http://p1:8080,http://p2:8080,http://p3:8080',
             }),
@@ -93,89 +94,68 @@ describe('Proxy + Undici construction chain', () => {
         expect(manager.endpointCount).toBe(3);
     });
 
-    // ─── ProxyEndpointProvider validation ───────────────────────────────────
-
     it('throws ConfigurationError when poolConfig is missing', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
         delete (options as unknown as Record<string, unknown>).poolConfig;
 
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow(ConfigurationError);
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow('poolConfig');
+        expect(() => createManager(options)).toThrow(ConfigurationError);
+        expect(() => createManager(options)).toThrow('poolConfig');
     });
 
     it('throws ConfigurationError when proxyUrls is empty', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions({ proxyUrls: '' });
 
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow(ConfigurationError);
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow('No valid proxy URLs');
+        expect(() => createManager(options)).toThrow(ConfigurationError);
+        expect(() => createManager(options)).toThrow('No valid proxy URLs');
     });
 
     it('throws ConfigurationError when every proxyUrl is invalid', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
-        const options = createValidOptions({ proxyUrls: 'not-a-url,also-bad://missing-port' });
+        const options = createValidOptions({
+            proxyUrls: 'not-a-url,also-bad://missing-port',
+        });
 
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow(ConfigurationError);
+        expect(() => createManager(options)).toThrow(ConfigurationError);
     });
 
-    // ─── EndpointManagerFactory validation ──────────────────────────────────
-
     it('throws when acquireTimeout is missing', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
         delete (options as unknown as Record<string, unknown>).acquireTimeout;
 
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow();
+        expect(() => createManager(options)).toThrow();
     });
 
     it('throws when concurrency is missing', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions();
         delete (options as unknown as Record<string, unknown>).concurrency;
 
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow();
+        expect(() => createManager(options)).toThrow();
     });
 
-    // ─── DefaultLimiterFactory validation ───────────────────────────────────
-
     it('throws when rate limit is enabled but capacity is missing', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions({
             useRateLimit: true,
             rateLimitWindow: 60000,
         });
+
         delete (options as unknown as Record<string, unknown>).rateLimitCapacity;
 
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow();
+        expect(() => createManager(options)).toThrow();
     });
 
     it('throws when rate limit is enabled but window is missing', () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
         const options = createValidOptions({
             useRateLimit: true,
             rateLimitCapacity: 40,
         });
+
         delete (options as unknown as Record<string, unknown>).rateLimitWindow;
 
-        expect(() => new EndpointManagerFactory(factory).create(options)).toThrow();
+        expect(() => createManager(options)).toThrow();
     });
 
-    // ─── Lifecycle smoke test ───────────────────────────────────────────────
-
     it('produces a manager whose endpoints can be closed cleanly', async () => {
-        const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
-        const manager = new EndpointManagerFactory(factory).create(createValidOptions());
+        const manager = createManager(createValidOptions());
 
-        // If transports were not wired correctly, this would throw
         await expect(manager.close()).resolves.toBeUndefined();
     });
 });
