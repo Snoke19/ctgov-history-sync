@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { classifyTransportError } from '../../../../../src/http/endpoint/transport/classifyTransportError.js';
+import { classifyTransportError } from '../../../../../src/http/transport/classifyTransportError.js';
 
 describe('classifyTransportError', () => {
     it.each(['UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'])(

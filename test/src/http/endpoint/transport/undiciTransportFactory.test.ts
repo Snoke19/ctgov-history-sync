@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Dispatcher, ProxyAgent } from 'undici';
 import { ProxyPoolConfig } from '../../../../../src/config/config.js';
-import { CreateProxyEndpointsOptions } from '../../../../../src/http/endpoint/transport/httpTransport.js';
+import { CreateProxyEndpointsOptions } from '../../../../../src/http/transport/httpTransport.js';
 import type {
     AgentCreatorFn,
     PoolClientFactory,
     PoolCreatorFn,
     UndiciTransportFactory as UndiciTransportFactoryType,
-} from '../../../../../src/http/endpoint/transport/impl/undiciProxyTransport.js';
+} from '../../../../../src/http/transport/impl/undiciProxyTransport.js';
 
 const mockResolveConnections = jest.fn();
 
@@ -16,7 +16,7 @@ jest.unstable_mockModule('../../../../../src/http/endpoint/proxy/resolveConnecti
 }));
 
 const { UndiciHttpTransport, UndiciTransportFactory } =
-    await import('../../../../../src/http/endpoint/transport/impl/undiciProxyTransport.js');
+    await import('../../../../../src/http/transport/impl/undiciProxyTransport.js');
 
 const PROXY_URL = 'http://proxy.test:8080';
 const RESOLVED_CONNECTIONS = 5;

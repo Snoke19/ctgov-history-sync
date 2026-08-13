@@ -1,5 +1,5 @@
 import { Limiter } from '../limiter/limiter.js';
-import { HttpTransport } from './transport/httpTransport.js';
+import { HttpTransport } from '../transport/httpTransport.js';
 
 export class Endpoint {
     private readonly handle: EndpointHandle;

@@ -1,9 +1,9 @@
 import { LimiterFactory } from '../limiter/factory/limiterFactory.js';
 import type { Limiter } from '../limiter/limiter.js';
+import type { HttpTransport } from '../transport/httpTransport.js';
 import type { HttpClientOptions } from '../types/http.js';
 import { Endpoint } from './endpoint.js';
 import { EndpointDefinition, EndpointProvider } from './provider/endpointProvider.js';
-import type { HttpTransport } from './transport/httpTransport.js';
 
 export type EndpointCtor = (id: string, limiter: Limiter, transport: HttpTransport) => Endpoint;
 

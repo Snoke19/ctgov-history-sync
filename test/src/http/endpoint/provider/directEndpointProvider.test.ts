@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { DirectEndpointProvider } from '../../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
-import { DirectTransportFactory } from '../../../../../src/http/endpoint/transport/factory/directTransportFactory.js';
-import { HttpTransport } from '../../../../../src/http/endpoint/transport/httpTransport.js';
+import { DirectTransportFactory } from '../../../../../src/http/transport/factory/directTransportFactory.js';
+import { HttpTransport } from '../../../../../src/http/transport/httpTransport.js';
 import { HttpClientOptions } from '../../../../../src/http/types/http.js';
 
 describe('DirectEndpointProvider', () => {

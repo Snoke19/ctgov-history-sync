@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { ProxyAgent, Response } from 'undici';
-import type { HttpRequest } from '../../../../../src/http/endpoint/transport/httpTransport.js';
+import type { HttpRequest } from '../../../../../src/http/transport/httpTransport.js';
 
 const mockFetch = jest.fn<(url: string, options?: RequestInit) => Promise<Response>>();
 
@@ -17,7 +17,7 @@ jest.unstable_mockModule('../../../../../src/http/poolFactory.js', () => ({
     createPoolFactory: jest.fn(),
 }));
 
-const { UndiciHttpTransport } = await import('../../../../../src/http/endpoint/transport/impl/undiciProxyTransport.js');
+const { UndiciHttpTransport } = await import('../../../../../src/http/transport/impl/undiciProxyTransport.js');
 
 function makeRequest(overrides: Partial<HttpRequest> = {}): HttpRequest {
     return {

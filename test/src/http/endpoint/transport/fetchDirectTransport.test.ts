@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { FetchDirectTransport } from '../../../../../src/http/endpoint/transport/impl/fetchDirectTransport.js';
+import { FetchDirectTransport } from '../../../../../src/http/transport/impl/fetchDirectTransport.js';
 
 function createMockResponse(overrides: Partial<Response> = {}): Response {
     return {

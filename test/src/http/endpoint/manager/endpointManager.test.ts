@@ -6,7 +6,7 @@ import {
 } from '../../../../../src/error/errors.js';
 import { Endpoint, EndpointHandle } from '../../../../../src/http/endpoint/endpoint.js';
 import { EndpointManager } from '../../../../../src/http/endpoint/manager/endpointManager.js';
-import { HttpTransport } from '../../../../../src/http/endpoint/transport/httpTransport.js';
+import { HttpTransport } from '../../../../../src/http/transport/httpTransport.js';
 
 const makeHandle = (url = 'http://fake', id?: string): EndpointHandle => ({
     url,

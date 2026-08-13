@@ -1,6 +1,6 @@
 import { logger } from '../config/logging.js';
 import { TrialFetchError } from '../error/errors.js';
-import { HttpResponse } from './endpoint/transport/httpTransport.js';
+import { HttpResponse } from './transport/httpTransport.js';
 
 /**
  * Safely drains and discards an HTTP response body.

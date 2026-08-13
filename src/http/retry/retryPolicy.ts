@@ -6,7 +6,7 @@ import {
     RETRYABLE_STATUS_CODES,
 } from '../../config/config.js';
 import { HttpException, NetworkException, TimeoutException, TrialError } from '../../error/errors.js';
-import { HttpResponse } from '../endpoint/transport/httpTransport.js';
+import { HttpResponse } from '../transport/httpTransport.js';
 import { defaultRandom } from '../types/clock.js';
 
 /**

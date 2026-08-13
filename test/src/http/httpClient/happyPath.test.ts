@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { TrialFetchError } from '../../../../src/error/errors.js';
-import type { HttpResponse } from '../../../../src/http/endpoint/transport/httpTransport.js';
-import { FetchDirectTransport } from '../../../../src/http/endpoint/transport/impl/fetchDirectTransport.js';
+import type { HttpResponse } from '../../../../src/http/transport/httpTransport.js';
+import { FetchDirectTransport } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
 import { API_URL, jsonResponse, makeClient } from './helpers.js';
 
 describe('HttpClient happy path & request construction', () => {

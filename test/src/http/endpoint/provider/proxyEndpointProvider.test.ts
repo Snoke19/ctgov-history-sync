@@ -2,11 +2,8 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { ProxyPoolConfig } from '../../../../../src/config/config.js';
 import { ConfigurationError } from '../../../../../src/error/errors.js';
 import { ProxyUrlParser } from '../../../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
-import { ProxyTransportFactory } from '../../../../../src/http/endpoint/transport/factory/proxyTransportFactory.js';
-import {
-    CreateProxyEndpointsOptions,
-    HttpTransport,
-} from '../../../../../src/http/endpoint/transport/httpTransport.js';
+import { ProxyTransportFactory } from '../../../../../src/http/transport/factory/proxyTransportFactory.js';
+import { CreateProxyEndpointsOptions, HttpTransport } from '../../../../../src/http/transport/httpTransport.js';
 import { HttpClientOptions } from '../../../../../src/http/types/http.js';
 import * as validation from '../../../../../src/utils/validation.js';
 
@@ -188,10 +185,7 @@ describe('ProxyEndpointProvider', () => {
         });
 
         it('defers a missing transportFactory failure to createTransport time', () => {
-            const invalidProvider = new ProxyEndpointProvider(
-                undefined as unknown as ProxyTransportFactory,
-                urlParser,
-            );
+            const invalidProvider = new ProxyEndpointProvider(undefined as unknown as ProxyTransportFactory, urlParser);
             urlParser.parse.mockReturnValue(['x']);
 
             const [definition] = invalidProvider.build(makeOptions());

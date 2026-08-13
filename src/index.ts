@@ -19,8 +19,8 @@ import {
 } from './error/errors.js';
 import { ProxyEndpointProvider } from './http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from './http/endpoint/proxy/httpProxyUrlParser.js';
-import { UndiciTransportFactory } from './http/endpoint/transport/impl/undiciProxyTransport.js';
 import { createHttpClient } from './http/httpClient.js';
+import { UndiciTransportFactory } from './http/transport/impl/undiciProxyTransport.js';
 
 const DATE_RANGE = 'AREA[StartDate]RANGE[07/15/2026, 07/18/2026]';
 

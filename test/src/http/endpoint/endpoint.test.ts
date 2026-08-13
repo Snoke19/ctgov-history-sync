@@ -1,8 +1,8 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { Endpoint } from '../../../../src/http/endpoint/endpoint.js';
-import { HttpTransport } from '../../../../src/http/endpoint/transport/httpTransport.js';
-import { UndiciHttpTransport } from '../../../../src/http/endpoint/transport/impl/undiciProxyTransport.js';
 import { Limiter } from '../../../../src/http/limiter/limiter.js';
+import { HttpTransport } from '../../../../src/http/transport/httpTransport.js';
+import { UndiciHttpTransport } from '../../../../src/http/transport/impl/undiciProxyTransport.js';
 
 describe('Endpoint', () => {
     const createStubs = () => {

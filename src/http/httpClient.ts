@@ -9,7 +9,6 @@ import {
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManager } from './endpoint/manager/endpointManager.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
-import { HttpResponse } from './endpoint/transport/httpTransport.js';
 import { DefaultLimiterFactory } from './limiter/factory/defaultLimiterFactory.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { validateFetchJsonRequestOptions } from './requestValidation.js';
@@ -18,6 +17,7 @@ import { FetchOperation } from './retry/fetchOperation.js';
 import { Retry } from './retry/retry.js';
 import { calculateBackoff, defaultRetryPolicyConfig, shouldRetry } from './retry/retryPolicy.js';
 import type { RetryPolicyConfig } from './retry/retryPolicy.js';
+import { HttpResponse } from './transport/httpTransport.js';
 import { defaultClock, defaultRandom, defaultSleeper } from './types/clock.js';
 import type { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
 

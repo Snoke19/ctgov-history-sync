@@ -1,5 +1,5 @@
+import { HttpTransport } from '../../transport/httpTransport.js';
 import { HttpClientOptions } from '../../types/http.js';
-import { HttpTransport } from '../transport/httpTransport.js';
 
 /**
  * Describes one endpoint that a provider wants to exist.

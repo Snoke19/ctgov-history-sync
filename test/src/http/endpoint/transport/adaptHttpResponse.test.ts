@@ -1,5 +1,5 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { adaptHttpResponse } from '../../../../../src/http/endpoint/transport/adaptHttpResponse.js';
+import { adaptHttpResponse } from '../../../../../src/http/transport/adaptHttpResponse.js';
 
 describe('adaptHttpResponse', () => {
     it('maps response fields correctly', () => {

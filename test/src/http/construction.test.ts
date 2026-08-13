@@ -6,13 +6,13 @@ import { EndpointFactory } from '../../../src/http/endpoint/endpointFactory.js';
 import { EndpointManager } from '../../../src/http/endpoint/manager/endpointManager.js';
 import { ProxyEndpointProvider } from '../../../src/http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
+import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import {
     AgentCreatorFn,
     PoolClientFactory,
     PoolCreatorFn,
     UndiciTransportFactory,
-} from '../../../src/http/endpoint/transport/impl/undiciProxyTransport.js';
-import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
+} from '../../../src/http/transport/impl/undiciProxyTransport.js';
 import { HttpClientOptions } from '../../../src/http/types/http.js';
 
 /**

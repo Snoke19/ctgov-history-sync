@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { logger } from '../../../src/config/logging.js';
 import { TrialFetchError } from '../../../src/error/errors.js';
-import { HttpResponse } from '../../../src/http/endpoint/transport/httpTransport.js';
 import { drainBody, parseOkResponseBody } from '../../../src/http/responseBody.js';
+import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
 
 interface FakeHeaders {
     get(name: string): string | null;

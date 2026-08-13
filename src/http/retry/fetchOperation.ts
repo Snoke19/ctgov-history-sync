@@ -9,8 +9,8 @@ import {
 } from '../../error/errors.js';
 import { EndpointHandle } from '../endpoint/endpoint.js';
 import { EndpointManager } from '../endpoint/manager/endpointManager.js';
-import { HttpResponse, HttpTransport } from '../endpoint/transport/httpTransport.js';
 import { drainBody } from '../responseBody.js';
+import { HttpResponse, HttpTransport } from '../transport/httpTransport.js';
 import { defaultClock } from '../types/clock.js';
 import type { Clock } from '../types/clock.js';
 import { FetchJsonRequestOptions } from '../types/http.js';

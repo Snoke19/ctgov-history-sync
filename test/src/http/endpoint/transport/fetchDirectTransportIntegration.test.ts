@@ -1,6 +1,6 @@
 import { createServer as createHttpServer, Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
-import { FetchDirectTransport } from '../../../../../src/http/endpoint/transport/impl/fetchDirectTransport.js';
+import { FetchDirectTransport } from '../../../../../src/http/transport/impl/fetchDirectTransport.js';
 
 describe('FetchDirectTransport integration (undici via global fetch)', () => {
     let server: Server;

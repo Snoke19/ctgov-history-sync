@@ -1,4 +1,4 @@
-import { ProxyPoolConfig } from '../../../config/config.js';
+import { ProxyPoolConfig } from '../../config/config.js';
 
 export type TransportErrorKind = 'timeout' | 'cancelled' | 'network';
 

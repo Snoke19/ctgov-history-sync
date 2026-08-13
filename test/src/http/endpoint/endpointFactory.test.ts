@@ -7,9 +7,9 @@ import {
     EndpointFactory,
 } from '../../../../src/http/endpoint/endpointFactory.js';
 import { EndpointDefinition, EndpointProvider } from '../../../../src/http/endpoint/provider/endpointProvider.js';
-import { HttpTransport } from '../../../../src/http/endpoint/transport/httpTransport.js';
 import { LimiterFactory } from '../../../../src/http/limiter/factory/limiterFactory.js';
 import { Limiter } from '../../../../src/http/limiter/limiter.js';
+import { HttpTransport } from '../../../../src/http/transport/httpTransport.js';
 import { HttpClientOptions } from '../../../../src/http/types/http.js';
 
 const makeTransport = (): HttpTransport & { close: jest.Mock<() => Promise<void>> } =>
