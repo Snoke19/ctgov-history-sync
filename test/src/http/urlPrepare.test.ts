@@ -2,6 +2,57 @@ import { describe, expect, it } from '@jest/globals';
 import { UrlBuilder } from '../../../src/http/urlPrepare.js';
 
 describe('UrlBuilder', () => {
+    it('removes a previously set parameter when value is null', () => {
+        expect(new UrlBuilder('https://api.test').queryParam('term', 'cancer').queryParam('term', null).build()).toBe(
+            'https://api.test',
+        );
+    });
+
+    it('removes a previously set parameter when value is undefined', () => {
+        expect(
+            new UrlBuilder('https://api.test').queryParam('term', 'cancer').queryParam('term', undefined).build(),
+        ).toBe('https://api.test');
+    });
+
+    it('replaces a previous scalar value when an array is set', () => {
+        expect(
+            new UrlBuilder('https://api.test')
+                .queryParam('term', 'cancer')
+                .queryParam('term', ['diabetes', 'asthma'])
+                .build(),
+        ).toBe('https://api.test?term=diabetes&term=asthma');
+    });
+
+    it('replaces a previous array when a scalar is set', () => {
+        expect(
+            new UrlBuilder('https://api.test')
+                .queryParam('term', ['cancer', 'diabetes'])
+                .queryParam('term', 'asthma')
+                .build(),
+        ).toBe('https://api.test?term=asthma');
+    });
+
+    it('serializes string arrays as repeated query parameters', () => {
+        expect(new UrlBuilder('https://api.test').queryParam('term', ['cancer', 'diabetes']).build()).toBe(
+            'https://api.test?term=cancer&term=diabetes',
+        );
+    });
+
+    it('serializes multiple array parameters correctly', () => {
+        expect(
+            new UrlBuilder('https://api.test')
+                .queryParams({
+                    term: ['cancer', 'diabetes'],
+                    type: ['interventional', 'observational'],
+                })
+                .build(),
+        ).toBe('https://api.test?term=cancer&term=diabetes&type=interventional&type=observational');
+    });
+
+    it('omits an empty array', () => {
+        expect(new UrlBuilder('https://api.test').queryParam('term', []).build()).toBe('https://api.test');
+    });
+
     describe('constructor', () => {
         it('throws a TypeError for an empty base', () => {
             expect(() => new UrlBuilder('')).toThrow(TypeError);

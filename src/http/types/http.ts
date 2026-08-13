@@ -1,7 +1,15 @@
 import { ProxyPoolConfig } from '../../config/config.js';
 import { RetryPolicyConfig } from '../retry/retryPolicy.js';
 import { Clock, RandomSource, Sleeper } from './clock.js';
+
 export type QueryParamValue = string | number | boolean;
+
+/**
+ * Query parameters support scalar values and string arrays.
+ *
+ * Arrays are encoded as repeated query parameters:
+ * `['a', 'b']` -> `?key=a&key=b`.
+ */
 export type QueryParamInput = QueryParamValue | string[] | null | undefined;
 
 export interface QueryParams {
