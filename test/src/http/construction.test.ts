@@ -54,25 +54,25 @@ function createValidOptions(overrides: Partial<HttpClientOptions> = {}): HttpCli
     } as HttpClientOptions;
 }
 
-function createManager(options: HttpClientOptions = createValidOptions()): EndpointManager {
+async function createManager(options: HttpClientOptions = createValidOptions()): Promise<EndpointManager> {
     const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
     const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
 
-    const endpoints = factory.build(options);
+    const endpoints = await factory.build(options);
 
     return new EndpointManager(endpoints, options.acquireTimeout, options.clock?.now, options.sleep);
 }
 
 describe('Proxy + Undici construction chain', () => {
-    it('builds successfully with rate limiting disabled', () => {
-        const manager = createManager(createValidOptions());
+    it('builds successfully with rate limiting disabled', async () => {
+        const manager = await createManager(createValidOptions());
 
         expect(manager).toBeDefined();
         expect(manager.endpointCount).toBe(2);
     });
 
-    it('builds successfully with rate limiting enabled', () => {
-        const manager = createManager(
+    it('builds successfully with rate limiting enabled', async () => {
+        const manager = await createManager(
             createValidOptions({
                 useRateLimit: true,
                 rateLimitCapacity: 40,
@@ -84,8 +84,8 @@ describe('Proxy + Undici construction chain', () => {
         expect(manager.endpointCount).toBe(2);
     });
 
-    it('creates exactly one endpoint per valid proxy URL', () => {
-        const manager = createManager(
+    it('creates exactly one endpoint per valid proxy URL', async () => {
+        const manager = await createManager(
             createValidOptions({
                 proxyUrls: 'http://p1:8080,http://p2:8080,http://p3:8080',
             }),
@@ -94,44 +94,48 @@ describe('Proxy + Undici construction chain', () => {
         expect(manager.endpointCount).toBe(3);
     });
 
-    it('throws ConfigurationError when poolConfig is missing', () => {
+    it('throws ConfigurationError when poolConfig is missing', async () => {
         const options = createValidOptions();
         delete (options as unknown as Record<string, unknown>).poolConfig;
 
-        expect(() => createManager(options)).toThrow(ConfigurationError);
-        expect(() => createManager(options)).toThrow('poolConfig');
+        const result = createManager(options);
+
+        await expect(result).rejects.toBeInstanceOf(ConfigurationError);
+        await expect(result).rejects.toThrow('poolConfig');
     });
 
-    it('throws ConfigurationError when proxyUrls is empty', () => {
+    it('throws ConfigurationError when proxyUrls is empty', async () => {
         const options = createValidOptions({ proxyUrls: '' });
 
-        expect(() => createManager(options)).toThrow(ConfigurationError);
-        expect(() => createManager(options)).toThrow('No valid proxy URLs');
+        const result = createManager(options);
+
+        await expect(result).rejects.toBeInstanceOf(ConfigurationError);
+        await expect(result).rejects.toThrow('No valid proxy URLs');
     });
 
-    it('throws ConfigurationError when every proxyUrl is invalid', () => {
+    it('throws ConfigurationError when every proxyUrl is invalid', async () => {
         const options = createValidOptions({
             proxyUrls: 'not-a-url,also-bad://missing-port',
         });
 
-        expect(() => createManager(options)).toThrow(ConfigurationError);
+        await expect(createManager(options)).rejects.toBeInstanceOf(ConfigurationError);
     });
 
-    it('throws when acquireTimeout is missing', () => {
+    it('throws when acquireTimeout is missing', async () => {
         const options = createValidOptions();
         delete (options as unknown as Record<string, unknown>).acquireTimeout;
 
-        expect(() => createManager(options)).toThrow();
+        await expect(createManager(options)).rejects.toThrow();
     });
 
-    it('throws when concurrency is missing', () => {
+    it('throws when concurrency is missing', async () => {
         const options = createValidOptions();
         delete (options as unknown as Record<string, unknown>).concurrency;
 
-        expect(() => createManager(options)).toThrow();
+        await expect(createManager(options)).rejects.toThrow();
     });
 
-    it('throws when rate limit is enabled but capacity is missing', () => {
+    it('throws when rate limit is enabled but capacity is missing', async () => {
         const options = createValidOptions({
             useRateLimit: true,
             rateLimitWindow: 60000,
@@ -139,10 +143,10 @@ describe('Proxy + Undici construction chain', () => {
 
         delete (options as unknown as Record<string, unknown>).rateLimitCapacity;
 
-        expect(() => createManager(options)).toThrow();
+        await expect(createManager(options)).rejects.toThrow();
     });
 
-    it('throws when rate limit is enabled but window is missing', () => {
+    it('throws when rate limit is enabled but window is missing', async () => {
         const options = createValidOptions({
             useRateLimit: true,
             rateLimitCapacity: 40,
@@ -150,11 +154,11 @@ describe('Proxy + Undici construction chain', () => {
 
         delete (options as unknown as Record<string, unknown>).rateLimitWindow;
 
-        expect(() => createManager(options)).toThrow();
+        await expect(createManager(options)).rejects.toThrow();
     });
 
     it('produces a manager whose endpoints can be closed cleanly', async () => {
-        const manager = createManager(createValidOptions());
+        const manager = await createManager(createValidOptions());
 
         await expect(manager.close()).resolves.toBeUndefined();
     });

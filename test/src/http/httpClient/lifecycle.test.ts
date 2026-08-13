@@ -16,7 +16,7 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
             .mockResolvedValueOnce(jsonResponse({ ep: 1 }))
             .mockResolvedValueOnce(jsonResponse({ ep: 2 }));
 
-        const client = makeClient({
+        const client = await makeClient({
             proxyUrls: `${ENDPOINT_1},${ENDPOINT_2}`,
         });
 
@@ -37,7 +37,7 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
         jest.spyOn(transportFactory, 'create').mockReturnValue(transport);
 
         const provider = new DirectEndpointProvider(transportFactory);
-        const client = createHttpClient(createDefaultOptions(), provider);
+        const client = await createHttpClient(createDefaultOptions(), provider);
 
         await client.close();
 
@@ -52,7 +52,7 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
         jest.spyOn(transportFactory, 'create').mockReturnValue(transport);
 
         const provider = new DirectEndpointProvider(transportFactory);
-        const client = createHttpClient(createDefaultOptions(), provider);
+        const client = await createHttpClient(createDefaultOptions(), provider);
 
         await client.close();
         await client.close();

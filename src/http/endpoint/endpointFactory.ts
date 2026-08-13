@@ -15,19 +15,32 @@ const defaultEndpointCtor: EndpointCtor = (id, limiter, transport) => new Endpoi
  *
  * Ownership invariant: once `createTransport()` has produced a transport,
  * this function is the sole owner until the Endpoint exists. If limiter
- * creation or endpoint construction fails, the transport is closed before
- * the error is rethrown.
+ * creation or endpoint construction fails, the transport is closed BEFORE
+ * the failure is propagated.
+ *
+ * If transport cleanup itself fails, both the original construction failure
+ * and the cleanup failure are preserved in an AggregateError.
  */
-export function constructEndpoint(
+export async function constructEndpoint(
     definition: EndpointDefinition,
     createLimiter: () => Limiter,
     createEndpoint: EndpointCtor = defaultEndpointCtor,
-): Endpoint {
+): Promise<Endpoint> {
     const transport = definition.createTransport();
+
     try {
         return createEndpoint(definition.id, createLimiter(), transport);
     } catch (error) {
-        void transport.close();
+        try {
+            await transport.close();
+        } catch (cleanupError) {
+            throw new AggregateError(
+                [error, cleanupError],
+                `Failed to construct endpoint "${definition.id}" and transport cleanup also failed.`,
+                { cause: error },
+            );
+        }
+
         throw error;
     }
 }
@@ -37,22 +50,41 @@ export function constructEndpoint(
  *
  * If endpoint N fails to construct, every successfully constructed endpoint
  * before N is closed and the original error is rethrown.
+ *
+ * Cleanup is awaited for EVERY previously constructed endpoint, even when
+ * one or more cleanup operations fail.
+ *
+ * If cleanup fails, the original construction failure remains the primary
+ * error and every cleanup failure is preserved in the resulting AggregateError.
  */
-export function assembleEndpoints(
+export async function assembleEndpoints(
     definitions: readonly EndpointDefinition[],
     createLimiter: () => Limiter,
     createEndpoint: EndpointCtor = defaultEndpointCtor,
-): Endpoint[] {
+): Promise<Endpoint[]> {
     const endpoints: Endpoint[] = [];
+
     try {
         for (const definition of definitions) {
-            endpoints.push(constructEndpoint(definition, createLimiter, createEndpoint));
+            endpoints.push(await constructEndpoint(definition, createLimiter, createEndpoint));
         }
+
         return endpoints;
     } catch (error) {
-        for (const endpoint of endpoints) {
-            void endpoint.close();
+        const cleanupResults = await Promise.allSettled(endpoints.map((endpoint) => endpoint.close()));
+
+        const cleanupErrors = cleanupResults
+            .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+            .map((result) => result.reason);
+
+        if (cleanupErrors.length > 0) {
+            throw new AggregateError(
+                [error, ...cleanupErrors],
+                'Endpoint assembly failed and rollback cleanup also failed.',
+                { cause: error },
+            );
         }
+
         throw error;
     }
 }
@@ -73,8 +105,9 @@ export class EndpointFactory {
         private readonly limiterFactory: LimiterFactory,
     ) {}
 
-    build(options: HttpClientOptions): Endpoint[] {
+    async build(options: HttpClientOptions): Promise<Endpoint[]> {
         const createLimiter = (): Limiter => this.limiterFactory.create(options);
+
         return assembleEndpoints(this.provider.build(options), createLimiter);
     }
 }

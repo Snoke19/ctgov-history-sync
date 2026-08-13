@@ -35,15 +35,13 @@ export interface HttpClient {
     close(): Promise<void>;
 }
 
-export function createHttpClient(
+export async function createHttpClient(
     clientOptions: HttpClientOptions,
     provider: EndpointProvider,
     limiterFactory: LimiterFactory = new DefaultLimiterFactory(),
     retryConfig: RetryPolicyConfig = defaultRetryPolicyConfig,
-): HttpClient {
-    // Fail-fast: 404 must NOT be in retryableStatusCodes. If it were,
-    // retry.perform() would loop instead of throwing, silently breaking
-    // the allow404 option.
+): Promise<HttpClient> {
+    // Fail-fast: 404 must NOT be in retryableStatusCodes.
     if (retryConfig.retryableStatusCodes.has(404)) {
         throw new ConfigurationError(
             '404 must not be in retryableStatusCodes. ' +
@@ -53,7 +51,7 @@ export function createHttpClient(
     }
 
     const endpointFactory = new EndpointFactory(provider, limiterFactory);
-    const endpoints = endpointFactory.build(clientOptions);
+    const endpoints = await endpointFactory.build(clientOptions);
 
     const endpointManager = new EndpointManager(
         endpoints,

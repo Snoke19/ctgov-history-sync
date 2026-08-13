@@ -9,19 +9,19 @@ describe('HttpClient deadline budget', () => {
     });
 
     it.each([NaN, Infinity, -Infinity])('rejects invalid deadline: %s', async (deadline) => {
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(client.fetchJson(`${API_URL}/invalid`, { deadline })).rejects.toBeInstanceOf(ConfigurationError);
     });
 
     it('accepts an already-expired finite deadline', async () => {
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(client.fetchJson(`${API_URL}/expired`, { deadline: 0 })).rejects.toBeInstanceOf(TimeoutException);
     });
 
     it('rejects invalid retryPolicy baseDelayMs', async () => {
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(
             client.fetchJson(`${API_URL}/invalid`, {
@@ -31,7 +31,7 @@ describe('HttpClient deadline budget', () => {
     });
 
     it('rejects invalid retryPolicy status codes', async () => {
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(
             client.fetchJson(`${API_URL}/invalid`, {
@@ -43,13 +43,13 @@ describe('HttpClient deadline budget', () => {
     });
 
     it.each([-1, 1.5, NaN, Infinity])('rejects invalid timeoutMs: %s', async (timeoutMs) => {
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(client.fetchJson(`${API_URL}/invalid`, { timeoutMs })).rejects.toBeInstanceOf(ConfigurationError);
     });
 
     it.each([-1, 1.5, NaN, Infinity])('rejects invalid maxRetries: %s', async (maxRetries) => {
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(client.fetchJson(`${API_URL}/invalid`, { maxRetries })).rejects.toBeInstanceOf(ConfigurationError);
     });
@@ -57,7 +57,7 @@ describe('HttpClient deadline budget', () => {
     it('allows maxRetries: 0', async () => {
         const fetchMock = jest.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
 
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(client.fetchJson(`${API_URL}/no-retries`, { maxRetries: 0 })).rejects.toBeInstanceOf(
             NetworkException,
@@ -93,7 +93,7 @@ describe('HttpClient deadline budget', () => {
                 });
             });
 
-            const client = makeClient({
+            const client = await makeClient({
                 clock: fakes.clock,
                 sleep: fakes.sleep,
                 random: fakes.random,
@@ -146,7 +146,7 @@ describe('HttpClient deadline budget', () => {
                 });
             });
 
-            const client = makeClient({
+            const client = await makeClient({
                 clock: fakes.clock,
                 sleep: fakes.sleep,
                 random: fakes.random,
@@ -185,7 +185,7 @@ describe('HttpClient deadline budget', () => {
                 jsonResponse({ error: 'rate limited' }, 429, { 'Retry-After': '30' }, 'Too Many Requests'),
             );
 
-        const client = makeClient({
+        const client = await makeClient({
             clock: fakes.clock,
             sleep: fakes.sleep,
             random: fakes.random,
@@ -216,7 +216,7 @@ describe('HttpClient deadline budget', () => {
             .mockRejectedValueOnce(new TypeError('fetch failed'))
             .mockRejectedValueOnce(new TypeError('fetch failed'));
 
-        const client = makeClient();
+        const client = await makeClient();
         // Deadline is relative to the injected clock (createDefaultOptions
         // seeds FakeClock at 0). Each retry's backoff sleep advances that same
         // clock (FakeSleeper), so the remaining budget must shrink without any
@@ -253,7 +253,7 @@ describe('HttpClient deadline budget', () => {
             return Promise.reject(new TypeError('fetch failed: ECONNRESET'));
         });
 
-        const client = makeClient({ clock: fakes.clock, sleep: fakes.sleep, random: fakes.random });
+        const client = await makeClient({ clock: fakes.clock, sleep: fakes.sleep, random: fakes.random });
 
         await expect(
             client.fetchJson(`${API_URL}/deadline-exhausted`, {

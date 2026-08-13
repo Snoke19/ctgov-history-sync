@@ -10,7 +10,13 @@ import {
     RATE_LIMIT_WINDOW,
 } from './config/config.js';
 import { logger } from './config/logging.js';
-import { HttpException, NetworkException, TimeoutException, TrialFetchError, TrialNotFoundError } from './error/errors.js';
+import {
+    HttpException,
+    NetworkException,
+    TimeoutException,
+    TrialFetchError,
+    TrialNotFoundError,
+} from './error/errors.js';
 import { ProxyEndpointProvider } from './http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from './http/endpoint/proxy/httpProxyUrlParser.js';
 import { UndiciTransportFactory } from './http/endpoint/transport/impl/undiciProxyTransport.js';
@@ -18,7 +24,7 @@ import { createHttpClient } from './http/httpClient.js';
 
 const DATE_RANGE = 'AREA[StartDate]RANGE[07/15/2026, 07/18/2026]';
 
-const httpClient = createHttpClient(
+const httpClient = await createHttpClient(
     {
         proxyUrls: PROXY_URLS,
         useRateLimit: true,

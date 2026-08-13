@@ -11,7 +11,7 @@ describe('HttpClient happy path & request construction', () => {
 
     it('allows custom headers to override Accept and User-Agent defaults', async () => {
         const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
-        const client = makeClient();
+        const client = await makeClient();
 
         await client.fetchJson(`${API_URL}/headers`, {
             headers: {
@@ -35,7 +35,7 @@ describe('HttpClient happy path & request construction', () => {
 
     it('fully replaces the default Accept header with a custom override (no merge)', async () => {
         const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
-        const client = makeClient();
+        const client = await makeClient();
 
         await client.fetchJson(`${API_URL}/accept-replace`, {
             headers: { Accept: 'text/plain' },
@@ -58,7 +58,7 @@ describe('HttpClient happy path & request construction', () => {
             }),
         );
 
-        const client = makeClient();
+        const client = await makeClient();
 
         const result = await client.fetchJson<{ id: number; title: string }>(`${API_URL}/trials/101`);
 
@@ -73,7 +73,7 @@ describe('HttpClient happy path & request construction', () => {
     it('returns null for 204 No Content response without attempting JSON parse', async () => {
         const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(null, 204, {}, 'No Content'));
 
-        const client = makeClient();
+        const client = await makeClient();
 
         const result = await client.fetchJson(`${API_URL}/trials/empty`);
 
@@ -95,7 +95,7 @@ describe('HttpClient happy path & request construction', () => {
             discard,
         } as HttpResponse);
 
-        const client = makeClient();
+        const client = await makeClient();
 
         const result = await client.fetchJson(`${API_URL}/no-body-drained`);
 
@@ -115,7 +115,7 @@ describe('HttpClient happy path & request construction', () => {
             }),
         );
 
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(client.fetchJson(`${API_URL}/bad-json`)).rejects.toBeInstanceOf(TrialFetchError);
     });

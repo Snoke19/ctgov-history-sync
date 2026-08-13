@@ -15,7 +15,7 @@ describe('HttpClient network & timeout failures', () => {
             }),
         );
 
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(
             client.fetchJson(`${API_URL}/proxy-timeout`, {
@@ -33,7 +33,7 @@ describe('HttpClient network & timeout failures', () => {
 
         jest.spyOn(globalThis, 'fetch').mockRejectedValue(timeoutError);
 
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(
             client.fetchJson(`${API_URL}/transport-timeout`, {
@@ -48,7 +48,7 @@ describe('HttpClient network & timeout failures', () => {
             .mockRejectedValueOnce(new TypeError('fetch failed: ECONNRESET'))
             .mockResolvedValueOnce(jsonResponse({ ok: true }));
 
-        const client = makeClient();
+        const client = await makeClient();
 
         const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/conn-reset`, { maxRetries: 2 });
 
@@ -61,7 +61,7 @@ describe('HttpClient network & timeout failures', () => {
             .spyOn(globalThis, 'fetch')
             .mockRejectedValue(new TypeError('fetch failed: ECONNREFUSED'));
 
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(
             client.fetchJson(`${API_URL}/unreachable`, {
@@ -75,7 +75,7 @@ describe('HttpClient network & timeout failures', () => {
     it('rejects immediately with NetworkException when caller AbortSignal is pre-aborted', async () => {
         const fetchMock = jest.spyOn(globalThis, 'fetch');
 
-        const client = makeClient();
+        const client = await makeClient();
 
         const controller = new AbortController();
         controller.abort();
@@ -108,7 +108,7 @@ describe('HttpClient network & timeout failures', () => {
             });
         });
 
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(client.fetchJson(`${API_URL}/slow`, { timeoutMs: 50, maxRetries: 1 })).rejects.toBeInstanceOf(
             TimeoutException,
@@ -132,7 +132,7 @@ describe('HttpClient network & timeout failures', () => {
             });
         });
 
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(
             client.fetchJson(`${API_URL}/timeout-no-retry`, {
@@ -170,7 +170,7 @@ describe('HttpClient network & timeout failures', () => {
                 }),
         );
 
-        const client = makeClient({ sleep: sleepMock });
+        const client = await makeClient({ sleep: sleepMock });
 
         const pending = client.fetchJson(`${API_URL}/abort-during-backoff`, {
             signal: controller.signal,
@@ -209,7 +209,7 @@ describe('HttpClient network & timeout failures', () => {
             });
         });
 
-        const client = makeClient();
+        const client = await makeClient();
         setTimeout(() => controller.abort(), 10);
 
         await expect(
@@ -224,7 +224,7 @@ describe('HttpClient network & timeout failures', () => {
         jest.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(jsonResponse({ ok: true })));
 
         const controller = new AbortController();
-        const client = makeClient();
+        const client = await makeClient();
 
         for (let i = 0; i < 3; i++) {
             // A long-lived caller signal shared across many requests must not
@@ -243,7 +243,7 @@ describe('HttpClient network & timeout failures', () => {
             .mockImplementation(() => Promise.resolve(jsonResponse({ ok: true })));
 
         const fakes = createFakes();
-        const client = makeClient({
+        const client = await makeClient({
             useRateLimit: true,
             rateLimitCapacity: 1,
             rateLimitWindow: 100, // 1 token per 100 ms

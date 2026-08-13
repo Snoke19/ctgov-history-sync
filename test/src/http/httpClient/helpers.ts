@@ -37,7 +37,12 @@ export function createFakes() {
 
 // Relies on the global `Response`/`fetch` provided by Node 18+ (undici).
 // On older runtimes a fetch polyfill exposing `Response` is required.
-export function jsonResponse<T>(body: T, status = 200, headers: Record<string, string> = {}, statusText = 'OK'): Response {
+export function jsonResponse<T>(
+    body: T,
+    status = 200,
+    headers: Record<string, string> = {},
+    statusText = 'OK',
+): Response {
     return new Response(status === 204 ? null : JSON.stringify(body), {
         status,
         statusText,
@@ -64,8 +69,9 @@ export function createDefaultOptions(overrides: Partial<HttpClientOptions> = {})
     };
 }
 
-export function makeClient(optionsOverrides: Partial<HttpClientOptions> = {}): HttpClient {
+export function makeClient(optionsOverrides: Partial<HttpClientOptions> = {}): Promise<HttpClient> {
     const transportFactory = new FetchDirectTransportFactory();
     const provider = new DirectEndpointProvider(transportFactory);
+
     return createHttpClient(createDefaultOptions(optionsOverrides), provider);
 }

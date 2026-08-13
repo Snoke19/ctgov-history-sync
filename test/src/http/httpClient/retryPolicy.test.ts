@@ -12,7 +12,7 @@ describe('HttpClient retry policy', () => {
             .mockResolvedValueOnce(jsonResponse('Request Timeout', 408, {}, 'Request Timeout'))
             .mockResolvedValueOnce(jsonResponse({ recovered: true }));
 
-        const client = makeClient();
+        const client = await makeClient();
 
         const result = await client.fetchJson<{ recovered: boolean }>(`${API_URL}/request-timeout`, {
             maxRetries: 1,
@@ -32,7 +32,7 @@ describe('HttpClient retry policy', () => {
             )
             .mockResolvedValueOnce(jsonResponse({ success: true }));
 
-        const client = makeClient();
+        const client = await makeClient();
 
         const result = await client.fetchJson<{ success: boolean }>(`${API_URL}/rate-limited-date`, {
             maxRetries: 2,
@@ -47,7 +47,7 @@ describe('HttpClient retry policy', () => {
             .spyOn(globalThis, 'fetch')
             .mockResolvedValue(jsonResponse('Bad Gateway', 502, {}, 'Bad Gateway'));
 
-        const client = makeClient();
+        const client = await makeClient();
 
         await expect(client.fetchJson(`${API_URL}/no-retry`, { maxRetries: 0 })).rejects.toMatchObject({ status: 502 });
 
@@ -61,7 +61,7 @@ describe('HttpClient retry policy', () => {
                 .mockResolvedValueOnce(jsonResponse('Gateway Timeout', 504, {}, 'Gateway Timeout'))
                 .mockResolvedValueOnce(jsonResponse({ recovered: true }));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             const result = await client.fetchJson<{ recovered: boolean }>(`${API_URL}/gateway-timeout`, {
                 maxRetries: 2,
@@ -78,7 +78,7 @@ describe('HttpClient retry policy', () => {
                 .mockResolvedValueOnce(jsonResponse('Bad Gateway', 502, {}, 'Bad Gateway'))
                 .mockResolvedValueOnce(jsonResponse({ status: 'recovered' }));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             const result = await client.fetchJson<{ status: string }>(`${API_URL}/flaky`, { maxRetries: 3 });
 
@@ -91,7 +91,7 @@ describe('HttpClient retry policy', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Service Unavailable', 503, {}, 'Service Unavailable'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             await expect(client.fetchJson(`${API_URL}/down`, { maxRetries: 2 })).rejects.toMatchObject({
                 status: 503,
@@ -105,7 +105,7 @@ describe('HttpClient retry policy', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse({ error: 'Invalid parameters' }, 400, {}, 'Bad Request'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             await expect(client.fetchJson(`${API_URL}/bad-request`, { maxRetries: 3 })).rejects.toMatchObject({
                 status: 400,
@@ -119,7 +119,7 @@ describe('HttpClient retry policy', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Forbidden', 403, {}, 'Forbidden'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             await expect(client.fetchJson(`${API_URL}/protected`)).rejects.toMatchObject({
                 status: 403,
@@ -133,7 +133,7 @@ describe('HttpClient retry policy', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Bad Gateway', 502, {}, 'Bad Gateway'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             await expect(
                 client.fetchJson(`${API_URL}/no-retries`, {
@@ -152,7 +152,7 @@ describe('HttpClient retry policy', () => {
                 .mockResolvedValueOnce(jsonResponse('Rate Limited', 429, { 'Retry-After': '2' }, 'Too Many Requests'))
                 .mockResolvedValueOnce(jsonResponse({ success: true }));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             const result = await client.fetchJson<{ success: boolean }>(`${API_URL}/rate-limited`, { maxRetries: 2 });
 

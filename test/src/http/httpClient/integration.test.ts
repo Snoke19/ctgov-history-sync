@@ -105,7 +105,7 @@ describe('HttpClient full-stack integration (real server + real fetch)', () => {
         }
         baseUrl = `http://127.0.0.1:${address.port}`;
 
-        client = createHttpClient(
+        client = await createHttpClient(
             {
                 concurrency: 5,
                 acquireTimeout: 5000,

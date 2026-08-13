@@ -12,7 +12,7 @@ describe('HttpClient 404 & null handling', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse({ error: 'Not Found' }, 404, {}, 'Not Found'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             const result = await client.fetchJson(`${API_URL}/missing-resource`, {
                 allow404: true,
@@ -27,7 +27,7 @@ describe('HttpClient 404 & null handling', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Not Found', 404, {}, 'Not Found'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             await expect(client.fetchJson(`${API_URL}/missing-resource`)).rejects.toMatchObject({
                 status: 404,
@@ -41,7 +41,7 @@ describe('HttpClient 404 & null handling', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse('Server Error', 500, {}, 'Internal Server Error'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             await expect(
                 client.fetchJson(`${API_URL}/error-resource`, {
@@ -60,7 +60,7 @@ describe('HttpClient 404 & null handling', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse({ error: 'Not Found', detail: 'resource gone' }, 404, {}, 'Not Found'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             const result = await client.fetchJson(`${API_URL}/gone`, { allow404: true });
 
@@ -74,7 +74,7 @@ describe('HttpClient 404 & null handling', () => {
                 .mockResolvedValueOnce(jsonResponse('Service Unavailable', 503, {}, 'Service Unavailable'))
                 .mockResolvedValueOnce(jsonResponse({ error: 'Not Found' }, 404, {}, 'Not Found'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             const result = await client.fetchJson(`${API_URL}/transient-then-404`, {
                 allow404: true,
@@ -86,7 +86,7 @@ describe('HttpClient 404 & null handling', () => {
         });
 
         it('throws when per-request retryPolicy includes 404 in retryableStatusCodes', async () => {
-            const client = makeClient();
+            const client = await makeClient();
 
             await expect(
                 client.fetchJson(`${API_URL}/invariant`, {
@@ -102,7 +102,7 @@ describe('HttpClient 404 & null handling', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse(null, 204, {}, 'No Content'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             const result = await client.fetchJson<{ id: number }>(`${API_URL}/empty`);
 
@@ -115,7 +115,7 @@ describe('HttpClient 404 & null handling', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse({ message: 'Not Found' }, 404, {}, 'Not Found'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             const result = await client.fetchJson<{ message: string }>(`${API_URL}/missing`, { allow404: true });
 
@@ -130,7 +130,7 @@ describe('HttpClient 404 & null handling', () => {
                 .spyOn(globalThis, 'fetch')
                 .mockResolvedValue(jsonResponse(null, 204, {}, 'No Content'));
 
-            const client = makeClient();
+            const client = await makeClient();
 
             const result = await client.fetchJson<number>(`${API_URL}/no-body`);
 

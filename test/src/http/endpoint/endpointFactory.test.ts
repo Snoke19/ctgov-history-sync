@@ -31,11 +31,11 @@ const makeOptions = (): HttpClientOptions =>
     }) as HttpClientOptions;
 
 describe('constructEndpoint', () => {
-    it('transfers transport and limiter ownership into the Endpoint', () => {
+    it('transfers transport and limiter ownership into the Endpoint', async () => {
         const transport = makeTransport();
         const limiter = makeLimiter();
 
-        const endpoint = constructEndpoint(makeDefinition('direct', transport), () => limiter);
+        const endpoint = await constructEndpoint(makeDefinition('direct', transport), () => limiter);
 
         expect(endpoint).toBeInstanceOf(Endpoint);
         expect(endpoint.url).toBe('direct');
@@ -44,42 +44,39 @@ describe('constructEndpoint', () => {
         expect(transport.close).not.toHaveBeenCalled();
     });
 
-    it('closes the transport exactly once and rethrows when limiter creation fails', () => {
+    it('closes the transport exactly once and rethrows when limiter creation fails', async () => {
         const transport = makeTransport();
         const boom = new Error('limiter boom');
 
-        expect(() =>
+        await expect(
             constructEndpoint(makeDefinition('p1', transport), () => {
                 throw boom;
             }),
-        ).toThrow(boom);
+        ).rejects.toBe(boom);
 
         expect(transport.close).toHaveBeenCalledTimes(1);
     });
 
-    it('closes the transport exactly once and rethrows when Endpoint construction fails', () => {
+    it('closes the transport exactly once and rethrows when Endpoint construction fails', async () => {
         const transport = makeTransport();
         const boom = new Error('endpoint boom');
 
-        expect(() =>
+        await expect(
             constructEndpoint(makeDefinition('p1', transport), makeLimiter, () => {
                 throw boom;
             }),
-        ).toThrow(boom);
+        ).rejects.toBe(boom);
 
         expect(transport.close).toHaveBeenCalledTimes(1);
     });
 });
 
 describe('assembleEndpoints', () => {
-    it('builds all endpoints and leaves their transports open on success', () => {
+    it('builds all endpoints and leaves their transports open on success', async () => {
         const t1 = makeTransport();
         const t2 = makeTransport();
 
-        const result = assembleEndpoints(
-            [makeDefinition('a', t1), makeDefinition('b', t2)],
-            makeLimiter,
-        );
+        const result = await assembleEndpoints([makeDefinition('a', t1), makeDefinition('b', t2)], makeLimiter);
 
         expect(result.map((e) => e.url)).toEqual(['a', 'b']);
         expect(result[0]!.getHandle().transport).toBe(t1);
@@ -88,42 +85,43 @@ describe('assembleEndpoints', () => {
         expect(t2.close).not.toHaveBeenCalled();
     });
 
-    it('creates exactly one limiter per definition', () => {
+    it('creates exactly one limiter per definition', async () => {
         const createLimiter = jest.fn(makeLimiter);
 
-        assembleEndpoints(
-            [makeDefinition('a', makeTransport()), makeDefinition('b', makeTransport()), makeDefinition('c', makeTransport())],
+        await assembleEndpoints(
+            [
+                makeDefinition('a', makeTransport()),
+                makeDefinition('b', makeTransport()),
+                makeDefinition('c', makeTransport()),
+            ],
             createLimiter,
         );
 
         expect(createLimiter).toHaveBeenCalledTimes(3);
     });
 
-    it('closes every previously created endpoint and the in-flight transport when limiter creation fails mid-batch', () => {
+    it('closes every previously created endpoint and the in-flight transport when limiter creation fails mid-batch', async () => {
         const t1 = makeTransport();
         const t2 = makeTransport();
         const t3 = makeTransport();
         const boom = new Error('limiter boom on the 3rd endpoint');
         let limiterCalls = 0;
 
-        expect(() =>
-            assembleEndpoints(
-                [makeDefinition('a', t1), makeDefinition('b', t2), makeDefinition('c', t3)],
-                () => {
-                    if (++limiterCalls === 3) {
-                        throw boom;
-                    }
-                    return makeLimiter();
-                },
-            ),
-        ).toThrow(boom);
+        await expect(
+            assembleEndpoints([makeDefinition('a', t1), makeDefinition('b', t2), makeDefinition('c', t3)], () => {
+                if (++limiterCalls === 3) {
+                    throw boom;
+                }
+                return makeLimiter();
+            }),
+        ).rejects.toBe(boom);
 
         expect(t1.close).toHaveBeenCalledTimes(1);
         expect(t2.close).toHaveBeenCalledTimes(1);
         expect(t3.close).toHaveBeenCalledTimes(1);
     });
 
-    it('closes earlier endpoints and the in-flight transport when Endpoint construction fails mid-batch', () => {
+    it('closes earlier endpoints and the in-flight transport when Endpoint construction fails mid-batch', async () => {
         const t1 = makeTransport();
         const t2 = makeTransport();
         const boom = new Error('endpoint boom on the 2nd endpoint');
@@ -136,37 +134,41 @@ describe('assembleEndpoints', () => {
             return new Endpoint(id, limiter, transport);
         };
 
-        expect(() => assembleEndpoints([makeDefinition('a', t1), makeDefinition('b', t2)], makeLimiter, createEndpoint)).toThrow(
-            boom,
-        );
+        await expect(
+            assembleEndpoints([makeDefinition('a', t1), makeDefinition('b', t2)], makeLimiter, createEndpoint),
+        ).rejects.toBe(boom);
 
         expect(t1.close).toHaveBeenCalledTimes(1);
         expect(t2.close).toHaveBeenCalledTimes(1);
     });
 
-    it('returns an empty list for an empty definition list', () => {
+    it('returns an empty list for an empty definition list', async () => {
         const createLimiter = jest.fn(makeLimiter);
 
-        expect(assembleEndpoints([], createLimiter)).toEqual([]);
+        await expect(assembleEndpoints([], createLimiter)).resolves.toEqual([]);
         expect(createLimiter).not.toHaveBeenCalled();
     });
 });
 
 describe('EndpointFactory', () => {
-    it('asks the provider which endpoints should exist', () => {
+    it('asks the provider which endpoints should exist', async () => {
         const provider = {
             build: jest.fn<EndpointProvider['build']>().mockReturnValue([]),
         } satisfies EndpointProvider;
-        const limiterFactory = { create: jest.fn<LimiterFactory['create']>() } satisfies LimiterFactory;
+
+        const limiterFactory = {
+            create: jest.fn<LimiterFactory['create']>(),
+        } satisfies LimiterFactory;
+
         const factory = new EndpointFactory(provider, limiterFactory);
 
-        factory.build(makeOptions());
+        await factory.build(makeOptions());
 
         expect(provider.build).toHaveBeenCalledTimes(1);
         expect(provider.build).toHaveBeenCalledWith(makeOptions());
     });
 
-    it('constructs one Endpoint per definition with its own transport and limiter', () => {
+    it('constructs one Endpoint per definition with its own transport and limiter', async () => {
         const t1 = makeTransport();
         const t2 = makeTransport();
         const l1 = makeLimiter();
@@ -182,7 +184,7 @@ describe('EndpointFactory', () => {
         } satisfies LimiterFactory;
         const factory = new EndpointFactory(provider, limiterFactory);
 
-        const endpoints = factory.build(makeOptions());
+        const endpoints = await factory.build(makeOptions());
 
         expect(endpoints).toHaveLength(2);
         expect(endpoints[0]!.url).toBe('p1');
@@ -194,7 +196,7 @@ describe('EndpointFactory', () => {
         expect(t2.close).not.toHaveBeenCalled();
     });
 
-    it('rolls back every constructed endpoint when a limiter fails mid-batch', () => {
+    it('rolls back every constructed endpoint when a limiter fails mid-batch', async () => {
         const t1 = makeTransport();
         const t2 = makeTransport();
         const boom = new Error('limiter boom');
@@ -204,6 +206,7 @@ describe('EndpointFactory', () => {
                 .fn<EndpointProvider['build']>()
                 .mockReturnValue([makeDefinition('p1', t1), makeDefinition('p2', t2)]),
         } satisfies EndpointProvider;
+
         const limiterFactory = {
             create: jest
                 .fn<LimiterFactory['create']>()
@@ -212,56 +215,67 @@ describe('EndpointFactory', () => {
                     throw boom;
                 }),
         } satisfies LimiterFactory;
+
         const factory = new EndpointFactory(provider, limiterFactory);
 
-        expect(() => factory.build(makeOptions())).toThrow(boom);
+        await expect(factory.build(makeOptions())).rejects.toBe(boom);
 
         expect(t1.close).toHaveBeenCalledTimes(1);
         expect(t2.close).toHaveBeenCalledTimes(1);
     });
 
-    it('rolls back the in-flight transport when the provider-prepared limiter is not needed', () => {
-        // A definition whose transport is created but whose limiter creation
-        // fails is closed by the assembly layer even though no Endpoint exists.
+    it('rolls back the in-flight transport when the provider-prepared limiter is not needed', async () => {
         const t1 = makeTransport();
         const boom = new Error('limiter boom');
 
         const provider = {
             build: jest.fn<EndpointProvider['build']>().mockReturnValue([makeDefinition('p1', t1)]),
         } satisfies EndpointProvider;
+
         const limiterFactory = {
             create: jest.fn<LimiterFactory['create']>().mockImplementation(() => {
                 throw boom;
             }),
         } satisfies LimiterFactory;
+
         const factory = new EndpointFactory(provider, limiterFactory);
 
-        expect(() => factory.build(makeOptions())).toThrow(boom);
+        await expect(factory.build(makeOptions())).rejects.toBe(boom);
+
         expect(t1.close).toHaveBeenCalledTimes(1);
     });
 
-    it('passes through an empty definition list without creating limiters or transports', () => {
+    it('passes through an empty definition list without creating limiters or transports', async () => {
         const provider = {
             build: jest.fn<EndpointProvider['build']>().mockReturnValue([]),
         } satisfies EndpointProvider;
-        const limiterFactory = { create: jest.fn<LimiterFactory['create']>() } satisfies LimiterFactory;
+
+        const limiterFactory = {
+            create: jest.fn<LimiterFactory['create']>(),
+        } satisfies LimiterFactory;
+
         const factory = new EndpointFactory(provider, limiterFactory);
 
-        expect(factory.build(makeOptions())).toEqual([]);
+        await expect(factory.build(makeOptions())).resolves.toEqual([]);
         expect(limiterFactory.create).not.toHaveBeenCalled();
     });
 
-    it('propagates provider errors without creating transports or limiters', () => {
+    it('propagates provider errors without creating transports or limiters', async () => {
         const boom = new Error('provider boom');
+
         const provider = {
             build: jest.fn<EndpointProvider['build']>().mockImplementation(() => {
                 throw boom;
             }),
         } satisfies EndpointProvider;
-        const limiterFactory = { create: jest.fn<LimiterFactory['create']>() } satisfies LimiterFactory;
+
+        const limiterFactory = {
+            create: jest.fn<LimiterFactory['create']>(),
+        } satisfies LimiterFactory;
+
         const factory = new EndpointFactory(provider, limiterFactory);
 
-        expect(() => factory.build(makeOptions())).toThrow(boom);
+        await expect(factory.build(makeOptions())).rejects.toBe(boom);
         expect(limiterFactory.create).not.toHaveBeenCalled();
     });
 });
