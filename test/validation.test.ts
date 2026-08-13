@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
+import { env } from '../src/config/configValidation.js';
 import { ConfigurationError, TrialValidationError } from '../src/error/errors.js';
-import { assertPositiveInt, makeAssertions, validateNctId } from '../src/utils/validation.js';
+import { assertNonNegativeInt, assertPositiveInt, makeAssertions, validateNctId } from '../src/utils/validation.js';
 
 describe('assertPositiveInt', () => {
     it('does not throw for a positive integer', () => {
@@ -22,6 +23,36 @@ describe('assertPositiveInt', () => {
 
     it('includes the field name in the error message', () => {
         expect(() => assertPositiveInt(-1, 'pageSize')).toThrow('pageSize must be a positive integer');
+    });
+});
+
+describe('assertNonNegativeInt', () => {
+    it('accepts zero when nonNegative is enabled', () => {
+        process.env.TEST_RETRIES = '0';
+
+        expect(env.int('TEST_RETRIES', 3, { nonNegative: true })).toBe(0);
+    });
+
+    it('rejects negative values when nonNegative is enabled', () => {
+        process.env.TEST_RETRIES = '-1';
+
+        expect(() => env.int('TEST_RETRIES', 3, { nonNegative: true })).toThrow(ConfigurationError);
+    });
+
+    it('accepts zero', () => {
+        expect(() => assertNonNegativeInt(0, 'count')).not.toThrow();
+    });
+
+    it('accepts positive integers', () => {
+        expect(() => assertNonNegativeInt(10, 'count')).not.toThrow();
+    });
+
+    it('rejects negative integers', () => {
+        expect(() => assertNonNegativeInt(-1, 'count')).toThrow(ConfigurationError);
+    });
+
+    it('rejects fractional values', () => {
+        expect(() => assertNonNegativeInt(1.5, 'count')).toThrow(ConfigurationError);
     });
 });
 

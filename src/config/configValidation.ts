@@ -1,5 +1,5 @@
 import { ConfigurationError } from '../error/errors.js';
-import { assertPositiveInt } from '../utils/validation.js';
+import { assertNonNegativeInt, assertPositiveInt } from '../utils/validation.js';
 
 const isInteger = (n: number): boolean => Number.isFinite(n) && Number.isInteger(n);
 
@@ -25,10 +25,26 @@ const getEnv = (key: string): string | undefined => {
 };
 
 export const env = {
-    int: (key: string, fallback: number, opts: { positive?: boolean; fallbackKey?: string } = {}): number => {
+    int: (
+        key: string,
+        fallback: number,
+        opts: {
+            positive?: boolean;
+            nonNegative?: boolean;
+            fallbackKey?: string;
+        } = {},
+    ): number => {
         const raw = getEnv(key) ?? (opts.fallbackKey ? getEnv(opts.fallbackKey) : undefined);
         const value = raw === undefined ? fallback : parseStrictInt(raw, key);
-        if (opts.positive) assertPositiveInt(value, key);
+
+        if (opts.positive) {
+            assertPositiveInt(value, key);
+        }
+
+        if (opts.nonNegative) {
+            assertNonNegativeInt(value, key);
+        }
+
         return value;
     },
 

@@ -14,7 +14,7 @@ export const PAGE_SIZE = env.int('PAGE_SIZE', defaults.PAGE_SIZE, { positive: tr
 export const CONCURRENCY = env.int('CONCURRENCY', defaults.CONCURRENCY, { positive: true });
 export const FETCH_TIMEOUT_MS = env.int('FETCH_TIMEOUT_MS', defaults.FETCH_TIMEOUT_MS, { positive: true });
 export const RETRY_BASE_DELAY_MS = env.int('RETRY_BASE_DELAY_MS', defaults.RETRY_BASE_DELAY_MS, { positive: true });
-export const MAX_RETRIES = env.int('MAX_RETRIES', defaults.MAX_RETRIES, { positive: true });
+export const MAX_RETRIES = env.int('MAX_RETRIES', defaults.MAX_RETRIES, { nonNegative: true });
 export const RETRYABLE_STATUS_CODES: ReadonlySet<number> = Object.freeze(
     parseStatusCodes('RETRYABLE_STATUS_CODES', defaults.RETRYABLE_STATUS_CODES),
 );
@@ -39,15 +39,23 @@ export const PROXY_POOL_KEEP_ALIVE_TIMEOUT = env.int(
     defaults.PROXY_POOL_KEEP_ALIVE_TIMEOUT,
     { positive: true },
 );
-export const PROXY_POOL_HEADERS_TIMEOUT = env.int('PROXY_POOL_HEADERS_TIMEOUT_MS', defaults.PROXY_POOL_HEADERS_TIMEOUT, {
-    positive: true,
-});
+export const PROXY_POOL_HEADERS_TIMEOUT = env.int(
+    'PROXY_POOL_HEADERS_TIMEOUT_MS',
+    defaults.PROXY_POOL_HEADERS_TIMEOUT,
+    {
+        positive: true,
+    },
+);
 export const PROXY_POOL_BODY_TIMEOUT = env.int('PROXY_POOL_BODY_TIMEOUT_MS', defaults.PROXY_POOL_BODY_TIMEOUT, {
     positive: true,
 });
-export const PROXY_POOL_CONNECT_TIMEOUT = env.int('PROXY_POOL_CONNECT_TIMEOUT_MS', defaults.PROXY_POOL_CONNECT_TIMEOUT, {
-    positive: true,
-});
+export const PROXY_POOL_CONNECT_TIMEOUT = env.int(
+    'PROXY_POOL_CONNECT_TIMEOUT_MS',
+    defaults.PROXY_POOL_CONNECT_TIMEOUT,
+    {
+        positive: true,
+    },
+);
 
 export const PROXY_POOL_CONFIG: ProxyPoolConfig = Object.freeze({
     connections: PROXY_POOL_CONNECTIONS,
@@ -72,21 +80,18 @@ export interface ProxyPoolConfig {
 // ---------------------------------------------------------------------------
 // rateLimit
 // ---------------------------------------------------------------------------
-export const RATE_LIMIT_CAPACITY = env.int(
-    'RATE_LIMIT_CAPACITY',
-    defaults.RATE_LIMIT_CAPACITY,
-    { positive: true, fallbackKey: 'PROXY_RATE_LIMIT_CAPACITY' },
-);
-export const RATE_LIMIT_WINDOW = env.int(
-    'RATE_LIMIT_WINDOW_MS',
-    defaults.RATE_LIMIT_WINDOW,
-    { positive: true, fallbackKey: 'PROXY_RATE_LIMIT_WINDOW_MS' },
-);
-export const ACQUIRE_TIMEOUT = env.int(
-    'ACQUIRE_TIMEOUT_MS',
-    defaults.ACQUIRE_TIMEOUT,
-    { positive: true, fallbackKey: 'PROXY_ACQUIRE_TIMEOUT_MS' },
-);
+export const RATE_LIMIT_CAPACITY = env.int('RATE_LIMIT_CAPACITY', defaults.RATE_LIMIT_CAPACITY, {
+    positive: true,
+    fallbackKey: 'PROXY_RATE_LIMIT_CAPACITY',
+});
+export const RATE_LIMIT_WINDOW = env.int('RATE_LIMIT_WINDOW_MS', defaults.RATE_LIMIT_WINDOW, {
+    positive: true,
+    fallbackKey: 'PROXY_RATE_LIMIT_WINDOW_MS',
+});
+export const ACQUIRE_TIMEOUT = env.int('ACQUIRE_TIMEOUT_MS', defaults.ACQUIRE_TIMEOUT, {
+    positive: true,
+    fallbackKey: 'PROXY_ACQUIRE_TIMEOUT_MS',
+});
 
 // ---------------------------------------------------------------------------
 // Validate required fields

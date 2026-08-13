@@ -1,11 +1,69 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
+import { ConfigurationError, NetworkException, TimeoutException } from '../../../../src/error/errors.js';
 import { EndpointManager } from '../../../../src/http/endpoint/manager/endpointManager.js';
 import { API_URL, createFakes, jsonResponse, makeClient } from './helpers.js';
 
 describe('HttpClient deadline budget', () => {
     afterEach(() => {
         jest.restoreAllMocks();
+    });
+
+    it.each([NaN, Infinity, -Infinity])('rejects invalid deadline: %s', async (deadline) => {
+        const client = makeClient();
+
+        await expect(client.fetchJson(`${API_URL}/invalid`, { deadline })).rejects.toBeInstanceOf(ConfigurationError);
+    });
+
+    it('accepts an already-expired finite deadline', async () => {
+        const client = makeClient();
+
+        await expect(client.fetchJson(`${API_URL}/expired`, { deadline: 0 })).rejects.toBeInstanceOf(TimeoutException);
+    });
+
+    it('rejects invalid retryPolicy baseDelayMs', async () => {
+        const client = makeClient();
+
+        await expect(
+            client.fetchJson(`${API_URL}/invalid`, {
+                retryPolicy: { baseDelayMs: -1 },
+            }),
+        ).rejects.toBeInstanceOf(ConfigurationError);
+    });
+
+    it('rejects invalid retryPolicy status codes', async () => {
+        const client = makeClient();
+
+        await expect(
+            client.fetchJson(`${API_URL}/invalid`, {
+                retryPolicy: {
+                    retryableStatusCodes: new Set([99]),
+                },
+            }),
+        ).rejects.toBeInstanceOf(ConfigurationError);
+    });
+
+    it.each([-1, 1.5, NaN, Infinity])('rejects invalid timeoutMs: %s', async (timeoutMs) => {
+        const client = makeClient();
+
+        await expect(client.fetchJson(`${API_URL}/invalid`, { timeoutMs })).rejects.toBeInstanceOf(ConfigurationError);
+    });
+
+    it.each([-1, 1.5, NaN, Infinity])('rejects invalid maxRetries: %s', async (maxRetries) => {
+        const client = makeClient();
+
+        await expect(client.fetchJson(`${API_URL}/invalid`, { maxRetries })).rejects.toBeInstanceOf(ConfigurationError);
+    });
+
+    it('allows maxRetries: 0', async () => {
+        const fetchMock = jest.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
+
+        const client = makeClient();
+
+        await expect(client.fetchJson(`${API_URL}/no-retries`, { maxRetries: 0 })).rejects.toBeInstanceOf(
+            NetworkException,
+        );
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it('enforces the earlier deadline when it is shorter than timeoutMs', async () => {

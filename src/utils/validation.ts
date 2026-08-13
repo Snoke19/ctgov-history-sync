@@ -75,3 +75,7 @@ export function validateNctId(value: string): string {
 
     return normalized;
 }
+
+export function assertNonNegativeInt(value: number, name: string): void {
+    configAssertions.assertInteger(value, name, { min: 0 });
+}

@@ -19,6 +19,7 @@ import { calculateBackoff, defaultRetryPolicyConfig, shouldRetry } from './retry
 import type { RetryPolicyConfig } from './retry/retryPolicy.js';
 import { defaultClock, defaultRandom, defaultSleeper } from './types/clock.js';
 import type { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
+import { validateFetchJsonRequestOptions } from './requestValidation.js';
 
 export interface HttpClient {
     /**
@@ -85,6 +86,8 @@ export function createHttpClient(
     }
 
     async function fetchJson<T = unknown>(url: string, options: FetchJsonRequestOptions = {}): Promise<T | null> {
+        validateFetchJsonRequestOptions(options);
+
         const response = await fetchResponse(url, options);
 
         // fetchResponse returns null ONLY for allow404 + 404.
