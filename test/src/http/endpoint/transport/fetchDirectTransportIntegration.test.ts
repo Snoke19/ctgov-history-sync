@@ -60,16 +60,18 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
         expect(await response.json()).toEqual({ path: '/json', ok: true });
     });
 
-    it('sends a POST body and receives the echo', async () => {
+    it('sends a GET request and receives the response', async () => {
         const response = await transport.request({
             url: `${baseUrl}/echo`,
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ a: 1 }),
+            method: 'GET',
+            headers: {},
         });
 
         expect(response.status).toBe(200);
-        expect(await response.json()).toEqual({ method: 'POST', body: '{"a":1}' });
+        expect(await response.json()).toEqual({
+            ok: true,
+            path: '/echo',
+        });
     });
 
     it('maps a real 404 response', async () => {

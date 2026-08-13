@@ -66,19 +66,19 @@ describe('FetchDirectTransport', () => {
             expect(fetchOptions).not.toHaveProperty('body');
         });
 
-        it('includes body when provided', async () => {
+        it('does not include body', async () => {
             const mockResponse = createMockResponse();
             fetchMock.mockResolvedValue(mockResponse as unknown as Response);
 
             await transport.request({
                 url: 'https://example.com/api',
-                method: 'POST',
+                method: 'GET',
                 headers: {},
-                body: '{"key":"value"}',
             });
 
             const [, fetchOptions] = fetchMock.mock.calls[0] as [unknown, RequestInit];
-            expect(fetchOptions).toHaveProperty('body', '{"key":"value"}');
+
+            expect(fetchOptions).not.toHaveProperty('body');
         });
 
         it('does not include signal when undefined', async () => {
