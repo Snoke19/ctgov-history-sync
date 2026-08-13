@@ -243,22 +243,23 @@ describe('HttpClient network & timeout failures', () => {
             .mockImplementation(() => Promise.resolve(jsonResponse({ ok: true })));
 
         const fakes = createFakes();
+
         const client = await makeClient({
             useRateLimit: true,
             rateLimitCapacity: 1,
-            rateLimitWindow: 100, // 1 token per 100 ms
+            rateLimitWindow: 100,
             sleep: fakes.sleep,
             random: fakes.random,
-            clock: fakes.clock,
+            monotonicClock: fakes.monotonicClock,
+            wallClock: fakes.wallClock,
         });
 
-        // Observable behaviour only: the second call must wait for the token to
-        // refill (100ms). Asserting on EndpointManager.acquireEndpoint explicitly
-        // would over-specify the implementation and churn under refactor.
-        const timeBefore = fakes.clock.now();
+        const timeBefore = fakes.monotonicClock.now();
+
         await client.fetchJson(`${API_URL}/a`);
         await client.fetchJson(`${API_URL}/b`);
-        const timeAfter = fakes.clock.now();
+
+        const timeAfter = fakes.monotonicClock.now();
 
         expect(timeAfter - timeBefore).toBe(100);
         expect(fetchMock).toHaveBeenCalledTimes(2);

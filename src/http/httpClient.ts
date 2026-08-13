@@ -1,11 +1,5 @@
 import { BACKOFF_CAP_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
-import {
-    CallerAbortedError,
-    ConfigurationError,
-    HttpException,
-    NetworkException,
-    TimeoutException,
-} from '../error/errors.js';
+import { CallerAbortedError, ConfigurationError, HttpException, NetworkException } from '../error/errors.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManager } from './endpoint/manager/endpointManager.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
@@ -18,7 +12,8 @@ import { Retry } from './retry/retry.js';
 import { calculateBackoff, defaultRetryPolicyConfig, shouldRetry } from './retry/retryPolicy.js';
 import type { RetryPolicyConfig } from './retry/retryPolicy.js';
 import { HttpResponse } from './transport/httpTransport.js';
-import { defaultClock, defaultRandom, defaultSleeper } from './types/clock.js';
+import { defaultMonotonicClock, defaultRandom, defaultSleeper, defaultWallClock } from './types/clock.js';
+import type { Sleeper } from './types/clock.js';
 import type { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
 
 export interface HttpClient {
@@ -56,15 +51,19 @@ export async function createHttpClient(
     const endpointManager = new EndpointManager(
         endpoints,
         clientOptions.acquireTimeout,
-        clientOptions.clock?.now,
+        clientOptions.monotonicClock?.now ?? defaultMonotonicClock.now,
         clientOptions.sleep ?? defaultSleeper.sleep,
     );
 
     async function fetchResponse(url: string, options: FetchJsonRequestOptions): Promise<HttpResponse | null> {
-        const operation = new FetchOperation(endpointManager, url, options, clientOptions.clock?.now);
+        const operation = new FetchOperation(
+            endpointManager,
+            url,
+            options,
+            clientOptions.wallClock?.now ?? defaultWallClock.now,
+        );
         const retry = buildRetry(
             operation,
-            url,
             options,
             clientOptions.sleep ?? defaultSleeper.sleep,
             clientOptions.random ?? defaultRandom.random,
@@ -110,9 +109,8 @@ export async function createHttpClient(
 
     function buildRetry(
         operation: FetchOperation,
-        url: string,
         options: FetchJsonRequestOptions,
-        sleep: (ms: number) => Promise<void>,
+        sleep: Sleeper['sleep'],
         random: () => number,
     ): Retry<HttpResponse> {
         const effectiveConfig = {
@@ -131,9 +129,6 @@ export async function createHttpClient(
             );
         }
 
-        const clock = clientOptions.clock?.now ?? defaultClock.now;
-        const deadline = options.deadline;
-
         return new Retry<HttpResponse>(
             operation,
             options.maxRetries ?? MAX_RETRIES,
@@ -141,23 +136,11 @@ export async function createHttpClient(
             (attempt, error) => {
                 const retryAfterMs = error instanceof HttpException ? (error.retryAfterMs ?? null) : null;
 
-                const delay = calculateBackoff(attempt, retryAfterMs, {
+                return calculateBackoff(attempt, retryAfterMs, {
                     random,
                     baseDelayMs: effectiveConfig.baseDelayMs,
                     backoffCapMs: effectiveConfig.backoffCapMs,
                 });
-
-                if (deadline === undefined) {
-                    return delay;
-                }
-
-                const remainingMs = deadline - clock();
-
-                if (remainingMs <= 0) {
-                    throw new TimeoutException(`Deadline exhausted: ${url}`);
-                }
-
-                return Math.min(delay, remainingMs);
             },
             sleep,
             options.signal,

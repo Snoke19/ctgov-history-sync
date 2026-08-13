@@ -1,7 +1,7 @@
 import { TokenBucketTimeoutError } from '../../../error/errors.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
-import { defaultClock, defaultSleeper } from '../../types/clock.js';
-import type { Clock, Sleeper } from '../../types/clock.js';
+import { defaultMonotonicClock, defaultSleeper } from '../../types/clock.js';
+import type { MonotonicClock, Sleeper } from '../../types/clock.js';
 import { Limiter } from '../limiter.js';
 
 // Tolerance used to compensate for IEEE-754 floating-point rounding errors
@@ -35,7 +35,7 @@ export class TokenBucket extends Limiter {
     private readonly msPerToken;
     private creditMs;
     private lastUpdate;
-    private readonly clock: Clock['now'];
+    private readonly clock: MonotonicClock['now'];
     private readonly sleep: Sleeper['sleep'];
 
     /**
@@ -45,10 +45,9 @@ export class TokenBucket extends Limiter {
      *   tokens.
      * @param windowMs - Time window over which `capacity`
      *   tokens are replenished, in milliseconds.
-     * @param now - Function returning a timestamp from the shared HTTP-layer
-     *   clock (defaults to `Date.now()` epoch ms), consistent with the clock
-     *   EndpointManager passes into `tryAcquire`/`timeUntilToken`. Intended
-     *   primarily for testing.
+     * @param now - Monotonic clock function used for elapsed-duration calculations.
+     * Defaults to the shared monotonic HTTP-layer clock.
+     * Intended primarily for deterministic testing.
      * @param sleep - Async delay. Defaults to the shared HTTP-layer sleeper.
      * @throws {TypeError} If `capacity` is not a positive integer, or
      *   `windowMs` is not a positive finite number.
@@ -56,7 +55,7 @@ export class TokenBucket extends Limiter {
     constructor(
         capacity: number,
         windowMs: number,
-        now: Clock['now'] = defaultClock.now,
+        now: MonotonicClock['now'] = defaultMonotonicClock.now,
         sleep: Sleeper['sleep'] = defaultSleeper.sleep,
     ) {
         super();
@@ -78,12 +77,10 @@ export class TokenBucket extends Limiter {
      * Compute the current credit in milliseconds.
      *
      * Lazily adds `elapsed` milliseconds since `#lastUpdate`, capped at
-     * `#windowMs`. Elapsed time is clamped to zero so an injected
-     * non-monotonic clock (e.g. in tests) can't drain credit by going
-     * backwards. This is a pure function: it does not mutate state.
+     * `#windowMs`. The elapsed duration is clamped to zero defensively
+     * if the injected clock moves backwards.
      *
-     * @param now - Timestamp to compute availability at.
-     *   Defaults to the injected clock.
+     * @param now - Monotonic timestamp used to calculate elapsed time.
      * @returns Current credit in milliseconds, range [0, windowMs].
      */
     private availableCreditMs(now: number = this.clock()): number {
@@ -212,14 +209,14 @@ export class TokenBucket extends Limiter {
             throw new TypeError('timeoutMs must be a non-negative finite number');
         }
 
-        const deadline = this.clock() + timeoutMs;
+        const acquisitionDeadline = this.clock() + timeoutMs;
 
         while (true) {
             if (this.tryAcquire()) {
                 return;
             }
 
-            const remaining = deadline - this.clock();
+            const remaining = acquisitionDeadline - this.clock();
 
             if (remaining <= 0) {
                 throw new TokenBucketTimeoutError(timeoutMs);

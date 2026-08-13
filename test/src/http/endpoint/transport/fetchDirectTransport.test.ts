@@ -35,69 +35,31 @@ describe('FetchDirectTransport', () => {
     });
 
     describe('request', () => {
-        it('calls fetch with url, method, and headers', async () => {
+        it('calls fetch with url, method, headers, and signal', async () => {
             const mockResponse = createMockResponse();
-            fetchMock.mockResolvedValue(mockResponse as unknown as Response);
+            fetchMock.mockResolvedValue(mockResponse);
+
+            const controller = new AbortController();
 
             await transport.request({
                 url: 'https://example.com/api',
                 method: 'GET',
                 headers: { 'X-Custom': 'value' },
+                signal: controller.signal,
             });
 
             expect(fetchMock).toHaveBeenCalledTimes(1);
             expect(fetchMock).toHaveBeenCalledWith('https://example.com/api', {
                 method: 'GET',
                 headers: { 'X-Custom': 'value' },
+                signal: controller.signal,
             });
         });
 
-        it('does not include body when undefined', async () => {
+        it('forwards the request signal to fetch', async () => {
             const mockResponse = createMockResponse();
-            fetchMock.mockResolvedValue(mockResponse as unknown as Response);
+            fetchMock.mockResolvedValue(mockResponse);
 
-            await transport.request({
-                url: 'https://example.com/api',
-                method: 'GET',
-                headers: {},
-            });
-
-            const [, fetchOptions] = fetchMock.mock.calls[0] as [unknown, RequestInit];
-            expect(fetchOptions).not.toHaveProperty('body');
-        });
-
-        it('does not include body', async () => {
-            const mockResponse = createMockResponse();
-            fetchMock.mockResolvedValue(mockResponse as unknown as Response);
-
-            await transport.request({
-                url: 'https://example.com/api',
-                method: 'GET',
-                headers: {},
-            });
-
-            const [, fetchOptions] = fetchMock.mock.calls[0] as [unknown, RequestInit];
-
-            expect(fetchOptions).not.toHaveProperty('body');
-        });
-
-        it('does not include signal when undefined', async () => {
-            const mockResponse = createMockResponse();
-            fetchMock.mockResolvedValue(mockResponse as unknown as Response);
-
-            await transport.request({
-                url: 'https://example.com/api',
-                method: 'GET',
-                headers: {},
-            });
-
-            const [, fetchOptions] = fetchMock.mock.calls[0] as [unknown, RequestInit];
-            expect(fetchOptions).not.toHaveProperty('signal');
-        });
-
-        it('includes signal when provided', async () => {
-            const mockResponse = createMockResponse();
-            fetchMock.mockResolvedValue(mockResponse as unknown as Response);
             const controller = new AbortController();
 
             await transport.request({
@@ -108,7 +70,44 @@ describe('FetchDirectTransport', () => {
             });
 
             const [, fetchOptions] = fetchMock.mock.calls[0] as [unknown, RequestInit];
+
             expect(fetchOptions).toHaveProperty('signal', controller.signal);
+        });
+
+        it('forwards an already-aborted signal to fetch', async () => {
+            const mockResponse = createMockResponse();
+            fetchMock.mockResolvedValue(mockResponse);
+
+            const controller = new AbortController();
+            controller.abort();
+
+            await transport.request({
+                url: 'https://example.com/api',
+                method: 'GET',
+                headers: {},
+                signal: controller.signal,
+            });
+
+            const [, fetchOptions] = fetchMock.mock.calls[0] as [unknown, RequestInit];
+
+            expect(fetchOptions).toHaveProperty('signal', controller.signal);
+            expect(controller.signal.aborted).toBe(true);
+        });
+
+        it('propagates fetch errors', async () => {
+            const error = new TypeError('fetch failed');
+            fetchMock.mockRejectedValue(error);
+
+            const controller = new AbortController();
+
+            await expect(
+                transport.request({
+                    url: 'https://example.com/api',
+                    method: 'GET',
+                    headers: {},
+                    signal: controller.signal,
+                }),
+            ).rejects.toBe(error);
         });
     });
 });

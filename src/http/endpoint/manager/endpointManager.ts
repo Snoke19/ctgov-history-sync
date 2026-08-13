@@ -1,31 +1,27 @@
 import { logger } from '../../../config/logging.js';
 import { CallerAbortedError, ConfigurationError, EndpointAcquisitionTimeoutError } from '../../../error/errors.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
-import { defaultClock, defaultSleeper } from '../../types/clock.js';
-import type { Clock, Sleeper } from '../../types/clock.js';
+import { defaultMonotonicClock, defaultSleeper } from '../../types/clock.js';
+import type { MonotonicClock, Sleeper } from '../../types/clock.js';
 import { Endpoint, EndpointHandle } from '../endpoint.js';
 
 export class EndpointManager {
     private readonly endpoints: readonly Endpoint[];
     private readonly acquireTimeout: number;
-    private readonly clock: Clock['now'];
+    private readonly clock: MonotonicClock['now'];
     private readonly sleep: Sleeper['sleep'];
     private nextIndex = 0;
 
     /**
      * @param endpoints       Pre-built endpoint list (at least one required).
-     * @param acquireTimeout  Default timeout in ms for {@link acquireEndpoint}.
-     * @param clock           Clock source. Defaults to the shared HTTP-layer clock
-     *                        (`Date.now()`, epoch ms) — the same source used for
-     *                        fetch deadline budgets and rate-limit windows.
-     *                        Inject a fake in tests to drive timing deterministically.
-     * @param sleep           Async delay. Defaults to the shared HTTP-layer sleeper.
-     *                        Inject a jest.fn() in tests to skip real waits.
+     * @param acquireTimeout  Maximum time in ms to wait for an endpoint.
+     * @param clock           Monotonic clock used for acquisition timing.
+     * @param sleep           Abort-aware delay used while waiting for availability.
      */
     constructor(
         endpoints: readonly Endpoint[],
         acquireTimeout: number,
-        clock: Clock['now'] = defaultClock.now,
+        clock: MonotonicClock['now'] = defaultMonotonicClock.now,
         sleep: Sleeper['sleep'] = defaultSleeper.sleep,
     ) {
         if (endpoints.length === 0) {
@@ -46,37 +42,31 @@ export class EndpointManager {
     }
 
     /**
-     * Acquires an endpoint within a relative time budget.
+     * Acquires an endpoint within the manager's configured acquisition timeout.
      *
-     * `timeoutMs` is a RELATIVE duration in milliseconds, never an absolute
-     * timestamp. The internal deadline is computed on `this.clock`
-     * (`clock() + timeoutMs`) and only elapsed time is ever compared, so it
-     * is valid on any clock origin. FetchOperation forwards the REMAINING
-     * budget from its own epoch deadline (see `FetchJsonRequestOptions.deadline`)
-     * as a relative value — the two layers share one time source and never
-     * mix absolute timestamps across layer boundaries.
+     * The acquisition timeout is independent of the per-request HTTP timeout
+     * used by FetchOperation.
      *
-     * @throws {EndpointAcquisitionTimeoutError} If no endpoint becomes
-     *   available within `timeoutMs`.
+     * @throws {EndpointAcquisitionTimeoutError} If no endpoint becomes available
+     *   within the configured acquireTimeout.
      * @throws {CallerAbortedError} If `signal` is aborted before acquisition.
      */
-    async acquireEndpoint(timeoutMs = this.acquireTimeout, signal: AbortSignal): Promise<EndpointHandle> {
-        const deadline = this.clock() + timeoutMs;
+    async acquireEndpoint(signal: AbortSignal): Promise<EndpointHandle> {
+        const acquisitionDeadline = this.clock() + this.acquireTimeout;
 
         while (true) {
-            // AbortSignal is checked before the clock read so that an already-aborted
-            // signal surfaces immediately, even before any deadline evaluation.
-            if (signal?.aborted) {
+            // Check cancellation before reading the clock or touching any endpoint.
+            if (signal.aborted) {
                 throw new CallerAbortedError();
             }
 
-            // Single clock read per iteration to keep the endpoint scan and deadline
-            // check consistent — avoids skew between the two.
+            // Read the clock once per iteration so endpoint scanning uses one
+            // consistent timestamp for both availability and timeout calculations.
             const currentTime = this.clock();
-            const remaining = deadline - currentTime;
+            const remaining = acquisitionDeadline - currentTime;
 
             if (remaining <= 0) {
-                throw new EndpointAcquisitionTimeoutError(timeoutMs, this.endpoints.length);
+                throw new EndpointAcquisitionTimeoutError(this.acquireTimeout, this.endpoints.length);
             }
 
             let shortestWait = Infinity;
@@ -97,8 +87,7 @@ export class EndpointManager {
                 shortestWait = Math.min(shortestWait, endpoint.timeUntilToken(currentTime));
             }
 
-            // Sleep for the shortest wait across all endpoints, but never past
-            // the deadline — this keeps the loop responsive to timeouts.
+            // Never wait longer than the remaining acquisition timeout.
             await this.sleep(Math.min(shortestWait, remaining), signal);
         }
     }

@@ -1,6 +1,6 @@
 import { ProxyPoolConfig } from '../../config/config.js';
 import { RetryPolicyConfig } from '../retry/retryPolicy.js';
-import { Clock, RandomSource, Sleeper } from './clock.js';
+import type { MonotonicClock, RandomSource, Sleeper, WallClock } from './clock.js';
 
 export type QueryParamValue = string | number | boolean;
 
@@ -31,12 +31,11 @@ export interface HttpClientOptions {
     /** Override Math.random (e.g. deterministic backoff in tests). */
     random?: RandomSource['random'];
 
-    /**
-     * Override Date.now for the whole HTTP layer: deadline budget math
-     * (FetchOperation), endpoint acquisition (EndpointManager) and rate-limit
-     * refill windows (TokenBucket) all measure time on this one source.
-     */
-    clock?: Clock;
+    /** Wall-clock source used for HTTP-date calculations such as Retry-After. */
+    wallClock?: WallClock;
+
+    /** Monotonic clock used for elapsed-duration calculations. */
+    monotonicClock?: MonotonicClock;
 }
 
 /**
@@ -47,17 +46,11 @@ export interface FetchJsonRequestOptions {
     headers?: Record<string, string>;
 
     /**
-     * Per-request timeout in milliseconds.
-     * Defaults to FETCH_TIMEOUT_MS from config.
+     * Maximum duration of a single HTTP attempt in milliseconds.
+     * Each retry attempt receives a fresh timeout.
+     * Defaults to FETCH_TIMEOUT_MS.
      */
     timeoutMs?: number;
-
-    /**
-     * Absolute deadline (epoch ms). When provided, the remaining budget is
-     * forwarded to endpoint acquisition on each attempt so all retries share
-     * one global time budget rather than getting a fresh window each time.
-     */
-    deadline?: number;
 
     /**
      * Maximum number of retries after the initial attempt.

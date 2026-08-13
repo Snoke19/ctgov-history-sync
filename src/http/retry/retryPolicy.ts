@@ -79,7 +79,9 @@ export interface BackoffOptions {
 export function calculateBackoff(attempt: number, retryAfterMs: number | null, options: BackoffOptions = {}): number {
     const { random = defaultRandom.random, baseDelayMs = RETRY_BASE_DELAY_MS, backoffCapMs = BACKOFF_CAP_MS } = options;
 
-    if (retryAfterMs !== null && retryAfterMs > 0) return Math.min(retryAfterMs, backoffCapMs);
+    if (retryAfterMs !== null && retryAfterMs > 0) {
+        return Math.min(retryAfterMs, backoffCapMs);
+    }
 
     const base = baseDelayMs * 2 ** attempt;
     const jitter = random() * base * 0.5;

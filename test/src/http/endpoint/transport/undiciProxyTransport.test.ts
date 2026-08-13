@@ -24,6 +24,7 @@ function makeRequest(overrides: Partial<HttpRequest> = {}): HttpRequest {
         url: 'https://api.example.com/resource',
         method: 'GET',
         headers: { Authorization: 'Bearer test-token' },
+        signal: new AbortController().signal,
         ...overrides,
     };
 }
@@ -62,14 +63,13 @@ describe('UndiciHttpTransport', () => {
         jest.clearAllMocks();
     });
 
-    function getLastFetchOpts(): RequestInit | undefined {
-        return mockFetch.mock.calls[mockFetch.mock.calls.length - 1]![1];
-    }
-
     describe('request()', () => {
-        it('includes empty string body', async () => {
-            await transport.request(makeRequest({ body: '' }));
-            expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: '' }));
+        it('passes signal to fetch', async () => {
+            const { signal } = new AbortController();
+
+            await transport.request(makeRequest({ signal }));
+
+            expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ signal }));
         });
 
         it('passes url and method to fetch', async () => {
@@ -98,31 +98,11 @@ describe('UndiciHttpTransport', () => {
             );
         });
 
-        it('includes body when provided', async () => {
-            await transport.request(makeRequest({ body: '{"foo":"bar"}' }));
-
-            expect(mockFetch).toHaveBeenCalledWith(
-                expect.any(String),
-                expect.objectContaining({ body: '{"foo":"bar"}' }),
-            );
-        });
-
-        it('omits body key when body is undefined', async () => {
-            await transport.request(makeRequest({ body: undefined }));
-
-            expect(getLastFetchOpts()).not.toHaveProperty('body');
-        });
-
         it('includes signal when provided', async () => {
             const { signal } = new AbortController();
             await transport.request(makeRequest({ signal }));
 
             expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ signal }));
-        });
-
-        it('omits signal key by default', async () => {
-            await transport.request(makeRequest());
-            expect(getLastFetchOpts()).not.toHaveProperty('signal');
         });
 
         it('propagates fetch errors', async () => {

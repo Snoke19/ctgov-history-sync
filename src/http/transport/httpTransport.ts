@@ -23,7 +23,7 @@ export interface HttpRequest {
     readonly url: string;
     readonly method: string;
     readonly headers: Record<string, string>;
-    readonly signal?: AbortSignal;
+    readonly signal: AbortSignal;
 }
 
 export interface HttpResponse {

@@ -1,15 +1,18 @@
+import { performance } from 'node:perf_hooks';
 import { CallerAbortedError } from '../../error/errors.js';
 
-/**
- * Shared clock and sleeper for the HTTP layer.
- *
- * All time-dependent components (FetchOperation, EndpointManager,
- * TokenBucket, Retry) must use this single clock source and sleeper.
- * Mixing time bases produces meaningless deadlines.
- */
+export interface WallClock {
+    /** Current Unix timestamp in milliseconds. */
+    now(): number;
+}
 
-export interface Clock {
-    /** Current timestamp in milliseconds (like Date.now). */
+export interface MonotonicClock {
+    /**
+     * Monotonic timestamp in milliseconds.
+     *
+     * Suitable for measuring elapsed durations and deadlines.
+     * The value is not Unix time.
+     */
     now(): number;
 }
 
@@ -17,9 +20,7 @@ export interface Sleeper {
     /**
      * Suspend execution for `ms` milliseconds.
      *
-     * If `signal` is provided and aborts before the delay elapses, the sleep
-     * rejects early so the caller can surface cancellation promptly. Callers
-     * that provide no signal simply wait the full duration.
+     * If `signal` aborts before the delay elapses, the sleep rejects early.
      */
     sleep(ms: number, signal?: AbortSignal): Promise<void>;
 }
@@ -29,13 +30,6 @@ export interface RandomSource {
     random(): number;
 }
 
-/**
- * Production default — real time, cooperative early-exit on cancellation.
- *
- * Built on the global `setTimeout` (not `node:timers/promises`) so that test
- * setups using fake timers observe the same faked behavior they would for any
- * other `setTimeout` call.
- */
 export const defaultSleeper: Sleeper = {
     sleep: (ms, signal) =>
         new Promise<void>((resolve, reject) => {
@@ -71,9 +65,14 @@ export const defaultSleeper: Sleeper = {
         }),
 };
 
-/** Production default — real time. */
-export const defaultClock: Clock = {
+/** Wall-clock time for HTTP dates such as Retry-After. */
+export const defaultWallClock: WallClock = {
     now: () => Date.now(),
+};
+
+/** Monotonic time for elapsed-duration calculations. */
+export const defaultMonotonicClock: MonotonicClock = {
+    now: () => performance.now(),
 };
 
 export const defaultRandom: RandomSource = {

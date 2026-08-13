@@ -93,24 +93,15 @@ export class TokenBucketTimeoutError extends TrialError {
     }
 }
 
-export interface EndpointAcquisitionOptions {
-    budgetExhausted?: boolean;
-}
-
 export class EndpointAcquisitionTimeoutError extends TrialError {
     override name: string = 'EndpointAcquisitionTimeoutError';
     readonly timeoutMs: number;
     readonly proxyCount: number;
-    readonly budgetExhausted: boolean;
 
-    constructor(timeoutMs: number, proxyCount: number, { budgetExhausted = false }: EndpointAcquisitionOptions = {}) {
-        const message = budgetExhausted
-            ? `Proxy acquisition consumed the full ${timeoutMs}ms budget before fetch could start (pool size: ${proxyCount})`
-            : `Proxy acquisition timeout: no proxy available within ${timeoutMs}ms (pool size: ${proxyCount})`;
-        super(message);
+    constructor(timeoutMs: number, proxyCount: number) {
+        super(`Proxy acquisition timeout: no proxy available within ${timeoutMs}ms (pool size: ${proxyCount})`);
         this.timeoutMs = timeoutMs;
         this.proxyCount = proxyCount;
-        this.budgetExhausted = budgetExhausted;
     }
 }
 

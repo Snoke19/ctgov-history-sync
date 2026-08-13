@@ -137,16 +137,7 @@ describe('error classes', () => {
             expect(err.name).toBe('EndpointAcquisitionTimeoutError');
             expect(err.timeoutMs).toBe(1000);
             expect(err.proxyCount).toBe(3);
-            expect(err.budgetExhausted).toBe(false);
             expect(err.message).toBe('Proxy acquisition timeout: no proxy available within 1000ms (pool size: 3)');
-        });
-
-        it('describes a budget-exhausted acquisition', () => {
-            const err = new EndpointAcquisitionTimeoutError(1000, 3, { budgetExhausted: true });
-            expect(err.budgetExhausted).toBe(true);
-            expect(err.message).toBe(
-                'Proxy acquisition consumed the full 1000ms budget before fetch could start (pool size: 3)',
-            );
         });
     });
 

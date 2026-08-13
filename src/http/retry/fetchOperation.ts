@@ -10,10 +10,10 @@ import {
 import { EndpointHandle } from '../endpoint/endpoint.js';
 import { EndpointManager } from '../endpoint/manager/endpointManager.js';
 import { drainBody } from '../responseBody.js';
-import { HttpResponse, HttpTransport } from '../transport/httpTransport.js';
-import { defaultClock } from '../types/clock.js';
-import type { Clock } from '../types/clock.js';
-import { FetchJsonRequestOptions } from '../types/http.js';
+import type { HttpResponse, HttpTransport } from '../transport/httpTransport.js';
+import { defaultWallClock } from '../types/clock.js';
+import type { WallClock } from '../types/clock.js';
+import type { FetchJsonRequestOptions } from '../types/http.js';
 import { BusinessOperation } from './businessOperation.js';
 import { parseRetryAfterHeader } from './retryPolicy.js';
 
@@ -21,28 +21,25 @@ type AbortReason = 'caller' | 'timeout';
 
 export class FetchOperation implements BusinessOperation<HttpResponse> {
     /**
-     * @param clock Clock source for budget/deadline math. Defaults to the
-     * shared HTTP-layer clock (`Date.now()`).
+     * @param clock Clock source for HTTP time calculations such as Retry-After.
+     * Defaults to the shared HTTP-layer clock (`Date.now()`).
      */
     constructor(
         private readonly endpointManager: EndpointManager,
         private readonly url: string,
         private readonly options: FetchJsonRequestOptions,
-        private readonly clock: Clock['now'] = defaultClock.now,
+        private readonly now: WallClock['now'] = defaultWallClock.now,
     ) {}
 
     async perform(): Promise<HttpResponse> {
         const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
-        const deadline = this.options.deadline ?? this.clock() + timeoutMs;
-
         const controller = new AbortController();
 
         /**
          * Tracks the semantic reason for the controller abort.
          *
          * The transport must not infer this from the concrete error object,
-         * because the underlying library may use completely different error
-         * representations.
+         * because the underlying library may use different error representations.
          */
         let abortReason: AbortReason | undefined;
 
@@ -64,20 +61,22 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
         try {
-            const remainingMs = this.getRemainingBudget(deadline, timeoutMs);
-            const attemptBudget = Math.min(timeoutMs, remainingMs);
+            /**
+             * Endpoint acquisition has its own timeout policy owned by
+             * EndpointManager. The per-request timeout starts only after an
+             * endpoint has been successfully acquired.
+             */
+            const endpoint = await this.acquireEndpoint(controller.signal);
 
             /**
-             * This timer represents OUR timeout, not a transport timeout.
-             * Therefore the transport receives a normal AbortSignal and does
-             * not need to know anything about timeout timers.
+             * This timeout applies only to this external HTTP attempt.
+             * Each retry creates a new FetchOperation and therefore gets
+             * a fresh timeout.
              */
             timeoutId = setTimeout(() => {
                 abortReason = 'timeout';
                 controller.abort();
-            }, attemptBudget);
-
-            const endpoint = await this.acquireEndpoint(attemptBudget, controller.signal);
+            }, timeoutMs);
 
             const response = await this.executeRequest(endpoint, controller.signal, () => abortReason);
 
@@ -92,6 +91,10 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 throw this.mapAbortReason(error, abortReason, timeoutMs);
             }
 
+            if (error instanceof EndpointAcquisitionTimeoutError) {
+                throw new TimeoutException(`Endpoint acquisition timed out after ${error.timeoutMs}ms: ${this.url}`);
+            }
+
             throw error;
         } finally {
             if (timeoutId !== undefined) {
@@ -101,8 +104,8 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             callerSignal?.removeEventListener('abort', forwardAbort);
 
             /**
-             * Only abort on failure. On success the response body may still
-             * need to be consumed.
+             * Only abort on failure. On success, the response body may still
+             * need to be consumed by the caller.
              */
             if (!succeeded) {
                 controller.abort();
@@ -110,26 +113,8 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         }
     }
 
-    private getRemainingBudget(deadline: number, timeoutMs: number): number {
-        const remainingMs = deadline - this.clock();
-
-        if (remainingMs <= 0) {
-            throw new TimeoutException(`Deadline exhausted (timeout: ${timeoutMs}ms): ${this.url}`);
-        }
-
-        return remainingMs;
-    }
-
-    private async acquireEndpoint(remainingMs: number, signal: AbortSignal): Promise<EndpointHandle> {
-        try {
-            return await this.endpointManager.acquireEndpoint(remainingMs, signal);
-        } catch (error) {
-            if (error instanceof EndpointAcquisitionTimeoutError) {
-                throw new TimeoutException(`Endpoint acquisition timed out after ${remainingMs}ms: ${this.url}`);
-            }
-
-            throw error;
-        }
+    private async acquireEndpoint(signal: AbortSignal): Promise<EndpointHandle> {
+        return this.endpointManager.acquireEndpoint(signal);
     }
 
     private async executeRequest(
@@ -157,7 +142,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         }
 
         if (!response.ok) {
-            const retryAfter = parseRetryAfterHeader(response, this.clock());
+            const retryAfter = parseRetryAfterHeader(response, this.now());
 
             await drainBody(response);
 

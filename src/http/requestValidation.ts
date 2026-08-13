@@ -7,10 +7,6 @@ export function validateFetchJsonRequestOptions(options: FetchJsonRequestOptions
         assertPositiveInt(options.timeoutMs, 'timeoutMs');
     }
 
-    if (options.deadline !== undefined && !Number.isFinite(options.deadline)) {
-        throw new ConfigurationError('deadline must be a finite number');
-    }
-
     if (options.maxRetries !== undefined) {
         assertNonNegativeInt(options.maxRetries, 'maxRetries');
     }

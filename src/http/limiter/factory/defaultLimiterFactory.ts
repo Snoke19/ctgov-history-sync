@@ -18,6 +18,11 @@ export class DefaultLimiterFactory implements LimiterFactory {
             return new UnlimitedLimiter();
         }
 
-        return new TokenBucket(options.rateLimitCapacity, options.rateLimitWindow, options.clock?.now);
+        return new TokenBucket(
+            options.rateLimitCapacity,
+            options.rateLimitWindow,
+            options.monotonicClock?.now,
+            options.sleep,
+        );
     }
 }

@@ -60,7 +60,7 @@ async function createManager(options: HttpClientOptions = createValidOptions()):
 
     const endpoints = await factory.build(options);
 
-    return new EndpointManager(endpoints, options.acquireTimeout, options.clock?.now, options.sleep);
+    return new EndpointManager(endpoints, options.acquireTimeout, options.monotonicClock?.now, options.sleep);
 }
 
 describe('Proxy + Undici construction chain', () => {

@@ -4,7 +4,7 @@ import { DEFAULT_USER_AGENT } from '../../../../src/config/config.js';
 import { HttpException, NetworkException, TimeoutException } from '../../../../src/error/errors.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { createHttpClient, HttpClient } from '../../../../src/http/httpClient.js';
-import { FetchDirectTransportFactory } from '../../../../src/http/transport/factory/fetchDirectTransportFactory.js';
+import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransportFactory.js';
 
 /**
  * Full createHttpClient stack against a real TCP server with the real

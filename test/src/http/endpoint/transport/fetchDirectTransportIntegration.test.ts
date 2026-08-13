@@ -52,7 +52,9 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
     });
 
     it('performs a real GET and maps status, headers and JSON body', async () => {
-        const response = await transport.request({ url: `${baseUrl}/json`, method: 'GET', headers: {} });
+        const signal = new AbortController().signal;
+
+        const response = await transport.request({ url: `${baseUrl}/json`, method: 'GET', headers: {}, signal });
 
         expect(response.status).toBe(200);
         expect(response.ok).toBe(true);
@@ -61,10 +63,13 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
     });
 
     it('sends a GET request and receives the response', async () => {
+        const signal = new AbortController().signal;
+
         const response = await transport.request({
             url: `${baseUrl}/echo`,
             method: 'GET',
             headers: {},
+            signal,
         });
 
         expect(response.status).toBe(200);
@@ -75,7 +80,9 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
     });
 
     it('maps a real 404 response', async () => {
-        const response = await transport.request({ url: `${baseUrl}/missing`, method: 'GET', headers: {} });
+        const signal = new AbortController().signal;
+
+        const response = await transport.request({ url: `${baseUrl}/missing`, method: 'GET', headers: {}, signal });
 
         expect(response.status).toBe(404);
         expect(response.ok).toBe(false);
@@ -83,7 +90,9 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
     });
 
     it('reads the raw text body', async () => {
-        const response = await transport.request({ url: `${baseUrl}/json`, method: 'GET', headers: {} });
+        const signal = new AbortController().signal;
+
+        const response = await transport.request({ url: `${baseUrl}/json`, method: 'GET', headers: {}, signal });
 
         expect(await response.text()).toBe(JSON.stringify({ path: '/json', ok: true }));
     });

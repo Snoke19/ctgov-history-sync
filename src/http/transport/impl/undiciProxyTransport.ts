@@ -37,8 +37,7 @@ export class UndiciHttpTransport implements HttpTransport {
             method: options.method,
             headers: options.headers,
             dispatcher: this.agent,
-            ...(options.body !== undefined && { body: options.body }),
-            ...(options.signal !== undefined && { signal: options.signal }),
+            signal: options.signal,
         });
 
         return adaptHttpResponse(response);

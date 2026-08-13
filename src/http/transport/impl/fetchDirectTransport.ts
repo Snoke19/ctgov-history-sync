@@ -7,7 +7,7 @@ export class FetchDirectTransport implements HttpTransport {
         const response = await fetch(options.url, {
             method: options.method,
             headers: options.headers,
-            ...(options.signal !== undefined && { signal: options.signal }),
+            signal: options.signal,
         });
 
         return adaptHttpResponse(response);

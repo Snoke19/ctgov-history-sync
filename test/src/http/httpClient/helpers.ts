@@ -1,7 +1,7 @@
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
-import { FetchDirectTransportFactory } from '../../../../src/http/transport/factory/fetchDirectTransportFactory.js';
+import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransportFactory.js';
 import type { HttpClientOptions } from '../../../../src/http/types/http.js';
 
 export const API_URL = 'http://api.test';
@@ -9,27 +9,43 @@ export const API_URL = 'http://api.test';
 export const ENDPOINT_1 = 'http://test-proxy-1:8080';
 export const ENDPOINT_2 = 'http://test-proxy-2:8080';
 
-export class FakeClock {
+export class FakeMonotonicClock {
     private _now = 0;
+
     now = () => this._now;
-    advance = (ms: number) => {
+
+    advance = (ms: number): void => {
+        this._now += ms;
+    };
+}
+
+export class FakeWallClock {
+    private _now = 0;
+
+    now = () => this._now;
+
+    advance = (ms: number): void => {
         this._now += ms;
     };
 }
 
 export class FakeSleeper {
-    constructor(private clock: FakeClock) {}
-    sleep = async (ms: number) => {
+    constructor(private readonly clock: FakeMonotonicClock) {}
+
+    sleep = async (ms: number, _signal?: AbortSignal): Promise<void> => {
         this.clock.advance(ms);
         await Promise.resolve();
     };
 }
 
 export function createFakes() {
-    const clock = new FakeClock();
-    const sleeper = new FakeSleeper(clock);
+    const monotonicClock = new FakeMonotonicClock();
+    const wallClock = new FakeWallClock();
+    const sleeper = new FakeSleeper(monotonicClock);
+
     return {
-        clock,
+        monotonicClock,
+        wallClock,
         sleep: sleeper.sleep.bind(sleeper),
         random: () => 0.5,
     };
@@ -54,7 +70,10 @@ export function jsonResponse<T>(
 }
 
 export function createDefaultOptions(overrides: Partial<HttpClientOptions> = {}): HttpClientOptions {
-    const fakes = createFakes();
+    const monotonicClock = new FakeMonotonicClock();
+    const wallClock = new FakeWallClock();
+    const sleeper = new FakeSleeper(monotonicClock);
+
     return {
         concurrency: 5,
         acquireTimeout: 5000,
@@ -62,9 +81,13 @@ export function createDefaultOptions(overrides: Partial<HttpClientOptions> = {})
         rateLimitWindow: 1000,
         useRateLimit: false,
         proxyUrls: 'http://test-proxy-0:8080',
-        sleep: fakes.sleep,
-        random: fakes.random,
-        clock: fakes.clock,
+
+        sleep: sleeper.sleep.bind(sleeper),
+        random: () => 0.5,
+
+        monotonicClock,
+        wallClock,
+
         ...overrides,
     };
 }
