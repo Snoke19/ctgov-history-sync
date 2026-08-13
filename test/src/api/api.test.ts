@@ -1,6 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { createApiClient, FetchJsonOptions } from '../../../src/api/api.js';
-import { TrialNotFoundError, TrialValidationError } from '../../../src/error/errors.js';
+import { ApiResponseValidationError, TrialNotFoundError, TrialValidationError } from '../../../src/error/errors.js';
 
 const TEST_BASE_URL = 'http://api.test/v2/studies';
 const TEST_DETAIL_URL = 'http://api.test/v2/studies/detail';
@@ -13,6 +13,70 @@ describe('ApiClient', () => {
     function makeApi(fetchJson: ReturnType<typeof createFetchJsonMock>) {
         return createApiClient({ fetchJson, apiBaseUrl: TEST_BASE_URL, apiDetailUrl: TEST_DETAIL_URL });
     }
+
+    it('rejects a null studies response', async () => {
+        const fetchJson = createFetchJsonMock(null);
+        const api = makeApi(fetchJson);
+
+        await expect(api.fetchStudiesPage()).rejects.toBeInstanceOf(ApiResponseValidationError);
+    });
+
+    it('rejects a studies response without a studies array', async () => {
+        const fetchJson = createFetchJsonMock({ studies: {} });
+        const api = makeApi(fetchJson);
+
+        await expect(api.fetchStudiesPage()).rejects.toBeInstanceOf(ApiResponseValidationError);
+    });
+
+    it('rejects an invalid nextPageToken', async () => {
+        const fetchJson = createFetchJsonMock({
+            studies: [],
+            nextPageToken: 123,
+        });
+
+        const api = makeApi(fetchJson);
+
+        await expect(api.fetchStudiesPage()).rejects.toBeInstanceOf(ApiResponseValidationError);
+    });
+
+    it('rejects an invalid study entry', async () => {
+        const fetchJson = createFetchJsonMock({
+            studies: [null],
+        });
+
+        const api = makeApi(fetchJson);
+
+        await expect(api.fetchStudiesPage()).rejects.toBeInstanceOf(ApiResponseValidationError);
+    });
+
+    it('includes the endpoint URL in response validation errors', async () => {
+        const fetchJson = createFetchJsonMock({ studies: {} });
+        const api = makeApi(fetchJson);
+
+        await expect(api.fetchStudiesPage()).rejects.toMatchObject({
+            url: TEST_BASE_URL,
+        });
+    });
+
+    it('accepts a valid studies response', async () => {
+        const data = {
+            studies: [
+                {
+                    protocolSection: {
+                        identificationModule: {
+                            nctId: 'NCT12345678',
+                        },
+                    },
+                },
+            ],
+            nextPageToken: 'next-token',
+        };
+
+        const fetchJson = createFetchJsonMock(data);
+        const api = makeApi(fetchJson);
+
+        await expect(api.fetchStudiesPage()).resolves.toEqual(data);
+    });
 
     it('normalizes the NCT ID before constructing the detail URL', async () => {
         const fetchJson = jest.fn<(url: string, options?: FetchJsonOptions) => Promise<unknown>>().mockResolvedValue({

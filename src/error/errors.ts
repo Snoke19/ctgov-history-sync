@@ -120,3 +120,15 @@ export class CallerAbortedError extends Error {
         this.name = 'CallerAbortedError';
     }
 }
+
+export class ApiResponseValidationError extends TrialError {
+    override name = 'ApiResponseValidationError';
+
+    constructor(
+        readonly url: string,
+        message: string,
+        cause?: unknown,
+    ) {
+        super(`Invalid API response from ${url}: ${message}`, { cause });
+    }
+}

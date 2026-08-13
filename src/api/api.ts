@@ -2,6 +2,7 @@ import { API_BASE_URL, API_DETAIL_URL } from '../config/config.js';
 import { TrialNotFoundError } from '../error/errors.js';
 import { UrlBuilder } from '../http/urlPrepare.js';
 import { validateNctId } from '../utils/validation.js';
+import { parseStudiesPageResponse } from './responseValidation.js';
 import { FetchStudiesPageParams, FetchTrialDetailParams, StudiesPageResponse } from './types.js';
 
 export interface FetchJsonOptions {
@@ -40,7 +41,7 @@ export function createApiClient({
         const url = new UrlBuilder(apiBaseUrl).queryParams(params).build();
 
         const data = await fetchJson(url);
-        return data as StudiesPageResponse;
+        return parseStudiesPageResponse(data, url);
     }
 
     async function fetchTrialDetail(nctId: string, params: FetchTrialDetailParams = {}): Promise<unknown> {
