@@ -49,7 +49,7 @@ describe('UnlimitedLimiter', () => {
             const b = new UnlimitedLimiter();
             expect(a.tryAcquire(0)).toBe(true);
             expect(b.tryAcquire(0)).toBe(true);
-            // exhausting `a` (if it had any state) must not affect `b`
+
             for (let i = 0; i < 1000; i++) a.tryAcquire(i);
             expect(b.tryAcquire(0)).toBe(true);
         });

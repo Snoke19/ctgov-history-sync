@@ -76,9 +76,6 @@ describe('shouldRetry', () => {
 });
 
 describe('calculateBackoff', () => {
-    // Explicit, test-local timing constants. Backoff assertions must never
-    // read RETRY_BASE_DELAY_MS / BACKOFF_CAP_MS from config: an .env.test
-    // edit would otherwise silently rewrite what these tests assert.
     const BASE = 1000;
     const CAP = 30000;
 

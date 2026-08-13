@@ -1,23 +1,26 @@
-import { createServer as createHttpServer, Server } from 'node:http';
+import { createServer as createHttpServer, type Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
 import { DEFAULT_USER_AGENT } from '../../../../src/config/config.js';
-import { HttpException, NetworkException, TimeoutException } from '../../../../src/error/errors.js';
+import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
-import { createHttpClient, HttpClient } from '../../../../src/http/httpClient.js';
+import { createHttpClient } from '../../../../src/http/httpClient.js';
+import type { HttpClient } from '../../../../src/http/httpClient.js';
 import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransportFactory.js';
 
 /**
  * Full createHttpClient stack against a real TCP server with the real
- * undici-backed global fetch — no mocked fetch, no fake Response objects,
- * no injected clock/sleeper.
+ * Undici-backed global fetch.
  *
- * This is the only suite that exercises FetchOperation's abort/body
- * interplay with a genuine signal-backed fetch: the success path must NOT
- * abort the controller (that would destroy the still-streaming response
- * body), while the timeout/abort paths must surface as TimeoutException /
- * NetworkException respectively.
+ * No mocked fetch, fake Response objects, or injected clocks/sleepers.
+ *
+ * This suite verifies behavior that cannot be fully covered by unit tests:
+ * - real TCP/network execution;
+ * - real AbortSignal propagation;
+ * - real streamed response consumption;
+ * - connection reuse;
+ * - real retry behavior.
  */
-describe('HttpClient full-stack integration (real server + real fetch)', () => {
+describe('HttpClient full-stack integration', () => {
     let server: Server;
     let baseUrl: string;
     let client: HttpClient;
@@ -30,64 +33,34 @@ describe('HttpClient full-stack integration (real server + real fetch)', () => {
         server = createHttpServer((req, res) => {
             const path = new URL(req.url ?? '/', 'http://localhost').pathname;
 
-            if (path === '/slow') {
-                // Never respond: FetchOperation's own timeout must abort the
-                // real in-flight fetch.
-                slowHits++;
-                return;
-            }
-
-            if (path === '/stall') {
-                // Never respond: the caller aborts a real in-flight request.
-                stallHits++;
-                return;
-            }
-
-            if (path === '/flaky') {
-                flakyHits++;
-                if (flakyHits === 1) {
-                    res.writeHead(503, { 'content-type': 'application/json', 'Retry-After': '1' });
-                    res.end(JSON.stringify({ error: 'temporarily unavailable' }));
+            switch (path) {
+                case '/slow':
+                    slowHits++;
                     return;
-                }
-                res.writeHead(200, { 'content-type': 'application/json' });
-                res.end(JSON.stringify({ recovered: true }));
-                return;
-            }
 
-            if (path === '/missing') {
-                res.writeHead(404, { 'content-type': 'application/json' });
-                res.end(JSON.stringify({ error: 'not found' }));
-                return;
-            }
+                case '/stall':
+                    stallHits++;
+                    return;
 
-            if (path === '/big') {
-                // Deliberately streamed in small chunks (no Content-Length, so
-                // Node uses chunked transfer encoding). The body is still being
-                // delivered when fetch() resolves, so if the success path aborted
-                // the controller, response.json() would reject mid-stream.
-                res.writeHead(200, { 'content-type': 'application/json' });
-                const payload = {
-                    items: Array.from({ length: 5000 }, (_, index) => ({ index, value: `value-${index}` })),
-                };
-                const body = JSON.stringify(payload);
-                for (let i = 0; i < body.length; i += 64) {
-                    res.write(body.slice(i, i + 64));
-                }
-                res.end();
-                return;
+                case '/flaky':
+                    handleFlakyResponse(res);
+                    return;
+
+                case '/missing':
+                    res.writeHead(404, { 'content-type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'not found' }));
+                    return;
+
+                case '/big':
+                    handleLargeResponse(res);
+                    return;
+
+                default:
+                    break;
             }
 
             if (path === '/echo' && req.method === 'GET') {
-                let raw = '';
-                req.setEncoding('utf-8');
-                req.on('data', (chunk: string) => {
-                    raw += chunk;
-                });
-                req.on('end', () => {
-                    res.writeHead(200, { 'content-type': 'application/json' });
-                    res.end(JSON.stringify({ method: req.method, received: raw, headers: { ...req.headers } }));
-                });
+                handleEchoRequest(req, res);
                 return;
             }
 
@@ -95,14 +68,14 @@ describe('HttpClient full-stack integration (real server + real fetch)', () => {
             res.end(JSON.stringify({ path }));
         });
 
-        await new Promise<void>((resolve) => {
-            server.listen(0, '127.0.0.1', resolve);
-        });
+        await listen(server);
 
         const address = server.address();
+
         if (address === null || typeof address === 'string') {
-            throw new Error('server did not bind to a TCP port');
+            throw new Error('Server did not bind to a TCP port');
         }
+
         baseUrl = `http://127.0.0.1:${address.port}`;
 
         client = await createHttpClient(
@@ -125,22 +98,28 @@ describe('HttpClient full-stack integration (real server + real fetch)', () => {
 
     afterAll(async () => {
         await client.close();
+
         server.closeAllConnections?.();
+
         await new Promise<void>((resolve, reject) => {
             server.close((error) => {
-                if (error) reject(error);
-                else resolve();
+                if (error) {
+                    reject(error);
+                    return;
+                }
+
+                resolve();
             });
         });
     });
 
-    it('fetches and parses JSON end-to-end over a real socket', async () => {
+    it('fetches and parses JSON over a real HTTP connection', async () => {
         const result = await client.fetchJson<{ path: string }>(`${baseUrl}/greeting`);
 
         expect(result).toEqual({ path: '/greeting' });
     });
 
-    it('sends GET request with default and custom headers and receives the response', async () => {
+    it('sends default and custom headers on a real GET request', async () => {
         const result = await client.fetchJson<{
             method: string;
             headers: Record<string, string>;
@@ -159,7 +138,7 @@ describe('HttpClient full-stack integration (real server + real fetch)', () => {
         expect(result?.headers['x-custom']).toBe('v');
     });
 
-    it('reuses the connection across sequential successful requests', async () => {
+    it('reuses the HTTP connection across sequential requests', async () => {
         const first = await client.fetchJson<{ path: string }>(`${baseUrl}/seq/one`);
         const second = await client.fetchJson<{ path: string }>(`${baseUrl}/seq/two`);
         const third = await client.fetchJson<{ path: string }>(`${baseUrl}/seq/three`);
@@ -169,42 +148,134 @@ describe('HttpClient full-stack integration (real server + real fetch)', () => {
         expect(third).toEqual({ path: '/seq/three' });
     });
 
-    it('parses a large streamed body without destroying it on success', async () => {
-        const result = await client.fetchJson<{ items: Array<{ index: number; value: string }> }>(`${baseUrl}/big`);
+    it('parses a streamed response body successfully', async () => {
+        const result = await client.fetchJson<{
+            items: Array<{ index: number; value: string }>;
+        }>(`${baseUrl}/big`);
 
         expect(result?.items).toHaveLength(5000);
-        expect(result?.items[4999]).toEqual({ index: 4999, value: 'value-4999' });
+        expect(result?.items[4999]).toEqual({
+            index: 4999,
+            value: 'value-4999',
+        });
     });
 
-    it('throws HttpException on 404 unless allow404 maps it to null', async () => {
-        await expect(client.fetchJson(`${baseUrl}/missing`)).rejects.toBeInstanceOf(HttpException);
-        await expect(client.fetchJson(`${baseUrl}/missing`)).rejects.toMatchObject({ status: 404 });
+    it('throws HttpException for 404 and returns null when allow404 is enabled', async () => {
+        await expect(client.fetchJson(`${baseUrl}/missing`)).rejects.toMatchObject({
+            status: 404,
+        });
 
-        const result = await client.fetchJson(`${baseUrl}/missing`, { allow404: true });
+        const result = await client.fetchJson(`${baseUrl}/missing`, {
+            allow404: true,
+        });
+
         expect(result).toBeNull();
     });
 
     it('retries a real 503 and succeeds on the next attempt', async () => {
-        const result = await client.fetchJson<{ recovered: boolean }>(`${baseUrl}/flaky`, { maxRetries: 2 });
+        const result = await client.fetchJson<{ recovered: boolean }>(`${baseUrl}/flaky`, {
+            maxRetries: 2,
+        });
 
         expect(result).toEqual({ recovered: true });
         expect(flakyHits).toBe(2);
     });
 
-    it('times out against a hanging endpoint through the real request signal', async () => {
-        await expect(client.fetchJson(`${baseUrl}/slow`, { timeoutMs: 100, maxRetries: 0 })).rejects.toBeInstanceOf(
-            TimeoutException,
-        );
+    it('throws TimeoutException when a real HTTP request exceeds timeoutMs', async () => {
+        await expect(
+            client.fetchJson(`${baseUrl}/slow`, {
+                timeoutMs: 100,
+                maxRetries: 0,
+            }),
+        ).rejects.toBeInstanceOf(TimeoutException);
+
         expect(slowHits).toBe(1);
     });
 
-    it('surfaces a caller abort of a real in-flight request as NetworkException', async () => {
+    it('throws NetworkException when the caller aborts a real in-flight request', async () => {
         const controller = new AbortController();
 
-        const pending = client.fetchJson(`${baseUrl}/stall`, { signal: controller.signal, maxRetries: 0 });
+        const pending = client.fetchJson(`${baseUrl}/stall`, {
+            signal: controller.signal,
+            maxRetries: 0,
+        });
+
         setTimeout(() => controller.abort(), 50);
 
         await expect(pending).rejects.toBeInstanceOf(NetworkException);
         expect(stallHits).toBeGreaterThanOrEqual(1);
     });
+
+    function handleFlakyResponse(res: import('node:http').ServerResponse): void {
+        flakyHits++;
+
+        if (flakyHits === 1) {
+            res.writeHead(503, {
+                'content-type': 'application/json',
+                'Retry-After': '1',
+            });
+            res.end(JSON.stringify({ error: 'temporarily unavailable' }));
+            return;
+        }
+
+        res.writeHead(200, {
+            'content-type': 'application/json',
+        });
+        res.end(JSON.stringify({ recovered: true }));
+    }
+
+    function handleLargeResponse(res: import('node:http').ServerResponse): void {
+        res.writeHead(200, {
+            'content-type': 'application/json',
+        });
+
+        const payload = {
+            items: Array.from({ length: 5000 }, (_, index) => ({
+                index,
+                value: `value-${index}`,
+            })),
+        };
+
+        const body = JSON.stringify(payload);
+
+        for (let i = 0; i < body.length; i += 64) {
+            res.write(body.slice(i, i + 64));
+        }
+
+        res.end();
+    }
+
+    function handleEchoRequest(
+        req: import('node:http').IncomingMessage,
+        res: import('node:http').ServerResponse,
+    ): void {
+        let raw = '';
+
+        req.setEncoding('utf-8');
+
+        req.on('data', (chunk: string) => {
+            raw += chunk;
+        });
+
+        req.on('end', () => {
+            res.writeHead(200, {
+                'content-type': 'application/json',
+            });
+
+            res.end(
+                JSON.stringify({
+                    method: req.method,
+                    received: raw,
+                    headers: { ...req.headers },
+                }),
+            );
+        });
+    }
 });
+
+async function listen(server: Server): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', resolve);
+    });
+}
