@@ -8,6 +8,116 @@ describe('HttpClient deadline budget', () => {
         jest.restoreAllMocks();
     });
 
+    it('enforces the earlier deadline when it is shorter than timeoutMs', async () => {
+        jest.useFakeTimers();
+
+        try {
+            const fakes = createFakes();
+
+            const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+                return new Promise((_, reject) => {
+                    const signal = init?.signal as AbortSignal | undefined;
+
+                    if (!signal) {
+                        throw new Error('Expected request signal');
+                    }
+
+                    const onAbort = () => {
+                        reject(new DOMException('The operation was aborted.', 'AbortError'));
+                    };
+
+                    if (signal.aborted) {
+                        onAbort();
+                        return;
+                    }
+
+                    signal.addEventListener('abort', onAbort, { once: true });
+                });
+            });
+
+            const client = makeClient({
+                clock: fakes.clock,
+                sleep: fakes.sleep,
+                random: fakes.random,
+            });
+
+            const promise = client.fetchJson(`${API_URL}/deadline-vs-timeout`, {
+                timeoutMs: 60_000,
+                deadline: 10_000,
+                maxRetries: 0,
+            });
+
+            await Promise.resolve();
+
+            fakes.clock.advance(10_000);
+            jest.advanceTimersByTime(10_000);
+
+            await expect(promise).rejects.toBeInstanceOf(TimeoutException);
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            expect(fakes.clock.now()).toBe(10_000);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('enforces timeoutMs even when deadline is much later', async () => {
+        jest.useFakeTimers();
+
+        try {
+            const fakes = createFakes();
+
+            const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+                return new Promise((_, reject) => {
+                    const signal = init?.signal as AbortSignal | undefined;
+
+                    if (!signal) {
+                        throw new Error('Expected request signal');
+                    }
+
+                    const onAbort = () => {
+                        reject(new DOMException('The operation was aborted.', 'AbortError'));
+                    };
+
+                    if (signal.aborted) {
+                        onAbort();
+                        return;
+                    }
+
+                    signal.addEventListener('abort', onAbort, { once: true });
+                });
+            });
+
+            const client = makeClient({
+                clock: fakes.clock,
+                sleep: fakes.sleep,
+                random: fakes.random,
+            });
+
+            const promise = client.fetchJson(`${API_URL}/timeout-vs-deadline`, {
+                timeoutMs: 10_000,
+                deadline: 60_000,
+                maxRetries: 0,
+            });
+
+            // Let the request reach the mocked fetch.
+            await Promise.resolve();
+
+            // Advance both time sources:
+            // - Jest timer → fires FetchOperation's timeout
+            // - FakeClock → makes the elapsed request time 10s
+            fakes.clock.advance(10_000);
+            jest.advanceTimersByTime(10_000);
+
+            await expect(promise).rejects.toBeInstanceOf(TimeoutException);
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            expect(fakes.clock.now()).toBe(10_000);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     it('does not sleep past the global deadline when Retry-After exceeds the remaining budget', async () => {
         const fakes = createFakes();
 

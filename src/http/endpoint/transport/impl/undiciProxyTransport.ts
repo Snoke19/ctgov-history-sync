@@ -3,6 +3,7 @@ import type { Dispatcher } from 'undici';
 import { ProxyPoolConfig } from '../../../../config/config.js';
 import { createPoolFactory } from '../../../poolFactory.js';
 import { resolveConnections } from '../../proxy/resolveConnections.js';
+import { classifyTransportError } from '../classifyTransportError.js';
 import { ProxyTransportFactory } from '../factory/proxyTransportFactory.js';
 import {
     CreateProxyEndpointsOptions,
@@ -43,22 +44,7 @@ export class UndiciHttpTransport implements HttpTransport {
     }
 
     classifyError(error: unknown): TransportErrorClassification {
-        if (
-            error !== null &&
-            typeof error === 'object' &&
-            (('name' in error && error.name === 'AbortError') ||
-                ('code' in error && (error as NodeJS.ErrnoException).code === 'ABORT_ERR'))
-        ) {
-            return {
-                kind: 'cancelled',
-                cause: error,
-            };
-        }
-
-        return {
-            kind: 'network',
-            cause: error,
-        };
+        return classifyTransportError(error);
     }
 
     close(): Promise<void> {

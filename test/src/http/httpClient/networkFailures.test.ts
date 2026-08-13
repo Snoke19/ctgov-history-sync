@@ -8,6 +8,22 @@ describe('HttpClient network & timeout failures', () => {
         jest.restoreAllMocks();
     });
 
+    it('surfaces a transport timeout as TimeoutException', async () => {
+        const timeoutError = Object.assign(new Error('Headers Timeout Error'), {
+            code: 'UND_ERR_HEADERS_TIMEOUT',
+        });
+
+        jest.spyOn(globalThis, 'fetch').mockRejectedValue(timeoutError);
+
+        const client = makeClient();
+
+        await expect(
+            client.fetchJson(`${API_URL}/transport-timeout`, {
+                maxRetries: 0,
+            }),
+        ).rejects.toBeInstanceOf(TimeoutException);
+    });
+
     it('retries network failures up to the configured maxRetries', async () => {
         const fetchMock = jest
             .spyOn(globalThis, 'fetch')

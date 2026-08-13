@@ -65,6 +65,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
         try {
             const remainingMs = this.getRemainingBudget(deadline, timeoutMs);
+            const attemptBudget = Math.min(timeoutMs, remainingMs);
 
             /**
              * This timer represents OUR timeout, not a transport timeout.
@@ -74,9 +75,9 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             timeoutId = setTimeout(() => {
                 abortReason = 'timeout';
                 controller.abort();
-            }, remainingMs);
+            }, attemptBudget);
 
-            const endpoint = await this.acquireEndpoint(remainingMs, controller.signal);
+            const endpoint = await this.acquireEndpoint(attemptBudget, controller.signal);
 
             const response = await this.executeRequest(endpoint, controller.signal, () => abortReason);
 
@@ -109,11 +110,11 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         }
     }
 
-    private getRemainingBudget(deadline: number, totalBudgetMs: number): number {
+    private getRemainingBudget(deadline: number, timeoutMs: number): number {
         const remainingMs = deadline - this.clock();
 
         if (remainingMs <= 0) {
-            throw new TimeoutException(`Deadline exhausted (budget: ${totalBudgetMs}ms): ${this.url}`);
+            throw new TimeoutException(`Deadline exhausted (timeout: ${timeoutMs}ms): ${this.url}`);
         }
 
         return remainingMs;

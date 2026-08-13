@@ -66,6 +66,14 @@ describe('UndiciHttpTransport', () => {
         return mockFetch.mock.calls[mockFetch.mock.calls.length - 1]![1];
     }
 
+    it('classifies Undici timeout errors as timeout', () => {
+        const error = Object.assign(new Error('Headers Timeout Error'), {
+            code: 'UND_ERR_HEADERS_TIMEOUT',
+        });
+
+        expect(transport.classifyError(error).kind).toBe('timeout');
+    });
+
     describe('request()', () => {
         it('includes empty string body', async () => {
             await transport.request(makeRequest({ body: '' }));

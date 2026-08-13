@@ -1,3 +1,4 @@
+import { classifyTransportError } from '../classifyTransportError.js';
 import { HttpRequest, HttpResponse, HttpTransport, TransportErrorClassification } from '../httpTransport.js';
 
 export class FetchDirectTransport implements HttpTransport {
@@ -25,34 +26,8 @@ export class FetchDirectTransport implements HttpTransport {
     }
 
     classifyError(error: unknown): TransportErrorClassification {
-        if (this.isAbortError(error)) {
-            return {
-                kind: 'cancelled',
-                cause: error,
-            };
-        }
-
-        return {
-            kind: 'network',
-            cause: error,
-        };
+        return classifyTransportError(error);
     }
 
     async close(): Promise<void> {}
-
-    private isAbortError(error: unknown): boolean {
-        if (error === null || typeof error !== 'object') {
-            return false;
-        }
-
-        if ('name' in error && error.name === 'AbortError') {
-            return true;
-        }
-
-        if ('code' in error && (error as NodeJS.ErrnoException).code === 'ABORT_ERR') {
-            return true;
-        }
-
-        return false;
-    }
 }

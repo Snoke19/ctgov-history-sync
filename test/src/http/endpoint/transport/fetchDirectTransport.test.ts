@@ -30,6 +30,14 @@ describe('FetchDirectTransport', () => {
         jest.restoreAllMocks();
     });
 
+    it('classifies Undici timeout errors as timeout', () => {
+        const error = Object.assign(new Error('Headers Timeout Error'), {
+            code: 'UND_ERR_HEADERS_TIMEOUT',
+        });
+
+        expect(transport.classifyError(error).kind).toBe('timeout');
+    });
+
     describe('request', () => {
         it('calls fetch with url, method, and headers', async () => {
             const mockResponse = createMockResponse();
