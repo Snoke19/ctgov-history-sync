@@ -1,4 +1,5 @@
 import { BACKOFF_CAP_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
+import { logger } from '../config/logging.js';
 import { CallerAbortedError, ConfigurationError, HttpException, NetworkException } from '../error/errors.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManager } from './endpoint/manager/endpointManager.js';
@@ -15,6 +16,24 @@ import { HttpResponse } from './transport/httpTransport.js';
 import { defaultMonotonicClock, defaultRandom, defaultSleeper, defaultWallClock } from './types/clock.js';
 import type { Sleeper } from './types/clock.js';
 import type { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
+
+type HttpErrorLogContext = {
+    message: string;
+    errorType: string;
+    url: string;
+    method: 'GET';
+    error: Error;
+};
+
+function createHttpErrorLogContext(error: Error, url: string): HttpErrorLogContext {
+    return {
+        message: error.message,
+        error,
+        errorType: error.name,
+        url,
+        method: 'GET',
+    };
+}
 
 export interface HttpClient {
     /**
@@ -71,20 +90,19 @@ export async function createHttpClient(
 
         try {
             return await retry.perform();
-        } catch (error) {
-            // A caller abort can surface from a retry backoff wait (the sleeper
-            // wakes up early). Classify it the same way FetchOperation classifies
-            // an abort of an in-flight request, so the public API always reports
-            // caller cancellation as a NetworkException.
+        } catch (error: unknown) {
             if (error instanceof CallerAbortedError && options.signal?.aborted) {
                 throw new NetworkException(`Request cancelled by caller: ${url}`, error);
             }
-            // INVARIANT: 404 must NOT be present in retryConfig.retryableStatusCodes.
-            // If it were, retry.perform() would loop instead of throwing, and this
-            // catch block would never be reached, silently breaking allow404.
+
             if (options.allow404 && error instanceof HttpException && error.status === 404) {
                 return null;
             }
+
+            if (error instanceof Error) {
+                logger.error(createHttpErrorLogContext(error, url), 'HTTP request failed');
+            }
+
             throw error;
         }
     }
@@ -96,9 +114,19 @@ export async function createHttpClient(
 
         // fetchResponse returns null ONLY for allow404 + 404.
         // 204 No Content is handled inside parseOkResponseBody, not here.
-        if (response === null) return null;
+        if (response === null) {
+            return null;
+        }
 
-        return parseOkResponseBody(response, url) as T;
+        try {
+            return parseOkResponseBody(response, url) as T;
+        } catch (error) {
+            if (error instanceof Error) {
+                logger.error(createHttpErrorLogContext(error, url), 'Failed to parse HTTP response body');
+            }
+
+            throw error;
+        }
     }
 
     async function close(): Promise<void> {

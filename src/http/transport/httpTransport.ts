@@ -7,12 +7,6 @@ export interface TransportErrorClassification {
     readonly cause: unknown;
 }
 
-/**
- * Abstraction over a specific HTTP library.
- *
- * Each implementation owns all knowledge of its underlying library's
- * error model and converts it into the transport-agnostic taxonomy above.
- */
 export interface HttpTransport {
     request(options: HttpRequest): Promise<HttpResponse>;
     classifyError(error: unknown): TransportErrorClassification;

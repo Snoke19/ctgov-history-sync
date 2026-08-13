@@ -17,17 +17,6 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
                 return;
             }
 
-            if (req.method === 'POST') {
-                let raw = '';
-                req.on('data', (chunk: Buffer) => {
-                    raw += chunk.toString();
-                });
-                req.on('end', () => {
-                    res.end(JSON.stringify({ method: 'POST', body: raw }));
-                });
-                return;
-            }
-
             res.end(JSON.stringify({ path: req.url ?? '', ok: true }));
         });
 

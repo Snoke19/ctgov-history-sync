@@ -3,46 +3,42 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
 import { API_URL, createFakes, jsonResponse, makeClient } from './helpers.js';
 
+async function expectRejected<T extends Error>(
+    promise: Promise<unknown>,
+    errorClass: new (...args: never[]) => T,
+): Promise<T> {
+    const error = await promise.catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(errorClass);
+    return error as T;
+}
+
 describe('HttpClient network & timeout failures', () => {
     afterEach(() => {
         jest.restoreAllMocks();
     });
 
-    it('maps an Undici connect timeout to TimeoutException and applies timeout retry policy', async () => {
-        const fetchMock = jest.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
-            Object.assign(new Error('Connect Timeout Error'), {
-                code: 'UND_ERR_CONNECT_TIMEOUT',
-            }),
-        );
+    it.each(['UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'])(
+        'maps Undici %s to TimeoutException',
+        async (code) => {
+            const fetchMock = jest
+                .spyOn(globalThis, 'fetch')
+                .mockRejectedValueOnce(Object.assign(new Error(`${code} Error`), { code }));
 
-        const client = await makeClient();
+            const client = await makeClient();
 
-        await expect(
-            client.fetchJson(`${API_URL}/proxy-timeout`, {
-                maxRetries: 0,
-            }),
-        ).rejects.toBeInstanceOf(TimeoutException);
+            const error = await expectRejected(
+                client.fetchJson(`${API_URL}/timeout`, {
+                    maxRetries: 0,
+                }),
+                TimeoutException,
+            );
 
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
+            expect(error.message).toContain('Request timed out after');
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        },
+    );
 
-    it('surfaces a transport timeout as TimeoutException', async () => {
-        const timeoutError = Object.assign(new Error('Headers Timeout Error'), {
-            code: 'UND_ERR_HEADERS_TIMEOUT',
-        });
-
-        jest.spyOn(globalThis, 'fetch').mockRejectedValue(timeoutError);
-
-        const client = await makeClient();
-
-        await expect(
-            client.fetchJson(`${API_URL}/transport-timeout`, {
-                maxRetries: 0,
-            }),
-        ).rejects.toBeInstanceOf(TimeoutException);
-    });
-
-    it('retries network failures up to the configured maxRetries', async () => {
+    it('retries a network failure and succeeds on the next attempt', async () => {
         const fetchMock = jest
             .spyOn(globalThis, 'fetch')
             .mockRejectedValueOnce(new TypeError('fetch failed: ECONNRESET'))
@@ -56,23 +52,27 @@ describe('HttpClient network & timeout failures', () => {
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it('throws NetworkException after exhausting the configured maximum number of total attempts', async () => {
+    it('throws NetworkException after exhausting all retry attempts', async () => {
         const fetchMock = jest
             .spyOn(globalThis, 'fetch')
             .mockRejectedValue(new TypeError('fetch failed: ECONNREFUSED'));
 
         const client = await makeClient();
 
-        await expect(
+        const error = await expectRejected(
             client.fetchJson(`${API_URL}/unreachable`, {
                 maxRetries: 1,
             }),
-        ).rejects.toBeInstanceOf(NetworkException);
+            NetworkException,
+        );
 
+        expect(error.message).toContain(
+            'Network failure: http://api.test/unreachable — cause: TypeError: fetch failed: ECONNREFUSED',
+        );
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it('rejects immediately with NetworkException when caller AbortSignal is pre-aborted', async () => {
+    it('throws NetworkException without making a request when caller AbortSignal is already aborted', async () => {
         const fetchMock = jest.spyOn(globalThis, 'fetch');
 
         const client = await makeClient();
@@ -80,39 +80,55 @@ describe('HttpClient network & timeout failures', () => {
         const controller = new AbortController();
         controller.abort();
 
-        await expect(
+        const error = await expectRejected(
             client.fetchJson(`${API_URL}/cancelled`, {
                 signal: controller.signal,
             }),
-        ).rejects.toBeInstanceOf(NetworkException);
+            NetworkException,
+        );
 
+        expect(error.message).toContain('Request cancelled by caller: http://api.test/cancelled');
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('throws TimeoutException when request exceeds timeoutMs', async () => {
-        jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+    it('throws TimeoutException when HTTP request exceeds timeoutMs', async () => {
+        const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
             return new Promise((_, reject) => {
                 const signal = init?.signal as AbortSignal | undefined;
 
-                if (signal) {
-                    const onAbort = () => reject(new DOMException('The operation was aborted.', 'AbortError'));
-
-                    if (signal.aborted) {
-                        onAbort();
-                        return;
-                    }
-                    signal.addEventListener('abort', onAbort, { once: true });
+                if (!signal) {
+                    return;
                 }
-                // No safety timer needed here — the internal AbortController
-                // guarantees the signal will abort after timeoutMs.
+
+                const onAbort = (): void => {
+                    reject(new DOMException('The operation was aborted.', 'AbortError'));
+                };
+
+                if (signal.aborted) {
+                    onAbort();
+                    return;
+                }
+
+                signal.addEventListener('abort', onAbort, { once: true });
             });
         });
 
         const client = await makeClient();
 
-        await expect(client.fetchJson(`${API_URL}/slow`, { timeoutMs: 50, maxRetries: 1 })).rejects.toBeInstanceOf(
-            TimeoutException,
-        );
+        try {
+            const error = await expectRejected(
+                client.fetchJson(`${API_URL}/slow`, {
+                    timeoutMs: 50,
+                    maxRetries: 0,
+                }),
+                TimeoutException,
+            );
+
+            expect(error.message).toContain('Request timed out after 50ms: http://api.test/slow — cause: {}');
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        } finally {
+            await client.close();
+        }
     });
 
     it('does NOT retry a timeout when retryPolicy.retryOnTimeout is false', async () => {
@@ -121,12 +137,15 @@ describe('HttpClient network & timeout failures', () => {
                 const signal = init?.signal as AbortSignal | undefined;
 
                 if (signal) {
-                    const onAbort = () => reject(new DOMException('The operation was aborted.', 'AbortError'));
+                    const onAbort = (): void => {
+                        reject(new DOMException('The operation was aborted.', 'AbortError'));
+                    };
 
                     if (signal.aborted) {
                         onAbort();
                         return;
                     }
+
                     signal.addEventListener('abort', onAbort, { once: true });
                 }
             });
@@ -134,17 +153,23 @@ describe('HttpClient network & timeout failures', () => {
 
         const client = await makeClient();
 
-        await expect(
-            client.fetchJson(`${API_URL}/timeout-no-retry`, {
-                timeoutMs: 50,
-                maxRetries: 2,
-                retryPolicy: { retryOnTimeout: false },
-            }),
-        ).rejects.toBeInstanceOf(TimeoutException);
+        try {
+            const error = await expectRejected(
+                client.fetchJson(`${API_URL}/timeout-no-retry`, {
+                    timeoutMs: 50,
+                    maxRetries: 2,
+                    retryPolicy: { retryOnTimeout: false },
+                }),
+                TimeoutException,
+            );
 
-        // The per-request policy opt-out must stop the retry that the global
-        // default (retryOnTimeout: true) would otherwise have performed.
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+            expect(error.message).toContain(
+                'Request timed out after 50ms: http://api.test/timeout-no-retry — cause: {}',
+            );
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        } finally {
+            await client.close();
+        }
     });
 
     it('aborts the retry backoff wait immediately when the caller cancels mid-delay', async () => {
@@ -152,9 +177,8 @@ describe('HttpClient network & timeout failures', () => {
 
         const controller = new AbortController();
 
-        // A sleep that only ever settles by being aborted — like a real backoff
-        // under the default sleeper, but deterministic. It also asserts the
-        // caller's signal is actually forwarded into the wait.
+        let backoffSignal: AbortSignal | undefined;
+
         const sleepMock = jest.fn(
             (_ms: number, signal?: AbortSignal) =>
                 new Promise<void>((_, reject) => {
@@ -162,6 +186,9 @@ describe('HttpClient network & timeout failures', () => {
                         reject(new DOMException('The operation was aborted.', 'AbortError'));
                         return;
                     }
+
+                    backoffSignal = signal;
+
                     signal.addEventListener(
                         'abort',
                         () => reject(new DOMException('The operation was aborted.', 'AbortError')),
@@ -172,63 +199,88 @@ describe('HttpClient network & timeout failures', () => {
 
         const client = await makeClient({ sleep: sleepMock });
 
-        const pending = client.fetchJson(`${API_URL}/abort-during-backoff`, {
-            signal: controller.signal,
-            maxRetries: 3,
-        });
+        try {
+            const pending = client.fetchJson(`${API_URL}/abort-during-backoff`, {
+                signal: controller.signal,
+                maxRetries: 3,
+            });
 
-        setTimeout(() => controller.abort(), 10);
+            await new Promise<void>((resolve) => {
+                const check = (): void => {
+                    if (backoffSignal) {
+                        resolve();
+                        return;
+                    }
 
-        await expect(pending).rejects.toBeInstanceOf(NetworkException);
-        // Cancelled at the first backoff wait: no second request is ever issued.
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(sleepMock).toHaveBeenCalledWith(expect.any(Number), controller.signal);
-        expect(sleepMock).toHaveBeenCalledTimes(1);
+                    queueMicrotask(check);
+                };
+
+                check();
+            });
+
+            controller.abort();
+
+            await expect(pending).rejects.toBeInstanceOf(NetworkException);
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            expect(sleepMock).toHaveBeenCalledTimes(1);
+            expect(sleepMock).toHaveBeenCalledWith(expect.any(Number), controller.signal);
+        } finally {
+            await client.close();
+        }
     });
 
-    it('throws NetworkException when caller aborts during request', async () => {
+    it('throws NetworkException when caller aborts during HTTP request', async () => {
         const controller = new AbortController();
 
-        jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
-            return new Promise((_, reject) => {
-                const signal = init?.signal as AbortSignal | undefined;
+        const requestStarted = new Promise<void>((resolve) => {
+            jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+                return new Promise((_, reject) => {
+                    const signal = init?.signal as AbortSignal | undefined;
 
-                const safetyTimer = setTimeout(() => reject(new Error('should not reach')), 1000);
+                    if (!signal) {
+                        throw new Error('Expected fetch signal');
+                    }
 
-                if (signal) {
-                    const onAbort = () => {
-                        clearTimeout(safetyTimer);
+                    const onAbort = (): void => {
                         reject(new DOMException('The operation was aborted.', 'AbortError'));
                     };
+
                     if (signal.aborted) {
                         onAbort();
                         return;
                     }
+
                     signal.addEventListener('abort', onAbort, { once: true });
-                }
+                    resolve();
+                });
             });
         });
 
         const client = await makeClient();
-        setTimeout(() => controller.abort(), 10);
 
-        await expect(
-            client.fetchJson(`${API_URL}/slow`, {
+        try {
+            const pending = client.fetchJson(`${API_URL}/slow`, {
                 signal: controller.signal,
                 maxRetries: 1,
-            }),
-        ).rejects.toBeInstanceOf(NetworkException);
+            });
+
+            await requestStarted;
+            controller.abort();
+
+            await expect(pending).rejects.toBeInstanceOf(NetworkException);
+        } finally {
+            await client.close();
+        }
     });
 
-    it('detaches its abort listener from a shared caller signal after a successful request', async () => {
+    it('does not leak abort listeners across requests', async () => {
         jest.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(jsonResponse({ ok: true })));
 
         const controller = new AbortController();
         const client = await makeClient();
 
         for (let i = 0; i < 3; i++) {
-            // A long-lived caller signal shared across many requests must not
-            // accumulate abort listeners with every successful request.
             const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/leak-${i}`, {
                 signal: controller.signal,
             });
@@ -237,7 +289,7 @@ describe('HttpClient network & timeout failures', () => {
         }
     });
 
-    it('throttles requests when useRateLimit is enabled', async () => {
+    it('enforces the rate limit between requests', async () => {
         const fetchMock = jest
             .spyOn(globalThis, 'fetch')
             .mockImplementation(() => Promise.resolve(jsonResponse({ ok: true })));

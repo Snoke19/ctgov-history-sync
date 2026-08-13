@@ -20,10 +20,6 @@ import { parseRetryAfterHeader } from './retryPolicy.js';
 type AbortReason = 'caller' | 'timeout';
 
 export class FetchOperation implements BusinessOperation<HttpResponse> {
-    /**
-     * @param clock Clock source for HTTP time calculations such as Retry-After.
-     * Defaults to the shared HTTP-layer clock (`Date.now()`).
-     */
     constructor(
         private readonly endpointManager: EndpointManager,
         private readonly url: string,
@@ -34,15 +30,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     async perform(): Promise<HttpResponse> {
         const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
         const controller = new AbortController();
-
-        /**
-         * Tracks the semantic reason for the controller abort.
-         *
-         * The transport must not infer this from the concrete error object,
-         * because the underlying library may use different error representations.
-         */
         let abortReason: AbortReason | undefined;
-
         const callerSignal = this.options.signal;
 
         const forwardAbort = (): void => {
@@ -61,18 +49,8 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
         try {
-            /**
-             * Endpoint acquisition has its own timeout policy owned by
-             * EndpointManager. The per-request timeout starts only after an
-             * endpoint has been successfully acquired.
-             */
             const endpoint = await this.acquireEndpoint(controller.signal);
 
-            /**
-             * This timeout applies only to this external HTTP attempt.
-             * Each retry creates a new FetchOperation and therefore gets
-             * a fresh timeout.
-             */
             timeoutId = setTimeout(() => {
                 abortReason = 'timeout';
                 controller.abort();
@@ -83,10 +61,6 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             succeeded = true;
             return response;
         } catch (error) {
-            /**
-             * Endpoint acquisition can observe our aborted controller directly
-             * and produce the canonical domain-level CallerAbortedError.
-             */
             if (error instanceof CallerAbortedError) {
                 throw this.mapAbortReason(error, abortReason, timeoutMs);
             }
@@ -103,10 +77,6 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
             callerSignal?.removeEventListener('abort', forwardAbort);
 
-            /**
-             * Only abort on failure. On success, the response body may still
-             * need to be consumed by the caller.
-             */
             if (!succeeded) {
                 controller.abort();
             }
@@ -163,16 +133,22 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     ): NetworkException | TimeoutException {
         const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
         const classification = transport.classifyError(error);
+        const causeDescription = this.describeError(classification.cause);
 
         switch (classification.kind) {
             case 'timeout':
-                return new TimeoutException(`Request timed out after ${timeoutMs}ms: ${this.url}`);
+                return new TimeoutException(
+                    `Request timed out after ${timeoutMs}ms: ${this.url} — cause: ${causeDescription}`,
+                );
 
             case 'cancelled':
                 return this.mapAbortReason(classification.cause, abortReason, timeoutMs);
 
             case 'network':
-                return new NetworkException(`Network failure: ${this.url}`, classification.cause);
+                return new NetworkException(
+                    `Network failure: ${this.url} — cause: ${causeDescription}`,
+                    classification.cause,
+                );
         }
     }
 
@@ -181,11 +157,13 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         abortReason: AbortReason | undefined,
         timeoutMs: number,
     ): NetworkException | TimeoutException {
+        const causeDescription = this.describeError(cause);
+
         if (abortReason === 'caller') {
-            return new NetworkException(`Request cancelled by caller: ${this.url}`, cause);
+            return new NetworkException(`Request cancelled by caller: ${this.url} — cause: ${causeDescription}`, cause);
         }
 
-        return new TimeoutException(`Request timed out after ${timeoutMs}ms: ${this.url}`);
+        return new TimeoutException(`Request timed out after ${timeoutMs}ms: ${this.url} — cause: ${causeDescription}`);
     }
 
     private buildHeaders(): Record<string, string> {
@@ -205,5 +183,23 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         }
 
         return defaults;
+    }
+
+    private describeError(error: unknown): string {
+        if (error instanceof Error) {
+            const code = 'code' in error ? error.code : undefined;
+
+            return code ? `${error.name} (${code}): ${error.message}` : `${error.name}: ${error.message}`;
+        }
+
+        if (typeof error === 'string') {
+            return error;
+        }
+
+        try {
+            return JSON.stringify(error);
+        } catch {
+            return String(error);
+        }
     }
 }

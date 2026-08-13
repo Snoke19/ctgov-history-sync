@@ -5,6 +5,18 @@ import { defaultMonotonicClock, defaultSleeper } from '../../types/clock.js';
 import type { MonotonicClock, Sleeper } from '../../types/clock.js';
 import { Endpoint, EndpointHandle } from '../endpoint.js';
 
+type EndpointManagerErrorLogContext = {
+    error: unknown;
+    endpointCount: number;
+};
+
+function createEndpointManagerErrorLogContext(error: unknown, endpointCount: number): EndpointManagerErrorLogContext {
+    return {
+        error,
+        endpointCount,
+    };
+}
+
 export class EndpointManager {
     private readonly endpoints: readonly Endpoint[];
     private readonly acquireTimeout: number;
@@ -16,7 +28,7 @@ export class EndpointManager {
      * @param endpoints       Pre-built endpoint list (at least one required).
      * @param acquireTimeout  Maximum time in ms to wait for an endpoint.
      * @param clock           Monotonic clock used for acquisition timing.
-     * @param sleep           Abort-aware delay used while waiting for availability.
+     * @param sleep            Abort-aware delay used while waiting for availability.
      */
     constructor(
         endpoints: readonly Endpoint[],
@@ -93,7 +105,16 @@ export class EndpointManager {
     }
 
     async close(): Promise<void> {
-        await Promise.all(this.endpoints.map((ep) => ep.close()));
-        logger.info('Endpoint manager closed | Endpoints released: %d', this.endpoints.length);
+        try {
+            await Promise.all(this.endpoints.map((ep) => ep.close()));
+            logger.info('Endpoint manager closed | Endpoints released: %d', this.endpoints.length);
+        } catch (error) {
+            logger.error(
+                createEndpointManagerErrorLogContext(error, this.endpoints.length),
+                'Failed to close endpoint manager',
+            );
+
+            throw error;
+        }
     }
 }
