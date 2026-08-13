@@ -1,4 +1,4 @@
-import { HttpTransport } from '../httpTransport.js';
+import type { HttpTransport } from '../httpTransport.js';
 import { FetchDirectTransport } from '../impl/fetchDirectTransport.js';
 import { DirectTransportFactory } from './directTransportFactory.js';
 

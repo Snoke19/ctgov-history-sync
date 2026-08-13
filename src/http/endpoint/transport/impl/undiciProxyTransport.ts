@@ -3,9 +3,10 @@ import type { Dispatcher } from 'undici';
 import { ProxyPoolConfig } from '../../../../config/config.js';
 import { createPoolFactory } from '../../../poolFactory.js';
 import { resolveConnections } from '../../proxy/resolveConnections.js';
+import { adaptHttpResponse } from '../adaptHttpResponse.js';
 import { classifyTransportError } from '../classifyTransportError.js';
 import { ProxyTransportFactory } from '../factory/proxyTransportFactory.js';
-import {
+import type {
     CreateProxyEndpointsOptions,
     HttpRequest,
     HttpResponse,
@@ -40,7 +41,7 @@ export class UndiciHttpTransport implements HttpTransport {
             ...(options.signal !== undefined && { signal: options.signal }),
         });
 
-        return this.toHttpResponse(response);
+        return adaptHttpResponse(response);
     }
 
     classifyError(error: unknown): TransportErrorClassification {
@@ -49,22 +50,6 @@ export class UndiciHttpTransport implements HttpTransport {
 
     close(): Promise<void> {
         return this.agent.close();
-    }
-
-    private toHttpResponse(response: Awaited<ReturnType<typeof fetch>>): HttpResponse {
-        return {
-            status: response.status,
-            statusText: response.statusText,
-            ok: response.ok,
-            headers: response.headers,
-            text: () => response.text(),
-            json: () => response.json(),
-            discard: async () => {
-                if (response.body) {
-                    await (response.body as ReadableStream).cancel().catch(() => {});
-                }
-            },
-        };
     }
 }
 

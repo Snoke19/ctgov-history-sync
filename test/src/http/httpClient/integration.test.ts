@@ -126,8 +126,11 @@ describe('HttpClient full-stack integration (real server + real fetch)', () => {
     afterAll(async () => {
         await client.close();
         server.closeAllConnections?.();
-        await new Promise<void>((resolve) => {
-            server.close(() => resolve());
+        await new Promise<void>((resolve, reject) => {
+            server.close((error) => {
+                if (error) reject(error);
+                else resolve();
+            });
         });
     });
 

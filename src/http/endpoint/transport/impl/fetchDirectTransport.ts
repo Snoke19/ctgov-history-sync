@@ -1,5 +1,6 @@
+import { adaptHttpResponse } from '../adaptHttpResponse.js';
 import { classifyTransportError } from '../classifyTransportError.js';
-import { HttpRequest, HttpResponse, HttpTransport, TransportErrorClassification } from '../httpTransport.js';
+import type { HttpRequest, HttpResponse, HttpTransport, TransportErrorClassification } from '../httpTransport.js';
 
 export class FetchDirectTransport implements HttpTransport {
     async request(options: HttpRequest): Promise<HttpResponse> {
@@ -10,19 +11,7 @@ export class FetchDirectTransport implements HttpTransport {
             ...(options.signal !== undefined && { signal: options.signal }),
         });
 
-        return {
-            status: response.status,
-            statusText: response.statusText,
-            ok: response.ok,
-            headers: response.headers,
-            text: () => response.text(),
-            json: () => response.json(),
-            discard: async () => {
-                if (response.body) {
-                    await response.body.cancel().catch(() => {});
-                }
-            },
-        };
+        return adaptHttpResponse(response);
     }
 
     classifyError(error: unknown): TransportErrorClassification {

@@ -1,4 +1,4 @@
-import { CreateProxyEndpointsOptions, HttpTransport } from '../httpTransport.js';
+import type { CreateProxyEndpointsOptions, HttpTransport } from '../httpTransport.js';
 
 /**
  * Factory that creates a concrete HttpTransport for a proxy endpoint.

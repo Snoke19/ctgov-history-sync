@@ -66,14 +66,6 @@ describe('UndiciHttpTransport', () => {
         return mockFetch.mock.calls[mockFetch.mock.calls.length - 1]![1];
     }
 
-    it('classifies Undici timeout errors as timeout', () => {
-        const error = Object.assign(new Error('Headers Timeout Error'), {
-            code: 'UND_ERR_HEADERS_TIMEOUT',
-        });
-
-        expect(transport.classifyError(error).kind).toBe('timeout');
-    });
-
     describe('request()', () => {
         it('includes empty string body', async () => {
             await transport.request(makeRequest({ body: '' }));
@@ -137,67 +129,6 @@ describe('UndiciHttpTransport', () => {
             mockFetch.mockRejectedValue(new Error('network failure'));
 
             await expect(transport.request(makeRequest())).rejects.toThrow('network failure');
-        });
-
-        it('maps status, statusText, ok, and headers from the response', async () => {
-            const headers = new Headers({ 'x-rate-limit-remaining': '42' });
-            mockFetch.mockResolvedValue(makeFakeResponse({ status: 404, statusText: 'Not Found', ok: false, headers }));
-
-            const result = await transport.request(makeRequest());
-
-            expect(result.status).toBe(404);
-            expect(result.statusText).toBe('Not Found');
-            expect(result.ok).toBe(false);
-            expect(result.headers).toBe(headers);
-        });
-
-        it('text() delegates to the underlying response', async () => {
-            const fakeResponse = makeFakeResponse();
-            mockFetch.mockResolvedValue(fakeResponse);
-
-            const result = await transport.request(makeRequest());
-            const text = await result.text();
-
-            expect(fakeResponse.text).toHaveBeenCalledTimes(1);
-            expect(text).toBe('response body text');
-        });
-
-        it('json() delegates to the underlying response', async () => {
-            const fakeResponse = makeFakeResponse();
-            mockFetch.mockResolvedValue(fakeResponse);
-
-            const result = await transport.request(makeRequest());
-            const json = await result.json();
-
-            expect(fakeResponse.json).toHaveBeenCalledTimes(1);
-            expect(json).toEqual({ result: 'ok' });
-        });
-
-        describe('discard()', () => {
-            it('cancels the body stream when body is present', async () => {
-                const cancel = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
-                mockFetch.mockResolvedValue(makeFakeResponse({ body: { cancel } }));
-
-                const result = await transport.request(makeRequest());
-                await result.discard();
-
-                expect(cancel).toHaveBeenCalledTimes(1);
-            });
-
-            it('is a no-op when body is null', async () => {
-                mockFetch.mockResolvedValue(makeFakeResponse({ body: null }));
-
-                const result = await transport.request(makeRequest());
-                await expect(result.discard()).resolves.toBeUndefined();
-            });
-
-            it('swallows stream cancellation errors', async () => {
-                const cancel = jest.fn<() => Promise<void>>().mockRejectedValue(new Error('already closed'));
-                mockFetch.mockResolvedValue(makeFakeResponse({ body: { cancel } }));
-
-                const result = await transport.request(makeRequest());
-                await expect(result.discard()).resolves.toBeUndefined();
-            });
         });
     });
 
