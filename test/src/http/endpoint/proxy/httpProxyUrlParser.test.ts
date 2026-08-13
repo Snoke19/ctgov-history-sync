@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from '@jest/globals';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { logger } from '../../../../../src/config/logging.js';
 import { HttpProxyUrlParser } from '../../../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
 
 describe('HttpProxyUrlParser', () => {
@@ -6,6 +7,49 @@ describe('HttpProxyUrlParser', () => {
 
     beforeEach(() => {
         parser = new HttpProxyUrlParser();
+    });
+
+    it('redacts proxy credentials from validation logs', () => {
+        const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+
+        const parser = new HttpProxyUrlParser();
+
+        parser.parse('http://user:secret@proxy.example.com:8080/path');
+
+        expect(warn).toHaveBeenCalledTimes(1);
+
+        const logArguments = warn.mock.calls[0] ?? [];
+
+        expect(logArguments.join(' ')).not.toContain('secret');
+        expect(logArguments.join(' ')).not.toContain('user:secret@');
+        expect(logArguments.join(' ')).toContain('proxy.example.com:8080');
+    });
+
+    it('does not leak credentials when the proxy URL cannot be parsed', () => {
+        const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+
+        const parser = new HttpProxyUrlParser();
+
+        parser.parse('http://user:secret@invalid host:8080');
+
+        expect(warn).toHaveBeenCalledTimes(1);
+
+        const logArguments = warn.mock.calls[0] ?? [];
+
+        expect(logArguments.join(' ')).not.toContain('secret');
+        expect(logArguments.join(' ')).not.toContain('user:secret@');
+        expect(logArguments.join(' ')).toContain('<invalid proxy URL>');
+    });
+
+    it('does not leak credentials when the proxy URL is malformed', () => {
+        const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+
+        const parser = new HttpProxyUrlParser();
+
+        parser.parse('http://user:secret@invalid host:8080');
+
+        expect(warn).toHaveBeenCalled();
+        expect(warn.mock.calls[0]?.join(' ')).not.toContain('secret');
     });
 
     describe('valid inputs', () => {
