@@ -1,5 +1,5 @@
+import { HttpClientOptions } from '../../../http.js';
 import { DirectTransportFactory } from '../../../transport/factory/directTransportFactory.js';
-import { HttpClientOptions } from '../../../types/http.js';
 import { EndpointDefinition, EndpointProvider } from '../endpointProvider.js';
 
 export class DirectEndpointProvider implements EndpointProvider {

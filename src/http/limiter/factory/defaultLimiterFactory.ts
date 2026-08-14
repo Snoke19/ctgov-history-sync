@@ -1,4 +1,4 @@
-import type { HttpClientOptions } from '../../types/http.js';
+import type { HttpClientOptions } from '../../http.js';
 import { TokenBucket } from '../impl/tokenBucket.js';
 import { UnlimitedLimiter } from '../impl/unlimitedLimiter.js';
 import type { Limiter } from '../limiter.js';

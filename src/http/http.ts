@@ -1,6 +1,6 @@
-import { ProxyPoolConfig } from '../../config/config.js';
-import { RetryPolicyConfig } from '../retry/retryPolicy.js';
+import { ProxyPoolConfig } from '../config/config.js';
 import type { MonotonicClock, RandomSource, Sleeper, WallClock } from './clock.js';
+import { RetryPolicyConfig } from './retryPolicy.js';
 
 export type QueryParamValue = string | number | boolean;
 

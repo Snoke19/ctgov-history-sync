@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { ProxyPoolConfig } from '../../../../../src/config/config.js';
 import { ConfigurationError } from '../../../../../src/error/errors.js';
 import { ProxyUrlParser } from '../../../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
+import { HttpClientOptions } from '../../../../../src/http/http.js';
 import { ProxyTransportFactory } from '../../../../../src/http/transport/factory/proxyTransportFactory.js';
 import { CreateProxyEndpointsOptions, HttpTransport } from '../../../../../src/http/transport/httpTransport.js';
-import { HttpClientOptions } from '../../../../../src/http/types/http.js';
 import * as validation from '../../../../../src/utils/validation.js';
 
 const assertPositiveInt = jest.fn();

@@ -6,7 +6,7 @@ import {
     parseRetryAfterHeader,
     RetryPolicyConfig,
     shouldRetry,
-} from '../../../../src/http/retry/retryPolicy.js';
+} from '../../../../src/http/retryPolicy.js';
 import { HttpResponse } from '../../../../src/http/transport/httpTransport.js';
 
 describe('defaultRetryPolicyConfig', () => {

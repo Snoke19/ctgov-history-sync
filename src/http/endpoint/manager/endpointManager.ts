@@ -1,8 +1,7 @@
 import { logger } from '../../../config/logging.js';
 import { CallerAbortedError, ConfigurationError, EndpointAcquisitionTimeoutError } from '../../../error/errors.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
-import { defaultMonotonicClock, defaultSleeper } from '../../types/clock.js';
-import type { MonotonicClock, Sleeper } from '../../types/clock.js';
+import { defaultMonotonicClock, defaultSleeper, MonotonicClock, Sleeper } from '../../clock.js';
 import { Endpoint, EndpointHandle } from '../endpoint.js';
 
 type EndpointManagerErrorLogContext = {

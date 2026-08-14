@@ -2,7 +2,6 @@ import { fetch, ProxyAgent } from 'undici';
 import type { Dispatcher } from 'undici';
 import { ProxyPoolConfig } from '../../../config/config.js';
 import { resolveConnections } from '../../endpoint/proxy/resolveConnections.js';
-import { createPoolFactory } from '../../poolFactory.js';
 import { adaptHttpResponse } from '../adaptHttpResponse.js';
 import { classifyTransportError } from '../classifyTransportError.js';
 import { ProxyTransportFactory } from '../factory/proxyTransportFactory.js';
@@ -13,6 +12,7 @@ import type {
     HttpTransport,
     TransportErrorClassification,
 } from '../httpTransport.js';
+import { createPoolFactory } from '../poolFactory.js';
 
 export type PoolClientFactory = (origin: URL, opts?: Record<string, unknown>) => Dispatcher;
 export type PoolCreatorFn = (config: ProxyPoolConfig) => PoolClientFactory;

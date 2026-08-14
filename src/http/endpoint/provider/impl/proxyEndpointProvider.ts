@@ -1,8 +1,8 @@
 import { ConfigurationError } from '../../../../error/errors.js';
 import { assertPositiveInt } from '../../../../utils/validation.js';
+import type { HttpClientOptions } from '../../../http.js';
 import { ProxyTransportFactory } from '../../../transport/factory/proxyTransportFactory.js';
 import { CreateProxyEndpointsOptions } from '../../../transport/httpTransport.js';
-import type { HttpClientOptions } from '../../../types/http.js';
 import { ProxyUrlParser } from '../../proxy/httpProxyUrlParser.js';
 import { EndpointDefinition, EndpointProvider } from '../endpointProvider.js';
 

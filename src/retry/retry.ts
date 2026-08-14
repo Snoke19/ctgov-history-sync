@@ -1,6 +1,5 @@
-import { CallerAbortedError, TrialError } from '../../error/errors.js';
-import { defaultSleeper } from '../types/clock.js';
-import type { Sleeper } from '../types/clock.js';
+import { CallerAbortedError, TrialError } from '../error/errors.js';
+import { defaultSleeper, Sleeper } from '../http/clock.js';
 import { BusinessOperation } from './businessOperation.js';
 
 export class Retry<T> implements BusinessOperation<T> {

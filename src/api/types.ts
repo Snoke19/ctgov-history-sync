@@ -1,4 +1,4 @@
-import { QueryParams } from '../http/types/http.js';
+import { QueryParams } from '../http/http.js';
 
 export interface FetchStudiesPageParams extends QueryParams {
     pageSize?: number;

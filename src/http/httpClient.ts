@@ -1,21 +1,19 @@
 import { BACKOFF_CAP_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
 import { logger } from '../config/logging.js';
 import { CallerAbortedError, ConfigurationError, HttpException, NetworkException } from '../error/errors.js';
+import { Retry } from '../retry/retry.js';
+import { defaultMonotonicClock, defaultRandom, defaultSleeper, defaultWallClock, Sleeper } from './clock.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManager } from './endpoint/manager/endpointManager.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
+import { FetchOperation } from './fetchOperation.js';
+import type { FetchJsonRequestOptions, HttpClientOptions } from './http.js';
 import { DefaultLimiterFactory } from './limiter/factory/defaultLimiterFactory.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { validateFetchJsonRequestOptions } from './requestValidation.js';
 import { parseOkResponseBody } from './responseBody.js';
-import { FetchOperation } from './retry/fetchOperation.js';
-import { Retry } from './retry/retry.js';
-import { calculateBackoff, defaultRetryPolicyConfig, shouldRetry } from './retry/retryPolicy.js';
-import type { RetryPolicyConfig } from './retry/retryPolicy.js';
+import { calculateBackoff, defaultRetryPolicyConfig, RetryPolicyConfig, shouldRetry } from './retryPolicy.js';
 import { HttpResponse } from './transport/httpTransport.js';
-import { defaultMonotonicClock, defaultRandom, defaultSleeper, defaultWallClock } from './types/clock.js';
-import type { Sleeper } from './types/clock.js';
-import type { FetchJsonRequestOptions, HttpClientOptions } from './types/http.js';
 
 type HttpErrorLogContext = {
     message: string;

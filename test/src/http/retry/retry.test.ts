@@ -1,7 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { CallerAbortedError, HttpException, TrialError } from '../../../../src/error/errors.js';
-import { BusinessOperation } from '../../../../src/http/retry/businessOperation.js';
-import { Retry } from '../../../../src/http/retry/retry.js';
+import { BusinessOperation } from '../../../../src/retry/businessOperation.js';
+import { Retry } from '../../../../src/retry/retry.js';
 
 describe('Retry', () => {
     const retryableError = () => new HttpException('server error', 500);

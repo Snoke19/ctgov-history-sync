@@ -1,4 +1,4 @@
-import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../../config/config.js';
+import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../config/config.js';
 import {
     CallerAbortedError,
     EndpointAcquisitionTimeoutError,
@@ -6,16 +6,15 @@ import {
     NetworkException,
     TimeoutException,
     TrialError,
-} from '../../error/errors.js';
-import { EndpointHandle } from '../endpoint/endpoint.js';
-import { EndpointManager } from '../endpoint/manager/endpointManager.js';
-import { drainBody } from '../responseBody.js';
-import type { HttpResponse, HttpTransport } from '../transport/httpTransport.js';
-import { defaultWallClock } from '../types/clock.js';
-import type { WallClock } from '../types/clock.js';
-import type { FetchJsonRequestOptions } from '../types/http.js';
-import { BusinessOperation } from './businessOperation.js';
+} from '../error/errors.js';
+import { BusinessOperation } from '../retry/businessOperation.js';
+import { defaultWallClock, WallClock } from './clock.js';
+import { EndpointHandle } from './endpoint/endpoint.js';
+import { EndpointManager } from './endpoint/manager/endpointManager.js';
+import { FetchJsonRequestOptions } from './http.js';
+import { drainBody } from './responseBody.js';
 import { parseRetryAfterHeader } from './retryPolicy.js';
+import { HttpResponse, HttpTransport } from './transport/httpTransport.js';
 
 type AbortReason = 'caller' | 'timeout';
 

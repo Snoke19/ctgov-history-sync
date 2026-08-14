@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { DirectEndpointProvider } from '../../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
+import { HttpClientOptions } from '../../../../../src/http/http.js';
 import { DirectTransportFactory } from '../../../../../src/http/transport/factory/directTransportFactory.js';
 import { HttpTransport } from '../../../../../src/http/transport/httpTransport.js';
-import { HttpClientOptions } from '../../../../../src/http/types/http.js';
 
 describe('DirectEndpointProvider', () => {
     let transportFactory: { create: jest.Mock<() => HttpTransport> };

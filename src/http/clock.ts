@@ -1,5 +1,5 @@
 import { performance } from 'node:perf_hooks';
-import { CallerAbortedError } from '../../error/errors.js';
+import { CallerAbortedError } from '../error/errors.js';
 
 export interface WallClock {
     /** Current Unix timestamp in milliseconds. */

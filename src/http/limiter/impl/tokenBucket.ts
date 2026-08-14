@@ -1,7 +1,6 @@
 import { TokenBucketTimeoutError } from '../../../error/errors.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
-import { defaultMonotonicClock, defaultSleeper } from '../../types/clock.js';
-import type { MonotonicClock, Sleeper } from '../../types/clock.js';
+import { defaultMonotonicClock, defaultSleeper, MonotonicClock, Sleeper } from '../../clock.js';
 import { Limiter } from '../limiter.js';
 
 // Tolerance used to compensate for IEEE-754 floating-point rounding errors

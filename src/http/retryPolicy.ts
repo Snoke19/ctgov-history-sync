@@ -4,10 +4,10 @@ import {
     RETRY_ON_NETWORK_ERROR,
     RETRY_ON_TIMEOUT,
     RETRYABLE_STATUS_CODES,
-} from '../../config/config.js';
-import { HttpException, NetworkException, TimeoutException, TrialError } from '../../error/errors.js';
-import { HttpResponse } from '../transport/httpTransport.js';
-import { defaultRandom } from '../types/clock.js';
+} from '../config/config.js';
+import { HttpException, NetworkException, TimeoutException, TrialError } from '../error/errors.js';
+import { defaultRandom } from './clock.js';
+import { HttpResponse } from './transport/httpTransport.js';
 
 /**
  * Configurable retry policy. All fields are plain values, so the object

@@ -1,6 +1,6 @@
 import { ConfigurationError } from '../error/errors.js';
 import { assertNonNegativeInt, assertPositiveInt } from '../utils/validation.js';
-import { FetchJsonRequestOptions } from './types/http.js';
+import { FetchJsonRequestOptions } from './http.js';
 
 export function validateFetchJsonRequestOptions(options: FetchJsonRequestOptions): void {
     if (options.timeoutMs !== undefined) {

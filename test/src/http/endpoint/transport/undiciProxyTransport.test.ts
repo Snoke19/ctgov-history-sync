@@ -13,7 +13,7 @@ jest.unstable_mockModule('../../../../../src/http/endpoint/proxy/resolveConnecti
     resolveConnections: jest.fn(),
 }));
 
-jest.unstable_mockModule('../../../../../src/http/poolFactory.js', () => ({
+jest.unstable_mockModule('../../../../../src/http/transport/poolFactory.js', () => ({
     createPoolFactory: jest.fn(),
 }));
 

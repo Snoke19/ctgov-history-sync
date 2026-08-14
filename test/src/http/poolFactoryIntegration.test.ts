@@ -2,7 +2,7 @@ import { createServer as createHttpServer, Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { Pool } from 'undici';
 import { ProxyPoolConfig } from '../../../src/config/config.js';
-import { createPoolFactory } from '../../../src/http/poolFactory.js';
+import { createPoolFactory } from '../../../src/http/transport/poolFactory.js';
 
 const POOL_CONFIG: ProxyPoolConfig = {
     connections: 2,

@@ -1,5 +1,5 @@
 import { Pool } from 'undici';
-import { ProxyPoolConfig } from '../config/config.js';
+import { ProxyPoolConfig } from '../../config/config.js';
 
 interface PoolFactoryOptions {
     connections?: number;

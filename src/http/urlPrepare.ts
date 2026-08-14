@@ -1,4 +1,4 @@
-import { QueryParams, QueryParamInput } from './types/http.js';
+import { QueryParams, QueryParamInput } from './http.js';
 
 export class UrlBuilder {
     private readonly base: string;

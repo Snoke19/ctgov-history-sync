@@ -29,7 +29,7 @@ jest.unstable_mockModule('undici', () => ({
     ProxyAgent: class MockProxyAgent {},
 }));
 
-const { createPoolFactory } = await import('../../../src/http/poolFactory.js');
+const { createPoolFactory } = await import('../../../src/http/transport/poolFactory.js');
 
 const POOL_CONFIG: ProxyPoolConfig = {
     connections: 2,
