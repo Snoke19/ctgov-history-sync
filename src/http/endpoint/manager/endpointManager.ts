@@ -24,12 +24,6 @@ export class EndpointManager {
     private readonly sleep: Sleeper['sleep'];
     private nextIndex = 0;
 
-    /**
-     * @param endpoints       Pre-built endpoint list (at least one required).
-     * @param acquireTimeout  Maximum time in ms to wait for an endpoint.
-     * @param clock           Monotonic clock used for acquisition timing.
-     * @param sleep            Abort-aware delay used while waiting for availability.
-     */
     constructor(
         endpoints: readonly Endpoint[],
         acquireTimeout: number,
@@ -53,27 +47,14 @@ export class EndpointManager {
         return this.endpoints.length;
     }
 
-    /**
-     * Acquires an endpoint within the manager's configured acquisition timeout.
-     *
-     * The acquisition timeout is independent of the per-request HTTP timeout
-     * used by FetchOperation.
-     *
-     * @throws {EndpointAcquisitionTimeoutError} If no endpoint becomes available
-     *   within the configured acquireTimeout.
-     * @throws {CallerAbortedError} If `signal` is aborted before acquisition.
-     */
     async acquireEndpoint(signal: AbortSignal): Promise<EndpointHandle> {
         const acquisitionDeadline = this.clock() + this.acquireTimeout;
 
         while (true) {
-            // Check cancellation before reading the clock or touching any endpoint.
             if (signal.aborted) {
                 throw new CallerAbortedError();
             }
 
-            // Read the clock once per iteration so endpoint scanning uses one
-            // consistent timestamp for both availability and timeout calculations.
             const currentTime = this.clock();
             const remaining = acquisitionDeadline - currentTime;
 
@@ -99,7 +80,6 @@ export class EndpointManager {
                 shortestWait = Math.min(shortestWait, endpoint.timeUntilToken(currentTime));
             }
 
-            // Never wait longer than the remaining acquisition timeout.
             await this.sleep(Math.min(shortestWait, remaining), signal);
         }
     }
