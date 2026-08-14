@@ -1,7 +1,6 @@
 import type { TransportErrorClassification } from './httpTransport.js';
 
 const TIMEOUT_ERROR_CODES = new Set(['UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT']);
-
 const ABORT_ERROR_CODES = new Set(['UND_ERR_ABORTED', 'ABORT_ERR']);
 
 export function classifyTransportError(error: unknown): TransportErrorClassification {
