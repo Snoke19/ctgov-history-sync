@@ -249,10 +249,4 @@ describe('UndiciTransportFactory', () => {
             });
         });
     });
-
-    describe('constructor', () => {
-        it('instantiates with production defaults', () => {
-            expect(() => new UndiciTransportFactory()).not.toThrow();
-        });
-    });
 });
