@@ -1,14 +1,6 @@
 import { createApiClient } from './api/api.js';
 import { Study } from './api/types.js';
-import {
-    ACQUIRE_TIMEOUT,
-    CONCURRENCY,
-    PAGE_SIZE,
-    PROXY_POOL_CONFIG,
-    PROXY_URLS,
-    RATE_LIMIT_CAPACITY,
-    RATE_LIMIT_WINDOW,
-} from './config/config.js';
+import { CONCURRENCY, PAGE_SIZE } from './config/config.js';
 import { logger } from './config/logging.js';
 import {
     HttpException,
@@ -17,33 +9,19 @@ import {
     TrialFetchError,
     TrialNotFoundError,
 } from './error/errors.js';
-import { ProxyEndpointProvider } from './http/endpoint/provider/impl/proxyEndpointProvider.js';
-import { HttpProxyUrlParser } from './http/endpoint/proxy/httpProxyUrlParser.js';
-import { createHttpClient } from './http/httpClient.js';
-import { UndiciTransportFactory } from './http/transport/impl/undiciProxyTransport.js';
 
 const DATE_RANGE = 'AREA[StartDate]RANGE[07/15/2026, 07/18/2026]';
 
-const httpClient = await createHttpClient(
-    {
-        proxyUrls: PROXY_URLS,
-        useRateLimit: true,
-        rateLimitCapacity: RATE_LIMIT_CAPACITY,
-        rateLimitWindow: RATE_LIMIT_WINDOW,
-        acquireTimeout: ACQUIRE_TIMEOUT,
-        concurrency: CONCURRENCY,
-        poolConfig: PROXY_POOL_CONFIG,
-    },
-    new ProxyEndpointProvider(new UndiciTransportFactory(), new HttpProxyUrlParser()),
-);
+const api = await createApiClient();
 
-const api = createApiClient(httpClient);
-
-// State for checkpoint
 let resumePageToken: string | undefined = '';
 let pageNum = 1;
 
-async function withConcurrency<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>) {
+async function withConcurrency<T, R>(
+    items: readonly T[],
+    limit: number,
+    fn: (item: T) => Promise<R>,
+): Promise<(R | null)[]> {
     const results: (R | null)[] = new Array(items.length);
     const queue = items.map((item, i) => ({ item, i }));
 
@@ -61,13 +39,16 @@ async function withConcurrency<T, R>(items: readonly T[], limit: number, fn: (it
                 results[i] = await fn(item);
             } catch (err: unknown) {
                 logger.warn(`Error processing ${String(item)}: ${err instanceof Error ? err.message : String(err)}`);
+
                 results[i] = null;
             }
         }
     }
 
     const workerCount = Math.min(limit, items.length);
+
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
     return results;
 }
 
@@ -114,15 +95,16 @@ function getErrorMessage(error: unknown): string {
     return String(error);
 }
 
-// Register SIGINT handler once at the start
 process.on('SIGINT', () => {
     logger.info('Interrupted, saving checkpoint…');
+
     // eslint-disable-next-line n/no-process-exit -- intentional immediate termination on Ctrl-C
     process.exit(0);
 });
 
 async function main(): Promise<void> {
     const initialToken = resumePageToken;
+
     const firstPage = await api.fetchStudiesPage({
         pageSize: PAGE_SIZE,
         countTotal: true,
@@ -131,8 +113,7 @@ async function main(): Promise<void> {
     });
 
     if (!initialToken) {
-        // First page of fresh scrape
-        // eslint-disable-next-line require-atomic-updates -- initialToken is a local snapshot; SIGINT writes resumePageToken safely
+        // eslint-disable-next-line require-atomic-updates -- initialToken is a local snapshot
         resumePageToken = firstPage.nextPageToken;
     }
 
@@ -153,7 +134,9 @@ async function main(): Promise<void> {
         const validDetails = details.filter(<T>(detail: T): detail is NonNullable<T> => detail !== null);
 
         logger.info(
-            `Page ${pageNum}: Fetched ${nctIds.length}, Saved ${validDetails.length}, Failed ${nctIds.length - validDetails.length}`,
+            `Page ${pageNum}: Fetched ${nctIds.length}, Saved ${
+                validDetails.length
+            }, Failed ${nctIds.length - validDetails.length}`,
         );
 
         if (!nextToken) {
@@ -204,7 +187,7 @@ async function run(): Promise<void> {
 
         process.exitCode = 1;
     } finally {
-        await httpClient.close();
+        await api.close();
     }
 }
 
