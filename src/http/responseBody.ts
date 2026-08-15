@@ -1,6 +1,8 @@
-import { logger } from '../config/logging.js';
+import { createLogger } from '../config/logging.js';
 import { ApiResponseValidationError } from '../error/errors.js';
 import { HttpResponse } from './transport/httpTransport.js';
+
+const logger = createLogger(import.meta.url);
 
 /**
  * Safely drains and discards an HTTP response body.

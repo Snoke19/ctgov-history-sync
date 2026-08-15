@@ -1,8 +1,10 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { logger } from '../../../src/config/logging.js';
+import { createLogger } from '../../../src/config/logging.js';
+
+const logger = createLogger(import.meta.url);
 
 describe('logger', () => {
-    it('exports a pino logger with the standard level methods', () => {
+    it('exports a pino logger with the standard level methods', async () => {
         expect(logger).toBeDefined();
 
         for (const method of ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const) {
@@ -40,16 +42,16 @@ describe('logger (production mode)', () => {
             process.env.NODE_ENV = 'production';
             delete process.env.LOG_LEVEL;
 
-            // Fresh module instance so the top-level config is re-evaluated.
             jest.resetModules();
-            const { logger: productionLogger } = await import('../../../src/config/logging.js');
+
+            const { createLogger: createProductionLogger } = await import('../../../src/config/logging.js');
+
+            const productionLogger = createProductionLogger(import.meta.url);
 
             expect(productionLogger.level).toBe('info');
             expect(typeof productionLogger.error).toBe('function');
             expect(() => productionLogger.error(new Error('prod'))).not.toThrow();
         } finally {
-            // Environment is snapshotted before any await and restored after
-            // the async re-import; the rule cannot prove that here.
             // eslint-disable-next-line require-atomic-updates -- env snapshot restore
             process.env.NODE_ENV = originalNodeEnv;
             if (hadLogLevel) {
@@ -59,7 +61,6 @@ describe('logger (production mode)', () => {
                 delete process.env.LOG_LEVEL;
             }
             jest.resetModules();
-            await import('../../../src/config/logging.js');
         }
     });
 });

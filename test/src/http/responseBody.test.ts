@@ -1,8 +1,16 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { logger } from '../../../src/config/logging.js';
 import { ApiResponseValidationError } from '../../../src/error/errors.js';
-import { drainBody, parseOkResponseBody } from '../../../src/http/responseBody.js';
 import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
+
+const warnMock = jest.fn();
+
+jest.unstable_mockModule('../../../src/config/logging.js', () => ({
+    createLogger: () => ({
+        warn: warnMock,
+    }),
+}));
+
+const { drainBody, parseOkResponseBody } = await import('../../../src/http/responseBody.js');
 
 interface FakeHeaders {
     get(name: string): string | null;
@@ -107,32 +115,39 @@ describe('parseOkResponseBody', () => {
     });
 
     it('logs a warning for an unexpected Content-Type but still parses', async () => {
-        const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
-        const response = makeResponse({ headers: makeHeaders('text/html') });
+        warnMock.mockClear();
+
+        const response = makeResponse({
+            headers: makeHeaders('text/html'),
+        });
 
         const result = await parseOkResponseBody(response, 'https://api.test');
 
-        expect(result).toEqual({ nctId: 'NCT00000001' });
-        expect(warnSpy).toHaveBeenCalledTimes(1);
-        expect(warnSpy).toHaveBeenCalledWith('Unexpected Content-Type "%s" for %s', 'text/html', 'https://api.test');
+        expect(result).toEqual({
+            nctId: 'NCT00000001',
+        });
+        expect(warnMock).toHaveBeenCalledTimes(1);
+        expect(warnMock).toHaveBeenCalledWith('Unexpected Content-Type "%s" for %s', 'text/html', 'https://api.test');
     });
 
     it('warns when the Content-Type header is missing entirely', async () => {
-        const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
-        const response = makeResponse({ headers: makeHeaders() });
+        warnMock.mockClear();
+        const response = makeResponse({
+            headers: makeHeaders(),
+        });
 
         await parseOkResponseBody(response, 'https://api.test');
 
-        expect(warnSpy).toHaveBeenCalledTimes(1);
-        expect(warnSpy).toHaveBeenCalledWith('Unexpected Content-Type "%s" for %s', '', 'https://api.test');
+        expect(warnMock).toHaveBeenCalledTimes(1);
+        expect(warnMock).toHaveBeenCalledWith('Unexpected Content-Type "%s" for %s', '', 'https://api.test');
     });
 
     it('does not warn for an application/json Content-Type', async () => {
-        const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+        warnMock.mockClear();
         const response = makeResponse();
 
         await parseOkResponseBody(response, 'https://api.test');
 
-        expect(warnSpy).not.toHaveBeenCalled();
+        expect(warnMock).not.toHaveBeenCalled();
     });
 });

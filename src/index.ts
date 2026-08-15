@@ -1,10 +1,12 @@
+import { createLogger } from '../src/config/logging.js';
 import { createApiClient } from './api/api.js';
 import { Study } from './api/types.js';
 import { CONCURRENCY, PAGE_SIZE } from './config/config.js';
-import { logger } from './config/logging.js';
 import { HttpException, NetworkException, TimeoutException, TrialError, TrialNotFoundError } from './error/errors.js';
 
-const DATE_RANGE = 'AREA[StartDate]RANGE[07/15/2026, 07/18/2026]';
+const logger = createLogger(import.meta.url);
+
+const DATE_RANGE = 'AREA[StartDate]RANGE[07/17/2026, 07/18/2026]';
 
 logger.info({ dateRange: DATE_RANGE, pageSize: PAGE_SIZE, concurrency: CONCURRENCY }, 'Scraper starting');
 

@@ -1,5 +1,5 @@
 import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../config/config.js';
-import { logger } from '../config/logging.js';
+import { createLogger } from '../config/logging.js';
 import {
     CallerAbortedError,
     EndpointAcquisitionTimeoutError,
@@ -16,6 +16,8 @@ import { FetchJsonRequestOptions } from './http.js';
 import { drainBody } from './responseBody.js';
 import { parseRetryAfterHeader } from './retryPolicy.js';
 import { HttpResponse, HttpTransport } from './transport/httpTransport.js';
+
+const logger = createLogger(import.meta.url);
 
 type AbortReason = 'caller' | 'timeout';
 

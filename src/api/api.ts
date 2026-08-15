@@ -8,7 +8,7 @@ import {
     RATE_LIMIT_CAPACITY,
     RATE_LIMIT_WINDOW,
 } from '../config/config.js';
-import { logger } from '../config/logging.js';
+import { createLogger } from '../config/logging.js';
 import { ApiResponseValidationError, TrialNotFoundError } from '../error/errors.js';
 import { ProxyEndpointProvider } from '../http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../http/endpoint/proxy/httpProxyUrlParser.js';
@@ -17,6 +17,8 @@ import { UndiciTransportFactory } from '../http/transport/impl/undiciProxyTransp
 import { UrlBuilder } from '../http/urlPrepare.js';
 import { validateNctId } from '../utils/validation.js';
 import { FetchStudiesPageParams, FetchTrialDetailParams, StudiesPageResponse, Study } from './types.js';
+
+const logger = createLogger(import.meta.url);
 
 export interface ApiHttpClient {
     fetchJson(url: string, options?: { allow404?: boolean }): Promise<unknown | null>;

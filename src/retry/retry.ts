@@ -1,8 +1,10 @@
-import { logger } from '../config/logging.js';
+import { createLogger } from '../config/logging.js';
 import { CallerAbortedError, TrialError, UnexpectedError } from '../error/errors.js';
 import { defaultSleeper } from '../http/clock.js';
 import type { Sleeper } from '../http/clock.js';
 import { BusinessOperation } from './businessOperation.js';
+
+const logger = createLogger(import.meta.url);
 
 export class Retry<T> implements BusinessOperation<T> {
     private readonly op: BusinessOperation<T>;

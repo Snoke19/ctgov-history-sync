@@ -1,4 +1,6 @@
-import { logger } from '../../../config/logging.js';
+import { createLogger } from '../../../config/logging.js';
+
+const logger = createLogger(import.meta.url);
 
 export interface ProxyUrlParser {
     parse(input: string): string[];

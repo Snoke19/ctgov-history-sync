@@ -1,4 +1,4 @@
-import { logger } from '../../../config/logging.js';
+import { createLogger } from '../../../config/logging.js';
 import {
     CallerAbortedError,
     ConfigurationError,
@@ -8,6 +8,8 @@ import {
 import { assertPositiveInt } from '../../../utils/validation.js';
 import { defaultMonotonicClock, defaultSleeper, MonotonicClock, Sleeper } from '../../clock.js';
 import { Endpoint, EndpointHandle } from '../endpoint.js';
+
+const logger = createLogger(import.meta.url);
 
 type EndpointManagerErrorLogContext = {
     err: unknown;

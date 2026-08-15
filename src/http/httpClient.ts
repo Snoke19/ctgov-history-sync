@@ -1,5 +1,5 @@
 import { BACKOFF_CAP_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
-import { logger } from '../config/logging.js';
+import { createLogger } from '../config/logging.js';
 import {
     CallerAbortedError,
     ConfigurationError,
@@ -21,6 +21,8 @@ import { validateFetchJsonRequestOptions } from './requestValidation.js';
 import { parseOkResponseBody } from './responseBody.js';
 import { calculateBackoff, defaultRetryPolicyConfig, RetryPolicyConfig, shouldRetry } from './retryPolicy.js';
 import { HttpResponse } from './transport/httpTransport.js';
+
+const logger = createLogger(import.meta.url);
 
 type HttpErrorLogContext = {
     message: string;
