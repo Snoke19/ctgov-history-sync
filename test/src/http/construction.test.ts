@@ -3,11 +3,11 @@ import { Dispatcher, ProxyAgent } from 'undici';
 import { ProxyPoolConfig } from '../../../src/config/config.js';
 import { ConfigurationError } from '../../../src/error/errors.js';
 import { EndpointFactory } from '../../../src/http/endpoint/endpointFactory.js';
+import { DefaultEndpointManagerFactory } from '../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { EndpointManager } from '../../../src/http/endpoint/manager/endpointManager.js';
 import { EndpointDefinition, EndpointProvider } from '../../../src/http/endpoint/provider/endpointProvider.js';
 import { ProxyEndpointProvider } from '../../../src/http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
-import { HttpClientOptions } from '../../../src/http/http.js';
 import { createHttpClient } from '../../../src/http/httpClient.js';
 import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import { LimiterFactory } from '../../../src/http/limiter/factory/limiterFactory.js';
@@ -18,7 +18,7 @@ import {
     PoolCreatorFn,
     UndiciTransportFactory,
 } from '../../../src/http/transport/impl/undiciProxyTransport.js';
-import { testLogger } from './httpClient/helpers.js';
+import { TestClientOptions, testLogger } from './httpClient/helpers.js';
 
 const FAKE_POOL_CONFIG: ProxyPoolConfig = {
     connections: 10,
@@ -54,16 +54,16 @@ function createSafeTransportFactory(): UndiciTransportFactory {
 
 const DEFAULT_PROXY_URLS = 'http://user:pass@proxy1:8080,http://proxy2:9090';
 
-function createValidOptions(overrides: Partial<HttpClientOptions> = {}): HttpClientOptions {
+function createValidOptions(overrides: Partial<TestClientOptions> = {}): TestClientOptions {
     return {
         concurrency: 5,
         acquireTimeout: 30000,
         ...overrides,
-    } as HttpClientOptions;
+    };
 }
 
 async function createManager(
-    options: HttpClientOptions = createValidOptions(),
+    options: TestClientOptions = createValidOptions(),
     proxyUrls: string = DEFAULT_PROXY_URLS,
     limiterFactory: LimiterFactory = new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
 ): Promise<EndpointManager> {
@@ -104,12 +104,13 @@ describe('Proxy + Undici construction chain', () => {
         });
 
         await expect(
-            createHttpClient(
-                options,
+            createHttpClient({
+                clientOptions: options,
                 provider,
-                new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                testLogger,
-            ),
+                limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+                logger: testLogger,
+                endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 0 }),
+            }),
         ).rejects.toBeInstanceOf(ConfigurationError);
 
         expect(transport.close).toHaveBeenCalledTimes(1);
@@ -138,12 +139,13 @@ describe('Proxy + Undici construction chain', () => {
         });
 
         await expect(
-            createHttpClient(
-                options,
+            createHttpClient({
+                clientOptions: options,
                 provider,
-                new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                testLogger,
-            ),
+                limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+                logger: testLogger,
+                endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 0 }),
+            }),
         ).rejects.toEqual(
             expect.objectContaining({
                 name: 'EndpointAssemblyError',
@@ -152,6 +154,70 @@ describe('Proxy + Undici construction chain', () => {
         );
 
         expect(transport.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects construction when retryConfig includes 404 in retryableStatusCodes', async () => {
+        const provider: EndpointProvider = {
+            build: () => [],
+        };
+
+        await expect(
+            createHttpClient({
+                clientOptions: createValidOptions(),
+                provider,
+                limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+                logger: testLogger,
+                endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 30000 }),
+                retryConfig: {
+                    retryOnTimeout: true,
+                    retryOnNetworkError: true,
+                    retryableStatusCodes: new Set([404]),
+                },
+            }),
+        ).rejects.toThrow('404 must not be in retryableStatusCodes');
+    });
+
+    it('rejects construction when retryConfig contains an invalid status code', async () => {
+        const provider: EndpointProvider = {
+            build: () => [],
+        };
+
+        await expect(
+            createHttpClient({
+                clientOptions: createValidOptions(),
+                provider,
+                limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+                logger: testLogger,
+                endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 30000 }),
+                retryConfig: {
+                    retryOnTimeout: true,
+                    retryOnNetworkError: true,
+                    retryableStatusCodes: new Set([600]),
+                },
+            }),
+        ).rejects.toThrow('retryableStatusCodes contains invalid status: 600');
+    });
+
+    it('rejects construction when retryConfig.baseDelayMs is not a positive integer', async () => {
+        const provider: EndpointProvider = {
+            build: () => [],
+        };
+
+        await expect(
+            createHttpClient({
+                clientOptions: createValidOptions(),
+                provider,
+                limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+                logger: testLogger,
+                endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 30000 }),
+                retryConfig: {
+                    retryOnTimeout: true,
+                    retryOnNetworkError: true,
+                    retryableStatusCodes: new Set([500]),
+                    baseDelayMs: 0,
+                },
+            }),
+        ).rejects.toThrow('baseDelayMs must be a positive integer');
     });
 
     it('builds successfully with rate limiting disabled', async () => {

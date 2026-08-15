@@ -10,6 +10,7 @@ import {
 } from '../config/config.js';
 import { createLogger } from '../config/logging.js';
 import { ApiResponseValidationError, TrialNotFoundError } from '../error/errors.js';
+import { DefaultEndpointManagerFactory } from '../http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { ProxyEndpointProvider } from '../http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../http/endpoint/proxy/httpProxyUrlParser.js';
 import { createHttpClient } from '../http/httpClient.js';
@@ -42,12 +43,9 @@ export interface ApiClient {
  * and connection-pool configuration are intentionally hidden from callers.
  */
 export async function createApiClient(): Promise<ApiClient> {
-    const httpClient = await createHttpClient(
-        {
-            acquireTimeout: ACQUIRE_TIMEOUT,
-            concurrency: CONCURRENCY,
-        },
-        new ProxyEndpointProvider(
+    const httpClient = await createHttpClient({
+        clientOptions: {},
+        provider: new ProxyEndpointProvider(
             new UndiciTransportFactory({ poolConfig: PROXY_POOL_CONFIG }),
             new HttpProxyUrlParser(),
             {
@@ -55,13 +53,14 @@ export async function createApiClient(): Promise<ApiClient> {
                 concurrency: CONCURRENCY,
             },
         ),
-        new DefaultLimiterFactory({
+        limiterFactory: new DefaultLimiterFactory({
             enabled: true,
             capacity: RATE_LIMIT_CAPACITY,
             windowMs: RATE_LIMIT_WINDOW,
         }),
         logger,
-    );
+        endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: ACQUIRE_TIMEOUT }),
+    });
 
     try {
         const apiClient = createApiClientWithHttpClient(httpClient);

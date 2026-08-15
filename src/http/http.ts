@@ -16,9 +16,6 @@ export interface QueryParams {
 }
 
 export interface HttpClientOptions {
-    readonly acquireTimeout: number;
-    readonly concurrency: number;
-
     /** Override real sleep (e.g. fake timers in tests). Defaults to setTimeout. */
     sleep?: Sleeper['sleep'];
 

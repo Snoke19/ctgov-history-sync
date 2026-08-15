@@ -1,4 +1,5 @@
 import pino from 'pino';
+import { DefaultEndpointManagerFactory } from '../../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import type { HttpClientOptions } from '../../../../src/http/http.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
@@ -74,7 +75,12 @@ export function jsonResponse<T>(
     });
 }
 
-export function createDefaultOptions(overrides: Partial<HttpClientOptions> = {}): HttpClientOptions {
+export interface TestClientOptions extends HttpClientOptions {
+    readonly concurrency: number;
+    readonly acquireTimeout: number;
+}
+
+export function createDefaultOptions(overrides: Partial<TestClientOptions> = {}): TestClientOptions {
     const monotonicClock = new FakeMonotonicClock();
     const wallClock = new FakeWallClock();
     const sleeper = new FakeSleeper(monotonicClock);
@@ -94,13 +100,24 @@ export function createDefaultOptions(overrides: Partial<HttpClientOptions> = {})
 }
 
 export function makeClient(
-    optionsOverrides: Partial<HttpClientOptions> = {},
+    optionsOverrides: Partial<TestClientOptions> = {},
     limiterFactory: LimiterFactory = new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
 ): Promise<HttpClient> {
+    const options = createDefaultOptions(optionsOverrides);
     const transportFactory = new FetchDirectTransportFactory();
     const provider = new DirectEndpointProvider(transportFactory);
 
-    return createHttpClient(createDefaultOptions(optionsOverrides), provider, limiterFactory, testLogger);
+    return createHttpClient({
+        clientOptions: options,
+        provider,
+        limiterFactory,
+        logger: testLogger,
+        endpointManagerFactory: new DefaultEndpointManagerFactory({
+            acquireTimeout: options.acquireTimeout,
+            clock: options.monotonicClock?.now,
+            sleep: options.sleep,
+        }),
+    });
 }
 
 export async function withClient(

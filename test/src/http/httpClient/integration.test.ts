@@ -2,6 +2,7 @@ import { createServer as createHttpServer, type Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
 import { DEFAULT_USER_AGENT } from '../../../../src/config/config.js';
 import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
+import { DefaultEndpointManagerFactory } from '../../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
@@ -80,19 +81,17 @@ describe('HttpClient full-stack integration', () => {
 
         baseUrl = `http://127.0.0.1:${address.port}`;
 
-        client = await createHttpClient(
-            {
-                concurrency: 5,
-                acquireTimeout: 5000,
-            },
-            new DirectEndpointProvider(new FetchDirectTransportFactory()),
-            new DefaultLimiterFactory({
+        client = await createHttpClient({
+            clientOptions: {},
+            provider: new DirectEndpointProvider(new FetchDirectTransportFactory()),
+            limiterFactory: new DefaultLimiterFactory({
                 enabled: false,
                 capacity: 10,
                 windowMs: 1000,
             }),
-            testLogger,
-        );
+            logger: testLogger,
+            endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 5000 }),
+        });
     });
 
     beforeEach(() => {

@@ -2,7 +2,6 @@ import { Logger } from 'pino';
 import { BACKOFF_CAP_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
 import {
     CallerAbortedError,
-    ConfigurationError,
     EndpointAssemblyError,
     HttpException,
     NetworkException,
@@ -12,13 +11,20 @@ import { Retry } from '../retry/retry.js';
 import { defaultRandom, defaultSleeper, defaultWallClock, Sleeper } from './clock.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManager } from './endpoint/manager/endpointManager.js';
+import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
 import { FetchOperation } from './fetchOperation.js';
 import type { FetchJsonRequestOptions, HttpClientOptions } from './http.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { validateFetchJsonRequestOptions } from './requestValidation.js';
 import { parseOkResponseBody } from './responseBody.js';
-import { calculateBackoff, defaultRetryPolicyConfig, RetryPolicyConfig, shouldRetry } from './retryPolicy.js';
+import {
+    calculateBackoff,
+    defaultRetryPolicyConfig,
+    RetryPolicyConfig,
+    shouldRetry,
+    validateRetryPolicyConfig,
+} from './retryPolicy.js';
 import { HttpResponse } from './transport/httpTransport.js';
 
 type HttpErrorLogContext = {
@@ -53,21 +59,38 @@ export interface HttpClient {
     close(): Promise<void>;
 }
 
-export async function createHttpClient(
-    clientOptions: HttpClientOptions,
-    provider: EndpointProvider,
-    limiterFactory: LimiterFactory,
-    logger: Logger,
-    retryConfig: RetryPolicyConfig = defaultRetryPolicyConfig,
-): Promise<HttpClient> {
-    // Fail-fast: 404 must NOT be in retryableStatusCodes.
-    if (retryConfig.retryableStatusCodes.has(404)) {
-        throw new ConfigurationError(
-            '404 must not be in retryableStatusCodes. ' +
-                'The allow404 option depends on 404 being non-retryable so that ' +
-                'retry.perform() throws an HttpException instead of looping.',
-        );
-    }
+export interface CreateHttpClientOptions {
+    /** Client-level behavior overrides (clocks, jitter source). */
+    clientOptions: HttpClientOptions;
+
+    /** Supplies the endpoints the client will route requests through. */
+    provider: EndpointProvider;
+
+    /** Builds the rate limiter applied per endpoint. */
+    limiterFactory: LimiterFactory;
+
+    /** Logger used for HTTP-layer tracing. */
+    logger: Logger;
+
+    /** Creates the endpoint manager that owns endpoint pools. */
+    endpointManagerFactory: EndpointManagerFactory;
+
+    /** Retry policy. Defaults to the module-level default policy. */
+    retryConfig?: RetryPolicyConfig;
+}
+
+export async function createHttpClient(options: CreateHttpClientOptions): Promise<HttpClient> {
+    const {
+        clientOptions,
+        provider,
+        limiterFactory,
+        logger,
+        endpointManagerFactory,
+        retryConfig = defaultRetryPolicyConfig,
+    } = options;
+
+    // Fail-fast on invalid retry policy configuration.
+    validateRetryPolicyConfig(retryConfig);
 
     const endpointFactory = new EndpointFactory(provider, limiterFactory);
     const endpoints = await endpointFactory.build();
@@ -75,11 +98,7 @@ export async function createHttpClient(
     let endpointManager: EndpointManager;
 
     try {
-        endpointManager = new EndpointManager(endpoints, {
-            acquireTimeout: clientOptions.acquireTimeout,
-            clock: clientOptions.monotonicClock?.now,
-            sleep: clientOptions.sleep,
-        });
+        endpointManager = endpointManagerFactory.create(endpoints);
     } catch (error: unknown) {
         const trialError = TrialError.normalize(error);
 
@@ -104,8 +123,6 @@ export async function createHttpClient(
     logger.info(
         {
             endpointCount: endpoints.length,
-            acquireTimeoutMs: clientOptions.acquireTimeout,
-            concurrency: clientOptions.concurrency,
         },
         'HTTP client created',
     );
@@ -221,13 +238,7 @@ export async function createHttpClient(
             backoffCapMs: options.retryPolicy?.backoffCapMs ?? retryConfig.backoffCapMs ?? BACKOFF_CAP_MS,
         };
 
-        if (effectiveConfig.retryableStatusCodes.has(404)) {
-            throw new ConfigurationError(
-                '404 must not be in retryableStatusCodes. ' +
-                    'The allow404 option depends on 404 being non-retryable so that ' +
-                    'retry.perform() throws an HttpException instead of looping.',
-            );
-        }
+        validateRetryPolicyConfig(effectiveConfig);
 
         return new Retry<HttpResponse>(
             operation,

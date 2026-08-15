@@ -5,7 +5,15 @@ import {
     RETRY_ON_TIMEOUT,
     RETRYABLE_STATUS_CODES,
 } from '../config/config.js';
-import { CallerAbortedError, HttpException, NetworkException, TimeoutException, TrialError } from '../error/errors.js';
+import {
+    CallerAbortedError,
+    ConfigurationError,
+    HttpException,
+    NetworkException,
+    TimeoutException,
+    TrialError,
+} from '../error/errors.js';
+import { assertPositiveInt } from '../utils/validation.js';
 import { defaultRandom } from './clock.js';
 import { HttpResponse } from './transport/httpTransport.js';
 
@@ -131,6 +139,42 @@ export function parseRetryAfterHeader(response: HttpResponse, now: number = Date
     }
 
     return null;
+}
+
+/**
+ * Validates a retry policy config before it is used.
+ *
+ * Restrictions:
+ * - 404 must never be retryable: the allow404 option depends on 404 being
+ *   non-retryable so that retry.perform() throws an HttpException instead of
+ *   looping.
+ * - Retryable status codes must be valid HTTP status codes (100-599).
+ * - baseDelayMs and backoffCapMs, when provided, must be positive integers.
+ *
+ * Throws ConfigurationError on the first violation.
+ */
+export function validateRetryPolicyConfig(config: RetryPolicyConfig): void {
+    if (config.retryableStatusCodes.has(404)) {
+        throw new ConfigurationError(
+            '404 must not be in retryableStatusCodes. ' +
+                'The allow404 option depends on 404 being non-retryable so that ' +
+                'retry.perform() throws an HttpException instead of looping.',
+        );
+    }
+
+    for (const status of config.retryableStatusCodes) {
+        if (!Number.isInteger(status) || status < 100 || status > 599) {
+            throw new ConfigurationError(`retryableStatusCodes contains invalid status: ${status}`);
+        }
+    }
+
+    if (config.baseDelayMs !== undefined) {
+        assertPositiveInt(config.baseDelayMs, 'baseDelayMs');
+    }
+
+    if (config.backoffCapMs !== undefined) {
+        assertPositiveInt(config.backoffCapMs, 'backoffCapMs');
+    }
 }
 
 /**

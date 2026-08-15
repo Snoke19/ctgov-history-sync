@@ -192,15 +192,17 @@ npm start
 import { createApiClient } from './api.ts';
 import { createHttpClient } from './httpClient.ts';
 
-const httpClient = createHttpClient({
-    useProxy: true,
-    proxyUrls: ['http://proxy1:port', 'http://proxy2:port'],
-    useRateLimit: true,
-    rateLimitCapacity: 10,
-    rateLimitWindow: 60000,
+// Wire up your HTTP infrastructure, e.g. via createApiClient() in src/api/api.ts
+const httpClient = await createHttpClient({
+    clientOptions: {}, // clocks / jitter overrides, all optional
+    provider, // EndpointProvider
+    limiterFactory, // LimiterFactory
+    logger, // pino Logger
+    endpointManagerFactory, // EndpointManagerFactory
+    retryConfig, // RetryPolicyConfig, optional (defaults to module config)
 });
 
-const api = createApiClient({ httpClient });
+const api = createApiClient();
 
 // Fetch a page of studies
 const studies = await api.fetchStudiesPage({
