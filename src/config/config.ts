@@ -1,6 +1,10 @@
 import { env, parseStatusCodes, validateConfig } from './configValidation.js';
 import { defaults } from './defaults.js';
 
+export const LOG_LEVEL = env.str('LOG_LEVEL', defaults.LOG_LEVEL);
+export const LOG_TO_FILE = env.str('LOG_TO_FILE', defaults.LOG_TO_FILE);
+export const NODE_ENV = env.str('NODE_ENV', defaults.NODE_ENV);
+
 // ---------------------------------------------------------------------------
 // api
 // ---------------------------------------------------------------------------

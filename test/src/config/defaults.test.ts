@@ -4,6 +4,9 @@ import { defaults } from '../../../src/config/defaults.js';
 describe('config defaults', () => {
     it('declares a value for every required config key', () => {
         expect(defaults).toEqual({
+            LOG_LEVEL: '',
+            LOG_TO_FILE: '',
+            NODE_ENV: '',
             API_BASE_URL: '',
             API_DETAIL_URL: '',
             PAGE_SIZE: 10,

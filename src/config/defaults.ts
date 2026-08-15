@@ -1,4 +1,8 @@
 export const defaults = {
+    LOG_LEVEL: '',
+    LOG_TO_FILE: '',
+    NODE_ENV: '',
+
     // api
     API_BASE_URL: '',
     API_DETAIL_URL: '',
