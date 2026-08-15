@@ -5,7 +5,7 @@ import {
     RETRY_ON_TIMEOUT,
     RETRYABLE_STATUS_CODES,
 } from '../config/config.js';
-import { HttpException, NetworkException, TimeoutException, TrialError } from '../error/errors.js';
+import { CallerAbortedError, HttpException, NetworkException, TimeoutException, TrialError } from '../error/errors.js';
 import { defaultRandom } from './clock.js';
 import { HttpResponse } from './transport/httpTransport.js';
 
@@ -115,7 +115,13 @@ export function parseRetryAfterHeader(response: HttpResponse, now: number = Date
             return null;
         }
 
-        return seconds * 1000;
+        const milliseconds = seconds * 1000;
+
+        if (!Number.isSafeInteger(milliseconds)) {
+            return null;
+        }
+
+        return milliseconds;
     }
 
     const dateMs = Date.parse(value);
@@ -136,6 +142,10 @@ export function parseRetryAfterHeader(response: HttpResponse, now: number = Date
  *                     config.retryableStatusCodes.
  */
 export function shouldRetry(error: TrialError, config: RetryPolicyConfig): boolean {
+    if (error instanceof CallerAbortedError) {
+        return false;
+    }
+
     if (error instanceof TimeoutException) {
         return config.retryOnTimeout;
     }

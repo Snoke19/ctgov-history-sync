@@ -1,5 +1,5 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { CallerAbortedError, HttpException, TrialError } from '../../../../src/error/errors.js';
+import { CallerAbortedError, HttpException, TrialError, UnexpectedError } from '../../../../src/error/errors.js';
 import { BusinessOperation } from '../../../../src/retry/businessOperation.js';
 import { Retry } from '../../../../src/retry/retry.js';
 
@@ -64,14 +64,21 @@ describe('Retry', () => {
         expect(sleep).toHaveBeenCalledTimes(2);
     });
 
-    it('rethrows a non-TrialError immediately without retrying', async () => {
+    it('normalizes a non-TrialError immediately without retrying', async () => {
         const boom = new Error('boom');
+
         const op = makeOp(jest.fn<() => Promise<string>>().mockRejectedValue(boom));
+
         const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
         const promise = new Retry(op, 3, () => true, 1, sleep).perform();
 
-        await expect(promise).rejects.toBe(boom);
+        await expect(promise).rejects.toBeInstanceOf(UnexpectedError);
+
+        await expect(promise).rejects.toMatchObject({
+            cause: boom,
+        });
+
         expect(op.perform).toHaveBeenCalledTimes(1);
         expect(sleep).not.toHaveBeenCalled();
     });
@@ -138,14 +145,43 @@ describe('Retry', () => {
         expect(sleep).toHaveBeenCalledTimes(1);
     });
 
-    it('rethrows a sleep rejection when the signal is not aborted', async () => {
+    it('normalizes a sleep rejection when the signal is not aborted', async () => {
+        const sleepError = new Error('sleep boom');
+
         const op = makeOp(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
-        const sleep = jest
-            .fn<(ms: number, signal?: AbortSignal) => Promise<void>>()
-            .mockRejectedValue(new Error('sleep boom'));
+
+        const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockRejectedValue(sleepError);
 
         const promise = new Retry(op, 2, () => true, 1, sleep).perform();
 
-        await expect(promise).rejects.toThrow('sleep boom');
+        await expect(promise).rejects.toBeInstanceOf(UnexpectedError);
+
+        await expect(promise).rejects.toMatchObject({
+            cause: sleepError,
+        });
+
+        expect(op.perform).toHaveBeenCalledTimes(1);
+        expect(sleep).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws CallerAbortedError when the caller aborts after a failed attempt before retry', async () => {
+        const controller = new AbortController();
+
+        const op = makeOp(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
+
+        const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockImplementation(() => {
+            controller.abort();
+            return 1;
+        });
+
+        const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
+
+        const promise = new Retry(op, 2, () => true, delay, sleep, controller.signal).perform();
+
+        await expect(promise).rejects.toBeInstanceOf(CallerAbortedError);
+
+        expect(op.perform).toHaveBeenCalledTimes(1);
+        expect(delay).toHaveBeenCalledTimes(1);
+        expect(sleep).not.toHaveBeenCalled();
     });
 });

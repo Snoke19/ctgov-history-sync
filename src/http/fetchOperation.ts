@@ -102,7 +102,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 headers: this.buildHeaders(),
                 signal,
             });
-        } catch (error) {
+        } catch (error: unknown) {
             if (error instanceof TrialError) {
                 throw error;
             }
@@ -129,7 +129,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         transport: HttpTransport,
         error: unknown,
         abortReason: AbortReason | undefined,
-    ): NetworkException | TimeoutException {
+    ): NetworkException | TimeoutException | CallerAbortedError {
         const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
         const classification = transport.classifyError(error);
         const causeDescription = this.describeError(classification.cause);
@@ -138,16 +138,16 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             case 'timeout':
                 return new TimeoutException(
                     `Request timed out after ${timeoutMs}ms: ${this.url} — cause: ${causeDescription}`,
+                    { cause: classification.cause },
                 );
 
             case 'cancelled':
                 return this.mapAbortReason(classification.cause, abortReason, timeoutMs);
 
             case 'network':
-                return new NetworkException(
-                    `Network failure: ${this.url} — cause: ${causeDescription}`,
-                    classification.cause,
-                );
+                return new NetworkException(`Network failure: ${this.url} — cause: ${causeDescription}`, {
+                    cause: classification.cause,
+                });
         }
     }
 
@@ -155,14 +155,19 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         cause: unknown,
         abortReason: AbortReason | undefined,
         timeoutMs: number,
-    ): NetworkException | TimeoutException {
+    ): CallerAbortedError | TimeoutException {
         const causeDescription = this.describeError(cause);
 
         if (abortReason === 'caller') {
-            return new NetworkException(`Request cancelled by caller: ${this.url} — cause: ${causeDescription}`, cause);
+            return new CallerAbortedError(`Request cancelled by caller: ${this.url} — cause: ${causeDescription}`, {
+                cause,
+            });
         }
 
-        return new TimeoutException(`Request timed out after ${timeoutMs}ms: ${this.url} — cause: ${causeDescription}`);
+        return new TimeoutException(
+            `Request timed out after ${timeoutMs}ms: ${this.url} — cause: ${causeDescription}`,
+            { cause },
+        );
     }
 
     private buildHeaders(): Record<string, string> {

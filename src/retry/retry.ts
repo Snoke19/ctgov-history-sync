@@ -1,5 +1,6 @@
-import { CallerAbortedError, TrialError } from '../error/errors.js';
-import { defaultSleeper, Sleeper } from '../http/clock.js';
+import { CallerAbortedError, TrialError, UnexpectedError } from '../error/errors.js';
+import { defaultSleeper } from '../http/clock.js';
+import type { Sleeper } from '../http/clock.js';
 import { BusinessOperation } from './businessOperation.js';
 
 export class Retry<T> implements BusinessOperation<T> {
@@ -48,20 +49,22 @@ export class Retry<T> implements BusinessOperation<T> {
         while (true) {
             try {
                 return await this.op.perform();
-            } catch (error) {
-                if (!(error instanceof TrialError)) {
-                    throw error;
+            } catch (error: unknown) {
+                const trialError = TrialError.normalize(error);
+
+                if (trialError instanceof UnexpectedError) {
+                    throw trialError;
                 }
 
-                if (!this.shouldRetry(error)) {
-                    throw error;
+                if (!this.shouldRetry(trialError)) {
+                    throw trialError;
                 }
 
                 if (retryCount >= this.maxRetries) {
-                    throw error;
+                    throw trialError;
                 }
 
-                const delay = typeof this.delayMs === 'function' ? this.delayMs(retryCount, error) : this.delayMs;
+                const delay = typeof this.delayMs === 'function' ? this.delayMs(retryCount, trialError) : this.delayMs;
 
                 retryCount++;
 
@@ -70,15 +73,6 @@ export class Retry<T> implements BusinessOperation<T> {
         }
     }
 
-    /**
-     * Sleep between retries, cutting the wait short if the caller aborts.
-     *
-     * The shared sleeper is abort-aware and rejects early on cancellation;
-     * a rejection is coerced into the canonical {@link CallerAbortedError}.
-     * Injected sleepers that ignore the signal and just resolve are caught by
-     * the re-check, so an abort that arrived during the wait still cancels
-     * before the next attempt.
-     */
     private async abortableSleep(ms: number): Promise<void> {
         if (this.signal?.aborted) {
             throw new CallerAbortedError();
@@ -86,11 +80,12 @@ export class Retry<T> implements BusinessOperation<T> {
 
         try {
             await this.sleep(ms, this.signal);
-        } catch (error) {
+        } catch (error: unknown) {
             if (this.signal?.aborted) {
-                throw new CallerAbortedError();
+                throw new CallerAbortedError('The retry backoff was aborted by the caller.', { cause: error });
             }
-            throw error;
+
+            throw TrialError.normalize(error);
         }
 
         if (this.signal?.aborted) {

@@ -1,6 +1,6 @@
 import { getEventListeners } from 'node:events';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
+import { CallerAbortedError, NetworkException, TimeoutException } from '../../../../src/error/errors.js';
 import { HttpClient } from '../../../../src/http/httpClient.js';
 import { API_URL, createFakes, jsonResponse, makeClient } from './helpers.js';
 
@@ -275,7 +275,8 @@ describe('HttpClient network & timeout failures', () => {
 
             controller.abort();
 
-            await expect(pending).rejects.toBeInstanceOf(NetworkException);
+            const error = await expectRejected(pending, NetworkException);
+            expect(error.cause).toBeInstanceOf(CallerAbortedError);
         });
     });
 

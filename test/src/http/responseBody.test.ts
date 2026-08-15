@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { logger } from '../../../src/config/logging.js';
-import { TrialFetchError } from '../../../src/error/errors.js';
+import { ApiResponseValidationError } from '../../../src/error/errors.js';
 import { drainBody, parseOkResponseBody } from '../../../src/http/responseBody.js';
 import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
 
@@ -62,12 +62,14 @@ describe('parseOkResponseBody', () => {
         jest.restoreAllMocks();
     });
 
-    it('throws a non-transient TrialFetchError when the response is not ok', async () => {
+    it('throws ApiResponseValidationError when the response is not ok', async () => {
         const response = makeResponse({ ok: false, status: 502 });
         const promise = parseOkResponseBody(response, 'https://api.test');
 
-        await expect(promise).rejects.toBeInstanceOf(TrialFetchError);
-        await expect(promise).rejects.toMatchObject({ status: 502, isTransient: false });
+        await expect(promise).rejects.toBeInstanceOf(ApiResponseValidationError);
+        await expect(promise).rejects.toMatchObject({
+            url: 'https://api.test',
+        });
     });
 
     it('returns null for 204 No Content and drains the body', async () => {
@@ -86,18 +88,21 @@ describe('parseOkResponseBody', () => {
         expect(response.discard).not.toHaveBeenCalled();
     });
 
-    it('drains the body and throws when JSON parsing fails', async () => {
+    it('drains the body and throws ApiResponseValidationError when JSON parsing fails', async () => {
+        const cause = new SyntaxError('Unexpected token < in JSON');
+
         const response = makeResponse({
-            json: jest.fn<() => Promise<unknown>>().mockRejectedValue(new SyntaxError('Unexpected token < in JSON')),
+            json: jest.fn<() => Promise<unknown>>().mockRejectedValue(cause),
         });
 
         const promise = parseOkResponseBody(response, 'https://api.test');
 
-        await expect(promise).rejects.toBeInstanceOf(TrialFetchError);
-        await expect(promise).rejects.toMatchObject({ status: 200, isTransient: false });
+        await expect(promise).rejects.toBeInstanceOf(ApiResponseValidationError);
         await expect(promise).rejects.toMatchObject({
-            cause: expect.objectContaining({ message: expect.stringMatching(/Invalid JSON response/) }),
+            url: 'https://api.test',
+            cause,
         });
+
         expect(response.discard).toHaveBeenCalledTimes(1);
     });
 

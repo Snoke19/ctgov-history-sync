@@ -1,3 +1,4 @@
+import { EndpointAssemblyError, TrialError } from '../../error/errors.js';
 import type { HttpClientOptions } from '../http.js';
 import { LimiterFactory } from '../limiter/factory/limiterFactory.js';
 import type { Limiter } from '../limiter/limiter.js';
@@ -28,13 +29,18 @@ export class EndpointFactory {
     ) {}
 
     async build(options: HttpClientOptions): Promise<Endpoint[]> {
-        const createLimiter = (): Limiter => this.limiterFactory.create(options);
+        try {
+            const createLimiter = (): Limiter => this.limiterFactory.create(options);
+            const definitions = this.provider.build(options);
 
-        return assembleEndpoints({
-            definitions: this.provider.build(options),
-            createLimiter,
-            createEndpoint: defaultEndpointCtor,
-        });
+            return await assembleEndpoints({
+                definitions,
+                createLimiter,
+                createEndpoint: defaultEndpointCtor,
+            });
+        } catch (error: unknown) {
+            throw TrialError.normalize(error);
+        }
     }
 }
 
@@ -60,16 +66,20 @@ async function constructEndpoint(
     createLimiter: () => Limiter,
     createEndpoint: EndpointCtor = defaultEndpointCtor,
 ): Promise<Endpoint> {
-    const transport = definition.createTransport();
+    let transport: HttpTransport | undefined;
 
     try {
+        transport = definition.createTransport();
+
         return createEndpoint(definition.id, createLimiter(), transport);
-    } catch (error) {
-        await closeFailedEndpointTransport({
-            transport,
-            endpointId: definition.id,
-            constructionError: error,
-        });
+    } catch (error: unknown) {
+        if (transport !== undefined) {
+            await closeFailedEndpointTransport({
+                transport,
+                endpointId: definition.id,
+                constructionError: error,
+            });
+        }
 
         throw error;
     }
@@ -79,10 +89,15 @@ async function closeFailedEndpointTransport(param: FailedEndpointCleanup): Promi
     try {
         await param.transport.close();
     } catch (cleanupError) {
-        throw new AggregateError(
-            [param.constructionError, cleanupError],
+        throw new EndpointAssemblyError(
             `Failed to construct endpoint "${param.endpointId}" and transport cleanup also failed.`,
-            { cause: param.constructionError },
+            {
+                cause: param.constructionError,
+                context: {
+                    endpointId: param.endpointId,
+                },
+            },
+            [cleanupError],
         );
     }
 
@@ -100,9 +115,11 @@ async function rollbackEndpoints(endpoints: readonly Endpoint[], assemblyError: 
         return;
     }
 
-    throw new AggregateError(
-        [assemblyError, ...cleanupErrors],
+    throw new EndpointAssemblyError(
         'Endpoint assembly failed and rollback cleanup also failed.',
-        { cause: assemblyError },
+        {
+            cause: assemblyError,
+        },
+        cleanupErrors,
     );
 }

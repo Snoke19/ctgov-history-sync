@@ -1,90 +1,131 @@
 export interface TrialErrorOptions extends ErrorOptions {
-    cause?: unknown;
+    readonly context?: Record<string, unknown> | undefined;
 }
 
+/**
+ * Root of the application's error hierarchy.
+ *
+ * Invariant:
+ * Every error that crosses an application/infrastructure boundary
+ * should be a TrialError.
+ */
 export class TrialError extends Error {
-    override name: string = 'TrialError';
-    override cause?: unknown;
+    override readonly name: string = 'TrialError';
+    readonly context?: Readonly<Record<string, unknown>> | undefined;
 
     constructor(message: string, options: TrialErrorOptions = {}) {
-        super(message);
+        super(message, options);
 
-        if (options.cause !== undefined) {
-            this.cause = options.cause;
+        this.context = options.context;
+        Object.setPrototypeOf(this, new.target.prototype);
+    }
+
+    static normalize(error: unknown): TrialError {
+        if (error instanceof TrialError) {
+            return error;
         }
+
+        return new UnexpectedError(error);
+    }
+}
+
+export class UnexpectedError extends TrialError {
+    override readonly name = 'UnexpectedError';
+
+    constructor(cause: unknown) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+
+        super(`Unexpected error: ${message}`, { cause });
     }
 }
 
 export class ConfigurationError extends TrialError {
-    override name: string = 'ConfigurationError';
+    override readonly name = 'ConfigurationError';
+
+    constructor(message: string, options: TrialErrorOptions = {}) {
+        super(message, options);
+    }
+}
+
+export class TrialValidationError extends TrialError {
+    override readonly name = 'TrialValidationError';
 
     constructor(message: string) {
         super(message);
     }
 }
 
-export class TrialNotFoundError extends TrialError {
-    override name: string = 'TrialNotFoundError';
-    readonly code: string;
+export class ApiResponseValidationError extends TrialError {
+    override readonly name = 'ApiResponseValidationError';
 
-    constructor(code: string) {
-        super(`Trial not found: ${code}`);
-        this.code = code;
+    constructor(
+        readonly url: string,
+        message: string,
+        options: TrialErrorOptions = {},
+    ) {
+        super(`Invalid API response from ${url}: ${message}`, options);
     }
 }
 
-export class TrialFetchError extends TrialError {
-    override name: string = 'TrialFetchError';
-    readonly url: string;
-    readonly status: number | null;
-    readonly isTransient: boolean;
+export class TrialNotFoundError extends TrialError {
+    override readonly name = 'TrialNotFoundError';
 
-    constructor(url: string, cause?: unknown, status?: number | null, isTransient: boolean = false) {
-        super(`Failed to fetch: ${url}`, { cause });
-        this.url = url;
-        this.status = status ?? null;
-        this.isTransient = isTransient;
+    constructor(readonly code: string) {
+        super(`Trial not found: ${code}`);
     }
 }
 
 export class HttpException extends TrialError {
-    override name: string = 'HttpException';
+    override readonly name = 'HttpException';
 
     constructor(
         message: string,
         readonly status: number,
         readonly retryAfterMs?: number,
+        options: TrialErrorOptions = {},
     ) {
-        super(message);
+        super(message, options);
     }
 }
 
 export class NetworkException extends TrialError {
-    override name: string = 'NetworkException';
+    override readonly name = 'NetworkException';
 
-    constructor(message: string, cause?: unknown) {
-        super(message, { cause });
+    constructor(message: string, options: TrialErrorOptions = {}) {
+        super(message, options);
     }
 }
 
 export class TimeoutException extends TrialError {
-    override name: string = 'TimeoutException';
+    override readonly name = 'TimeoutException';
 
-    constructor(message: string) {
-        super(message);
+    constructor(message: string, options: TrialErrorOptions = {}) {
+        super(message, options);
     }
 }
 
-export class TrialValidationError extends TrialError {
-    override name: string = 'TrialValidationError';
+export class CallerAbortedError extends TrialError {
+    override readonly name = 'CallerAbortedError';
 
-    constructor(message: string) {
-        super(message);
+    constructor(message = 'The operation was aborted.', options: TrialErrorOptions = {}) {
+        super(message, options);
+    }
+}
+
+export class EndpointAcquisitionTimeoutError extends TrialError {
+    override readonly name = 'EndpointAcquisitionTimeoutError';
+    readonly timeoutMs: number;
+    readonly proxyCount: number;
+
+    constructor(timeoutMs: number, proxyCount: number) {
+        super(`Endpoint acquisition timeout: no endpoint available within ${timeoutMs}ms (pool size: ${proxyCount})`);
+        this.timeoutMs = timeoutMs;
+        this.proxyCount = proxyCount;
     }
 }
 
 export class TokenBucketTimeoutError extends TrialError {
-    override name: string = 'TokenBucketTimeoutError';
+    override readonly name = 'TokenBucketTimeoutError';
     readonly timeoutMs: number;
 
     constructor(timeoutMs: number) {
@@ -93,33 +134,14 @@ export class TokenBucketTimeoutError extends TrialError {
     }
 }
 
-export class EndpointAcquisitionTimeoutError extends TrialError {
-    override name: string = 'EndpointAcquisitionTimeoutError';
-    readonly timeoutMs: number;
-    readonly proxyCount: number;
-
-    constructor(timeoutMs: number, proxyCount: number) {
-        super(`Proxy acquisition timeout: no proxy available within ${timeoutMs}ms (pool size: ${proxyCount})`);
-        this.timeoutMs = timeoutMs;
-        this.proxyCount = proxyCount;
-    }
-}
-
-export class CallerAbortedError extends Error {
-    constructor(message = 'The operation was aborted.') {
-        super(message);
-        this.name = 'CallerAbortedError';
-    }
-}
-
-export class ApiResponseValidationError extends TrialError {
-    override name = 'ApiResponseValidationError';
+export class EndpointAssemblyError extends TrialError {
+    override readonly name = 'EndpointAssemblyError';
 
     constructor(
-        readonly url: string,
         message: string,
-        cause?: unknown,
+        options: TrialErrorOptions = {},
+        readonly cleanupErrors: readonly unknown[] = [],
     ) {
-        super(`Invalid API response from ${url}: ${message}`, { cause });
+        super(message, options);
     }
 }

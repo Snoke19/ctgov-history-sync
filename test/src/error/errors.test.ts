@@ -1,16 +1,18 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+    ApiResponseValidationError,
     CallerAbortedError,
     ConfigurationError,
     EndpointAcquisitionTimeoutError,
+    EndpointAssemblyError,
     HttpException,
     NetworkException,
     TimeoutException,
     TokenBucketTimeoutError,
     TrialError,
-    TrialFetchError,
     TrialNotFoundError,
     TrialValidationError,
+    UnexpectedError,
 } from '../../../src/error/errors.js';
 
 describe('error classes', () => {
@@ -31,6 +33,37 @@ describe('error classes', () => {
         it('leaves cause undefined when not provided', () => {
             expect(new TrialError('boom').cause).toBeUndefined();
         });
+
+        describe('TrialError.normalize', () => {
+            it('returns the error as-is when it is already a TrialError', () => {
+                const err = new ConfigurationError('already a TrialError');
+                expect(TrialError.normalize(err)).toBe(err);
+            });
+
+            it('wraps a plain Error in UnexpectedError', () => {
+                const cause = new Error('raw');
+                const result = TrialError.normalize(cause);
+                expect(result).toBeInstanceOf(UnexpectedError);
+                expect(result.cause).toBe(cause);
+            });
+
+            it('wraps a non-Error value in UnexpectedError', () => {
+                const result = TrialError.normalize('something went wrong');
+                expect(result).toBeInstanceOf(UnexpectedError);
+                expect(result.message).toBe('Unexpected error: something went wrong');
+            });
+        });
+    });
+
+    it('preserves structured context', () => {
+        const context = {
+            endpoint: 'proxy-1',
+            attempt: 2,
+        };
+
+        const err = new NetworkException('failed', { context });
+
+        expect(err.context).toEqual(context);
     });
 
     describe('ConfigurationError', () => {
@@ -52,28 +85,26 @@ describe('error classes', () => {
         });
     });
 
-    describe('TrialFetchError', () => {
-        it('stores url, status, isTransient, and cause', () => {
-            const cause = new Error('parse failed');
-            const err = new TrialFetchError('https://api.test/x', cause, 200, false);
+    describe('ApiResponseValidationError', () => {
+        it('stores the URL and formats the message', () => {
+            const err = new ApiResponseValidationError('https://api.test/x', 'Invalid JSON response');
+
             expect(err).toBeInstanceOf(TrialError);
-            expect(err.name).toBe('TrialFetchError');
+            expect(err.name).toBe('ApiResponseValidationError');
             expect(err.url).toBe('https://api.test/x');
-            expect(err.status).toBe(200);
-            expect(err.isTransient).toBe(false);
+            expect(err.message).toBe('Invalid API response from https://api.test/x: Invalid JSON response');
+        });
+
+        it('preserves the original cause', () => {
+            const cause = new SyntaxError('Unexpected token <');
+
+            const err = new ApiResponseValidationError(
+                'https://api.test/x',
+                'Invalid JSON response: Unexpected token <',
+                { cause },
+            );
+
             expect(err.cause).toBe(cause);
-            expect(err.message).toBe('Failed to fetch: https://api.test/x');
-        });
-
-        it('defaults status to null and isTransient to false', () => {
-            const err = new TrialFetchError('https://api.test/x');
-            expect(err.status).toBeNull();
-            expect(err.isTransient).toBe(false);
-        });
-
-        it('records explicit transient flag', () => {
-            const err = new TrialFetchError('https://api.test/x', new Error('nope'), 429, true);
-            expect(err.isTransient).toBe(true);
         });
     });
 
@@ -95,7 +126,9 @@ describe('error classes', () => {
     describe('NetworkException', () => {
         it('is a TrialError carrying the transport cause', () => {
             const cause = new TypeError('ECONNRESET');
-            const err = new NetworkException('network failure', cause);
+
+            const err = new NetworkException('network failure', { cause });
+
             expect(err).toBeInstanceOf(TrialError);
             expect(err.name).toBe('NetworkException');
             expect(err.message).toBe('network failure');
@@ -117,6 +150,7 @@ describe('error classes', () => {
             const err = new TrialValidationError('invalid input');
             expect(err).toBeInstanceOf(TrialError);
             expect(err.name).toBe('TrialValidationError');
+            expect(err.message).toBe('invalid input');
         });
     });
 
@@ -137,20 +171,72 @@ describe('error classes', () => {
             expect(err.name).toBe('EndpointAcquisitionTimeoutError');
             expect(err.timeoutMs).toBe(1000);
             expect(err.proxyCount).toBe(3);
-            expect(err.message).toBe('Proxy acquisition timeout: no proxy available within 1000ms (pool size: 3)');
+            expect(err.message).toBe(
+                'Endpoint acquisition timeout: no endpoint available within 1000ms (pool size: 3)',
+            );
         });
     });
 
     describe('CallerAbortedError', () => {
-        it('is a plain Error named CallerAbortedError', () => {
+        it('is a TrialError named CallerAbortedError', () => {
             const err = new CallerAbortedError();
-            expect(err).toBeInstanceOf(Error);
+            expect(err).toBeInstanceOf(TrialError);
             expect(err.name).toBe('CallerAbortedError');
             expect(err.message).toBe('The operation was aborted.');
         });
 
         it('accepts a custom message', () => {
             expect(new CallerAbortedError('cancelled').message).toBe('cancelled');
+        });
+    });
+
+    describe('UnexpectedError', () => {
+        it('wraps an unexpected Error', () => {
+            const cause = new Error('boom');
+            const err = new UnexpectedError(cause);
+
+            expect(err).toBeInstanceOf(TrialError);
+            expect(err.name).toBe('UnexpectedError');
+            expect(err.cause).toBe(cause);
+        });
+
+        it('formats the message from the original error', () => {
+            const err = new UnexpectedError(new Error('boom'));
+
+            expect(err.message).toBe('Unexpected error: boom');
+        });
+    });
+
+    describe('EndpointAssemblyError', () => {
+        it('stores cause, cleanup errors, and context', () => {
+            const cause = new Error('construction failed');
+            const cleanupError = new Error('cleanup failed');
+
+            const err = new EndpointAssemblyError(
+                'Endpoint assembly failed.',
+                {
+                    cause,
+                    context: {
+                        endpointId: 'proxy-1',
+                    },
+                },
+                [cleanupError],
+            );
+
+            expect(err).toBeInstanceOf(TrialError);
+            expect(err.name).toBe('EndpointAssemblyError');
+            expect(err.message).toBe('Endpoint assembly failed.');
+            expect(err.cause).toBe(cause);
+            expect(err.cleanupErrors).toEqual([cleanupError]);
+            expect(err.context).toEqual({
+                endpointId: 'proxy-1',
+            });
+        });
+
+        it('defaults cleanupErrors to an empty array', () => {
+            const err = new EndpointAssemblyError('assembly failed');
+
+            expect(err.cleanupErrors).toEqual([]);
         });
     });
 });

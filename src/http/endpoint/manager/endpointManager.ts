@@ -1,5 +1,5 @@
 import { logger } from '../../../config/logging.js';
-import { CallerAbortedError, ConfigurationError, EndpointAcquisitionTimeoutError } from '../../../error/errors.js';
+import { CallerAbortedError, ConfigurationError, EndpointAcquisitionTimeoutError, TrialError } from '../../../error/errors.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
 import { defaultMonotonicClock, defaultSleeper, MonotonicClock, Sleeper } from '../../clock.js';
 import { Endpoint, EndpointHandle } from '../endpoint.js';
@@ -87,13 +87,15 @@ export class EndpointManager {
         try {
             await Promise.all(this.endpoints.map((ep) => ep.close()));
             logger.info('Endpoint manager closed | Endpoints released: %d', this.endpoints.length);
-        } catch (error) {
+        } catch (error: unknown) {
+            const trialError = TrialError.normalize(error);
+
             logger.error(
-                createEndpointManagerErrorLogContext(error, this.endpoints.length),
+                createEndpointManagerErrorLogContext(trialError, this.endpoints.length),
                 'Failed to close endpoint manager',
             );
 
-            throw error;
+            throw trialError;
         }
     }
 }

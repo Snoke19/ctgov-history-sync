@@ -1,5 +1,5 @@
 import { logger } from '../config/logging.js';
-import { TrialFetchError } from '../error/errors.js';
+import { ApiResponseValidationError } from '../error/errors.js';
 import { HttpResponse } from './transport/httpTransport.js';
 
 /**
@@ -34,12 +34,7 @@ export async function drainBody(response: HttpResponse): Promise<void> {
  */
 export async function parseOkResponseBody(response: HttpResponse, url: string): Promise<unknown | null> {
     if (!response.ok) {
-        throw new TrialFetchError(
-            url,
-            new Error(`Precondition failed: expected OK response, got ${response.status}`),
-            response.status,
-            false,
-        );
+        throw new ApiResponseValidationError(url, `Expected OK response, got HTTP ${response.status}`);
     }
 
     if (response.status === 204) {
@@ -56,7 +51,7 @@ export async function parseOkResponseBody(response: HttpResponse, url: string): 
 
         const cause = error instanceof Error ? error : new Error(String(error));
 
-        throw new TrialFetchError(url, new Error(`Invalid JSON response: ${cause.message}`), response.status, false);
+        throw new ApiResponseValidationError(url, `Invalid JSON response: ${cause.message}`, { cause });
     }
 }
 

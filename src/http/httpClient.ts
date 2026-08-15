@@ -1,6 +1,13 @@
 import { BACKOFF_CAP_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
 import { logger } from '../config/logging.js';
-import { CallerAbortedError, ConfigurationError, HttpException, NetworkException } from '../error/errors.js';
+import {
+    CallerAbortedError,
+    ConfigurationError,
+    EndpointAssemblyError,
+    HttpException,
+    NetworkException,
+    TrialError,
+} from '../error/errors.js';
 import { Retry } from '../retry/retry.js';
 import { defaultMonotonicClock, defaultRandom, defaultSleeper, defaultWallClock, Sleeper } from './clock.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
@@ -65,12 +72,35 @@ export async function createHttpClient(
     const endpointFactory = new EndpointFactory(provider, limiterFactory);
     const endpoints = await endpointFactory.build(clientOptions);
 
-    const endpointManager = new EndpointManager(
-        endpoints,
-        clientOptions.acquireTimeout,
-        clientOptions.monotonicClock?.now ?? defaultMonotonicClock.now,
-        clientOptions.sleep ?? defaultSleeper.sleep,
-    );
+    let endpointManager: EndpointManager;
+
+    try {
+        endpointManager = new EndpointManager(
+            endpoints,
+            clientOptions.acquireTimeout,
+            clientOptions.monotonicClock?.now ?? defaultMonotonicClock.now,
+            clientOptions.sleep ?? defaultSleeper.sleep,
+        );
+    } catch (error: unknown) {
+        const trialError = TrialError.normalize(error);
+
+        const cleanupResults = await Promise.allSettled(endpoints.map((endpoint) => endpoint.close()));
+        const cleanupErrors = cleanupResults
+            .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+            .map((result) => result.reason);
+
+        if (cleanupErrors.length > 0) {
+            throw new EndpointAssemblyError(
+                'Failed to create endpoint manager and endpoint cleanup also failed.',
+                {
+                    cause: trialError,
+                },
+                cleanupErrors,
+            );
+        }
+
+        throw trialError;
+    }
 
     async function fetchResponse(url: string, options: FetchJsonRequestOptions): Promise<HttpResponse | null> {
         const operation = new FetchOperation(
@@ -89,19 +119,24 @@ export async function createHttpClient(
         try {
             return await retry.perform();
         } catch (error: unknown) {
-            if (error instanceof CallerAbortedError && options.signal?.aborted) {
-                throw new NetworkException(`Request cancelled by caller: ${url}`, error);
+            const trialError = TrialError.normalize(error);
+
+            // CallerAbortedError is an internal control-flow error. The public HTTP
+            // client exposes caller cancellation as NetworkException while retaining
+            // the original cancellation error as `cause`.
+            if (trialError instanceof CallerAbortedError && options.signal?.aborted) {
+                throw new NetworkException(`Request cancelled by caller: ${url}`, {
+                    cause: trialError,
+                });
             }
 
-            if (options.allow404 && error instanceof HttpException && error.status === 404) {
+            if (options.allow404 && trialError instanceof HttpException && trialError.status === 404) {
                 return null;
             }
 
-            if (error instanceof Error) {
-                logger.error(createHttpErrorLogContext(error, url), 'HTTP request failed');
-            }
+            logger.error(createHttpErrorLogContext(trialError, url), 'HTTP request failed');
 
-            throw error;
+            throw trialError;
         }
     }
 
@@ -119,11 +154,11 @@ export async function createHttpClient(
         try {
             return parseOkResponseBody(response, url) as T;
         } catch (error) {
-            if (error instanceof Error) {
-                logger.error(createHttpErrorLogContext(error, url), 'Failed to parse HTTP response body');
-            }
+            const trialError = TrialError.normalize(error);
 
-            throw error;
+            logger.error(createHttpErrorLogContext(trialError, url), 'Failed to parse HTTP response body');
+
+            throw trialError;
         }
     }
 

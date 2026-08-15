@@ -2,13 +2,7 @@ import { createApiClient } from './api/api.js';
 import { Study } from './api/types.js';
 import { CONCURRENCY, PAGE_SIZE } from './config/config.js';
 import { logger } from './config/logging.js';
-import {
-    HttpException,
-    NetworkException,
-    TimeoutException,
-    TrialFetchError,
-    TrialNotFoundError,
-} from './error/errors.js';
+import { HttpException, NetworkException, TimeoutException, TrialError, TrialNotFoundError } from './error/errors.js';
 
 const DATE_RANGE = 'AREA[StartDate]RANGE[07/15/2026, 07/18/2026]';
 
@@ -76,7 +70,7 @@ async function fetchTrialSafe(nctId: string) {
             return null;
         }
 
-        if (err instanceof TrialFetchError) {
+        if (err instanceof TrialError) {
             logger.warn(`Failed: ${nctId} — ${getErrorMessage(err.cause)}`);
             return null;
         }
@@ -167,14 +161,16 @@ async function run(): Promise<void> {
     try {
         await main();
     } catch (err: unknown) {
-        if (err instanceof TrialFetchError) {
-            const status = err.status ? ` [HTTP ${err.status}]` : '';
+        if (err instanceof TrialError) {
+            logger.error(`Trial error: ${err.message}`);
 
-            logger.error(
-                `Fetch error${status}: ${err.url} — ${
-                    err.cause instanceof Error ? err.cause.message : String(err.cause ?? '')
-                }`,
-            );
+            if (err.cause instanceof Error) {
+                logger.error(`Cause: ${err.cause.message}`);
+            }
+
+            if (err.stack) {
+                logger.error(err.stack);
+            }
         } else if (err instanceof Error) {
             logger.error(`Unexpected error: ${err.message}`);
 
@@ -190,5 +186,4 @@ async function run(): Promise<void> {
         await api.close();
     }
 }
-
 void run();

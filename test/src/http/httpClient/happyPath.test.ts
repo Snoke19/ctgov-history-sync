@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { TrialFetchError } from '../../../../src/error/errors.js';
+import { ApiResponseValidationError } from '../../../../src/error/errors.js';
 import type { HttpResponse } from '../../../../src/http/transport/httpTransport.js';
 import { FetchDirectTransport } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
 import { API_URL, jsonResponse, withClient } from './helpers.js';
@@ -106,7 +106,7 @@ describe('HttpClient happy path & request construction', () => {
         });
     });
 
-    it('throws TrialFetchError when 200 OK response contains invalid JSON body', async () => {
+    it('throws ApiResponseValidationError when 200 OK response contains invalid JSON body', async () => {
         jest.spyOn(globalThis, 'fetch').mockResolvedValue(
             new Response('invalid json', {
                 status: 200,
@@ -118,7 +118,13 @@ describe('HttpClient happy path & request construction', () => {
         );
 
         await withClient(async (client) => {
-            await expect(client.fetchJson(`${API_URL}/bad-json`)).rejects.toBeInstanceOf(TrialFetchError);
+            const promise = client.fetchJson(`${API_URL}/bad-json`);
+
+            await expect(promise).rejects.toBeInstanceOf(ApiResponseValidationError);
+            await expect(promise).rejects.toMatchObject({
+                url: `${API_URL}/bad-json`,
+                message: `Invalid API response from ${API_URL}/bad-json: Invalid JSON response: SyntaxError: Unexpected token 'i', "invalid json" is not valid JSON`,
+            });
         });
     });
 });

@@ -4,10 +4,13 @@ import { ProxyPoolConfig } from '../../../src/config/config.js';
 import { ConfigurationError } from '../../../src/error/errors.js';
 import { EndpointFactory } from '../../../src/http/endpoint/endpointFactory.js';
 import { EndpointManager } from '../../../src/http/endpoint/manager/endpointManager.js';
+import { EndpointDefinition, EndpointProvider } from '../../../src/http/endpoint/provider/endpointProvider.js';
 import { ProxyEndpointProvider } from '../../../src/http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
 import { HttpClientOptions } from '../../../src/http/http.js';
+import { createHttpClient } from '../../../src/http/httpClient.js';
 import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
+import { HttpTransport } from '../../../src/http/transport/httpTransport.js';
 import {
     AgentCreatorFn,
     PoolClientFactory,
@@ -64,6 +67,65 @@ async function createManager(options: HttpClientOptions = createValidOptions()):
 }
 
 describe('Proxy + Undici construction chain', () => {
+    it('closes created endpoints when EndpointManager construction fails', async () => {
+        const transport: jest.Mocked<HttpTransport> = {
+            request: jest.fn(),
+            classifyError: jest.fn(),
+            close: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        };
+
+        const definition: EndpointDefinition = {
+            id: 'test-endpoint',
+            createTransport: () => transport,
+        };
+
+        const provider: EndpointProvider = {
+            build: () => [definition],
+        };
+
+        const options = createValidOptions({
+            acquireTimeout: 0,
+        });
+
+        await expect(createHttpClient(options, provider, new DefaultLimiterFactory())).rejects.toBeInstanceOf(
+            ConfigurationError,
+        );
+
+        expect(transport.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns EndpointAssemblyError when EndpointManager construction fails and cleanup fails', async () => {
+        const cleanupError = new Error('endpoint cleanup failed');
+
+        const transport: jest.Mocked<HttpTransport> = {
+            request: jest.fn(),
+            classifyError: jest.fn(),
+            close: jest.fn<() => Promise<void>>().mockRejectedValue(cleanupError),
+        };
+
+        const definition: EndpointDefinition = {
+            id: 'test-endpoint',
+            createTransport: () => transport,
+        };
+
+        const provider: EndpointProvider = {
+            build: () => [definition],
+        };
+
+        const options = createValidOptions({
+            acquireTimeout: 0,
+        });
+
+        await expect(createHttpClient(options, provider, new DefaultLimiterFactory())).rejects.toEqual(
+            expect.objectContaining({
+                name: 'EndpointAssemblyError',
+                cleanupErrors: [cleanupError],
+            }),
+        );
+
+        expect(transport.close).toHaveBeenCalledTimes(1);
+    });
+
     it('builds successfully with rate limiting disabled', async () => {
         const manager = await createManager(createValidOptions());
 
