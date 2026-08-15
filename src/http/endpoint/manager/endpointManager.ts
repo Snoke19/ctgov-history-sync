@@ -16,6 +16,12 @@ type EndpointManagerErrorLogContext = {
     endpointCount: number;
 };
 
+export interface EndpointManagerOptions {
+    readonly acquireTimeout: number;
+    readonly clock?: MonotonicClock['now'] | undefined;
+    readonly sleep?: Sleeper['sleep'] | undefined;
+}
+
 function createEndpointManagerErrorLogContext(error: unknown, endpointCount: number): EndpointManagerErrorLogContext {
     return {
         err: error,
@@ -32,19 +38,17 @@ export class EndpointManager {
 
     constructor(
         endpoints: readonly Endpoint[],
-        acquireTimeout: number,
-        clock: MonotonicClock['now'] = defaultMonotonicClock.now,
-        sleep: Sleeper['sleep'] = defaultSleeper.sleep,
+        options: EndpointManagerOptions,
     ) {
         if (endpoints.length === 0) {
             throw new ConfigurationError('EndpointManager requires at least one endpoint.');
         }
-        assertPositiveInt(acquireTimeout, 'acquireTimeout');
+        assertPositiveInt(options.acquireTimeout, 'acquireTimeout');
 
         this.endpoints = endpoints;
-        this.acquireTimeout = acquireTimeout;
-        this.clock = clock;
-        this.sleep = sleep;
+        this.acquireTimeout = options.acquireTimeout;
+        this.clock = options.clock ?? defaultMonotonicClock.now;
+        this.sleep = options.sleep ?? defaultSleeper.sleep;
 
         logger.info('Endpoint manager initialized | Endpoints: %d', this.endpoints.length);
     }

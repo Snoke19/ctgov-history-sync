@@ -49,9 +49,15 @@ export async function createApiClient(): Promise<ApiClient> {
             rateLimitWindow: RATE_LIMIT_WINDOW,
             acquireTimeout: ACQUIRE_TIMEOUT,
             concurrency: CONCURRENCY,
-            poolConfig: PROXY_POOL_CONFIG,
         },
-        new ProxyEndpointProvider(new UndiciTransportFactory(), new HttpProxyUrlParser()),
+        new ProxyEndpointProvider(
+            new UndiciTransportFactory({ poolConfig: PROXY_POOL_CONFIG }),
+            new HttpProxyUrlParser(),
+            {
+                proxyUrls: PROXY_URLS,
+                concurrency: CONCURRENCY,
+            },
+        ),
     );
 
     try {

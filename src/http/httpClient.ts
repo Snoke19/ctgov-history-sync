@@ -9,7 +9,7 @@ import {
     TrialError,
 } from '../error/errors.js';
 import { Retry } from '../retry/retry.js';
-import { defaultMonotonicClock, defaultRandom, defaultSleeper, defaultWallClock, Sleeper } from './clock.js';
+import { defaultRandom, defaultSleeper, defaultWallClock, Sleeper } from './clock.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManager } from './endpoint/manager/endpointManager.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
@@ -59,7 +59,7 @@ export interface HttpClient {
 export async function createHttpClient(
     clientOptions: HttpClientOptions,
     provider: EndpointProvider,
-    limiterFactory: LimiterFactory = new DefaultLimiterFactory(),
+    limiterFactory: LimiterFactory = createDefaultLimiterFactory(clientOptions),
     retryConfig: RetryPolicyConfig = defaultRetryPolicyConfig,
 ): Promise<HttpClient> {
     // Fail-fast: 404 must NOT be in retryableStatusCodes.
@@ -72,17 +72,16 @@ export async function createHttpClient(
     }
 
     const endpointFactory = new EndpointFactory(provider, limiterFactory);
-    const endpoints = await endpointFactory.build(clientOptions);
+    const endpoints = await endpointFactory.build();
 
     let endpointManager: EndpointManager;
 
     try {
-        endpointManager = new EndpointManager(
-            endpoints,
-            clientOptions.acquireTimeout,
-            clientOptions.monotonicClock?.now ?? defaultMonotonicClock.now,
-            clientOptions.sleep ?? defaultSleeper.sleep,
-        );
+        endpointManager = new EndpointManager(endpoints, {
+            acquireTimeout: clientOptions.acquireTimeout,
+            clock: clientOptions.monotonicClock?.now,
+            sleep: clientOptions.sleep,
+        });
     } catch (error: unknown) {
         const trialError = TrialError.normalize(error);
 
@@ -250,4 +249,14 @@ export async function createHttpClient(
             options.signal,
         );
     }
+}
+
+function createDefaultLimiterFactory(options: HttpClientOptions): LimiterFactory {
+    return new DefaultLimiterFactory({
+        enabled: options.useRateLimit ?? false,
+        capacity: options.rateLimitCapacity,
+        windowMs: options.rateLimitWindow,
+        clock: options.monotonicClock?.now,
+        sleep: options.sleep,
+    });
 }

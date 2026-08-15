@@ -58,7 +58,7 @@ const createManager = (options?: {
     const timeout = options?.timeout ?? 1000;
     const clock = options?.clock ?? clockSequence(0);
     const sleep = options?.sleep ?? instantSleep;
-    return new EndpointManager(endpoints, timeout, clock, sleep);
+    return new EndpointManager(endpoints, { acquireTimeout: timeout, clock, sleep });
 };
 
 beforeEach(() => {
@@ -70,7 +70,9 @@ describe('EndpointManager', () => {
         const clock = clockSequence(0);
 
         test('throws ConfigurationError for an empty endpoint list', () => {
-            expect(() => new EndpointManager([], 1000, clock, instantSleep)).toThrow(ConfigurationError);
+            expect(() => new EndpointManager([], { acquireTimeout: 1000, clock, sleep: instantSleep })).toThrow(
+                ConfigurationError,
+            );
         });
 
         /**
@@ -86,11 +88,13 @@ describe('EndpointManager', () => {
             [0.5, 'non-integer float'],
             [999.9, 'float close to integer'],
         ])('throws for acquireTimeout = %i (%s)', (timeout) => {
-            expect(() => new EndpointManager([makeEndpoint()], timeout, clock, instantSleep)).toThrow();
+            expect(() => new EndpointManager([makeEndpoint()], { acquireTimeout: timeout, clock, sleep: instantSleep })).toThrow();
         });
 
         test('accepts the minimum valid timeout of 1 ms', () => {
-            expect(() => new EndpointManager([makeEndpoint()], 1, clockSequence(0), instantSleep)).not.toThrow();
+            expect(() =>
+                new EndpointManager([makeEndpoint()], { acquireTimeout: 1, clock: clockSequence(0), sleep: instantSleep }),
+            ).not.toThrow();
         });
 
         test('endpointCount matches the array passed to the constructor', () => {

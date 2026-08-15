@@ -1,39 +1,38 @@
 import { ConfigurationError } from '../../../../error/errors.js';
 import { assertPositiveInt } from '../../../../utils/validation.js';
-import type { HttpClientOptions } from '../../../http.js';
-import { ProxyTransportFactory } from '../../../transport/factory/proxyTransportFactory.js';
-import { CreateProxyEndpointsOptions } from '../../../transport/httpTransport.js';
+import { ProxyTransportContext, ProxyTransportFactory } from '../../../transport/factory/proxyTransportFactory.js';
 import { ProxyUrlParser } from '../../proxy/httpProxyUrlParser.js';
 import { EndpointDefinition, EndpointProvider } from '../endpointProvider.js';
+
+export interface ProxyEndpointProviderOptions {
+    readonly proxyUrls: string;
+    readonly concurrency: number;
+}
 
 export class ProxyEndpointProvider implements EndpointProvider {
     constructor(
         private readonly transportFactory: ProxyTransportFactory,
         private readonly urlParser: ProxyUrlParser,
+        private readonly options: ProxyEndpointProviderOptions,
     ) {}
 
-    build(options: HttpClientOptions): EndpointDefinition[] {
-        assertPositiveInt(options.concurrency, 'concurrency');
+    build(): EndpointDefinition[] {
+        assertPositiveInt(this.options.concurrency, 'concurrency');
 
-        if (!options.poolConfig) {
-            throw new ConfigurationError('poolConfig is required when useProxy is enabled.');
-        }
-
-        const urls = this.urlParser.parse(options.proxyUrls ?? '');
+        const urls = this.urlParser.parse(this.options.proxyUrls);
 
         if (urls.length === 0) {
             throw new ConfigurationError('No valid proxy URLs were configured.');
         }
 
-        const transportOptions: CreateProxyEndpointsOptions = {
-            concurrency: options.concurrency,
+        const context: ProxyTransportContext = {
+            concurrency: this.options.concurrency,
             proxyCount: urls.length,
-            poolConfig: options.poolConfig,
         };
 
         return urls.map((urlProxy) => ({
             id: urlProxy,
-            createTransport: () => this.transportFactory.create(urlProxy, transportOptions),
+            createTransport: () => this.transportFactory.create(urlProxy, context),
         }));
     }
 }

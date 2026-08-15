@@ -1,4 +1,3 @@
-import { HttpClientOptions } from '../../http.js';
 import { HttpTransport } from '../../transport/httpTransport.js';
 
 export interface EndpointDefinition {
@@ -8,5 +7,5 @@ export interface EndpointDefinition {
 }
 
 export interface EndpointProvider {
-    build(options: HttpClientOptions): EndpointDefinition[];
+    build(): EndpointDefinition[];
 }

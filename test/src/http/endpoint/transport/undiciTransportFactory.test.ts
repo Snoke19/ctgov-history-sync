@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Dispatcher, ProxyAgent } from 'undici';
 import { ProxyPoolConfig } from '../../../../../src/config/config.js';
-import { CreateProxyEndpointsOptions } from '../../../../../src/http/transport/httpTransport.js';
+import { ProxyTransportContext } from '../../../../../src/http/transport/factory/proxyTransportFactory.js';
 import type {
     AgentCreatorFn,
     PoolClientFactory,
     PoolCreatorFn,
     UndiciTransportFactory as UndiciTransportFactoryType,
+    UndiciTransportFactoryOptions,
 } from '../../../../../src/http/transport/impl/undiciProxyTransport.js';
 
 const mockResolveConnections = jest.fn();
@@ -21,11 +22,20 @@ const { UndiciHttpTransport, UndiciTransportFactory } =
 const PROXY_URL = 'http://proxy.test:8080';
 const RESOLVED_CONNECTIONS = 5;
 
-function makeOptions(overrides: Partial<CreateProxyEndpointsOptions> = {}): CreateProxyEndpointsOptions {
+const POOL_CONFIG: ProxyPoolConfig = {
+    connections: 10,
+    maxConnections: 50,
+    pipelining: 1,
+    keepAliveTimeout: 4000,
+    headersTimeout: 30000,
+    bodyTimeout: 30000,
+    connectTimeout: 5000,
+};
+
+function makeContext(overrides: Partial<ProxyTransportContext> = {}): ProxyTransportContext {
     return {
         proxyCount: 3,
         concurrency: 10,
-        poolConfig: {} as ProxyPoolConfig,
         ...overrides,
     };
 }
@@ -49,7 +59,11 @@ describe('UndiciTransportFactory', () => {
 
         mockAgentCreator = jest.fn<AgentCreatorFn>().mockReturnValue(mockAgent);
 
-        factory = new UndiciTransportFactory(mockPoolCreator, mockAgentCreator);
+        factory = new UndiciTransportFactory({
+            poolConfig: POOL_CONFIG,
+            poolCreator: mockPoolCreator,
+            agentCreator: mockAgentCreator,
+        });
     });
 
     afterEach(() => {
@@ -62,47 +76,51 @@ describe('UndiciTransportFactory', () => {
 
     describe('create()', () => {
         describe('factory wiring', () => {
-            it('resolves connections from proxyCount, concurrency, and poolConfig', () => {
-                const options = makeOptions();
-                factory.create(PROXY_URL, options);
+            it('resolves connections from proxyCount, concurrency, and the factory-owned poolConfig', () => {
+                factory.create(PROXY_URL, makeContext());
 
                 expect(mockResolveConnections).toHaveBeenCalledTimes(1);
                 expect(mockResolveConnections).toHaveBeenCalledWith(
-                    options.proxyCount,
-                    options.concurrency,
-                    options.poolConfig,
+                    makeContext().proxyCount,
+                    makeContext().concurrency,
+                    POOL_CONFIG,
                 );
             });
 
-            it('creates a pool factory from poolConfig', () => {
-                const options = makeOptions();
-                factory.create(PROXY_URL, options);
+            it('creates a pool factory from the poolConfig received in its own options', () => {
+                factory.create(PROXY_URL, makeContext());
 
                 expect(mockPoolCreator).toHaveBeenCalledTimes(1);
-                expect(mockPoolCreator).toHaveBeenCalledWith(options.poolConfig);
+                expect(mockPoolCreator).toHaveBeenCalledWith(POOL_CONFIG);
+            });
+
+            it('does not require the poolConfig to be passed via create()', () => {
+                factory.create(PROXY_URL, makeContext());
+
+                expect(mockResolveConnections).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), POOL_CONFIG);
             });
 
             it('creates an agent from the proxy URL', () => {
-                factory.create(PROXY_URL, makeOptions());
+                factory.create(PROXY_URL, makeContext());
 
                 const [uri] = mockAgentCreator.mock.calls[0]!;
                 expect(uri).toBe(PROXY_URL);
             });
 
             it('passes a callable clientFactory to the agent creator', () => {
-                factory.create(PROXY_URL, makeOptions());
+                factory.create(PROXY_URL, makeContext());
                 expect(getClientFactory()).toEqual(expect.any(Function));
             });
 
             it('returns an UndiciHttpTransport', () => {
-                const result = factory.create(PROXY_URL, makeOptions());
+                const result = factory.create(PROXY_URL, makeContext());
                 expect(result).toBeInstanceOf(UndiciHttpTransport);
             });
         });
 
         describe('clientFactory closure', () => {
             it('merges extra opts with resolved connections', () => {
-                factory.create(PROXY_URL, makeOptions());
+                factory.create(PROXY_URL, makeContext());
                 const origin = new URL('https://target.example.com');
 
                 getClientFactory()(origin, { keepAliveTimeout: 30_000 });
@@ -115,7 +133,7 @@ describe('UndiciTransportFactory', () => {
             });
 
             it('injects connections when no extra opts are supplied', () => {
-                factory.create(PROXY_URL, makeOptions());
+                factory.create(PROXY_URL, makeContext());
                 const origin = new URL('https://target.example.com');
 
                 getClientFactory()(origin);
@@ -127,7 +145,7 @@ describe('UndiciTransportFactory', () => {
             });
 
             it('overrides caller-supplied connections with the resolved value', () => {
-                factory.create(PROXY_URL, makeOptions());
+                factory.create(PROXY_URL, makeContext());
                 const origin = new URL('https://target.example.com');
 
                 getClientFactory()(origin, { connections: 9999 });
@@ -139,7 +157,7 @@ describe('UndiciTransportFactory', () => {
             });
 
             it('passes through the origin URL including path and query', () => {
-                factory.create(PROXY_URL, makeOptions());
+                factory.create(PROXY_URL, makeContext());
                 const origin = new URL('https://target.example.com/path?query=1');
 
                 getClientFactory()(origin);
@@ -148,7 +166,7 @@ describe('UndiciTransportFactory', () => {
             });
 
             it('tolerates undefined extraOpts', () => {
-                factory.create(PROXY_URL, makeOptions());
+                factory.create(PROXY_URL, makeContext());
                 const origin = new URL('https://target.example.com');
 
                 expect(() => getClientFactory()(origin, undefined)).not.toThrow();
@@ -157,7 +175,7 @@ describe('UndiciTransportFactory', () => {
             it('returns the pool from poolFactory', () => {
                 const mockPool = { symbol: 'dispatcher' } as unknown as Dispatcher;
                 mockPoolFactory.mockReturnValue(mockPool);
-                factory.create(PROXY_URL, makeOptions());
+                factory.create(PROXY_URL, makeContext());
 
                 const result = getClientFactory()(new URL('https://target.example.com'));
 
@@ -167,7 +185,7 @@ describe('UndiciTransportFactory', () => {
 
         describe('produced transport', () => {
             it('delegates close() to the agent', async () => {
-                const transport = factory.create(PROXY_URL, makeOptions());
+                const transport = factory.create(PROXY_URL, makeContext());
                 await transport.close();
 
                 expect(mockAgent.close).toHaveBeenCalledTimes(1);
@@ -178,10 +196,10 @@ describe('UndiciTransportFactory', () => {
             it('isolates resolved connections between create() calls', () => {
                 mockResolveConnections.mockReturnValueOnce(1).mockReturnValueOnce(99);
 
-                factory.create('http://proxy-a:8080', makeOptions());
+                factory.create('http://proxy-a:8080', makeContext());
                 const clientFactoryA = getClientFactory(0);
 
-                factory.create('http://proxy-b:9090', makeOptions());
+                factory.create('http://proxy-b:9090', makeContext());
                 const clientFactoryB = getClientFactory(1);
 
                 clientFactoryA(new URL('https://target.com'));
@@ -194,12 +212,12 @@ describe('UndiciTransportFactory', () => {
 
         describe('edge cases', () => {
             it('handles proxyCount and concurrency of 0', () => {
-                expect(() => factory.create(PROXY_URL, makeOptions({ proxyCount: 0, concurrency: 0 }))).not.toThrow();
+                expect(() => factory.create(PROXY_URL, makeContext({ proxyCount: 0, concurrency: 0 }))).not.toThrow();
             });
 
             it('handles resolved connections of 0', () => {
                 mockResolveConnections.mockReturnValue(0);
-                factory.create(PROXY_URL, makeOptions());
+                factory.create(PROXY_URL, makeContext());
 
                 getClientFactory()(new URL('https://target.com'));
 
@@ -208,19 +226,34 @@ describe('UndiciTransportFactory', () => {
             });
 
             it('preserves auth credentials in the proxy URL', () => {
-                factory.create('http://user:pass@proxy.test:8080', makeOptions());
+                factory.create('http://user:pass@proxy.test:8080', makeContext());
                 expect(mockAgentCreator.mock.calls[0]![0]).toBe('http://user:pass@proxy.test:8080');
             });
 
             it('preserves a trailing slash in the proxy URL', () => {
-                factory.create('http://proxy.test:8080/', makeOptions());
+                factory.create('http://proxy.test:8080/', makeContext());
                 expect(mockAgentCreator.mock.calls[0]![0]).toBe('http://proxy.test:8080/');
             });
 
-            it('does not mutate the input options', () => {
-                const options = makeOptions();
-                factory.create(PROXY_URL, options);
-                expect(options).toStrictEqual(makeOptions());
+            it('does not mutate the input context', () => {
+                const context = makeContext();
+                factory.create(PROXY_URL, context);
+                expect(context).toStrictEqual(makeContext());
+            });
+
+            it('does not mutate the factory options', () => {
+                const options: UndiciTransportFactoryOptions = {
+                    poolConfig: POOL_CONFIG,
+                    poolCreator: mockPoolCreator,
+                    agentCreator: mockAgentCreator,
+                };
+                factory = new UndiciTransportFactory(options);
+                factory.create(PROXY_URL, makeContext());
+                expect(options).toStrictEqual({
+                    poolConfig: POOL_CONFIG,
+                    poolCreator: mockPoolCreator,
+                    agentCreator: mockAgentCreator,
+                });
             });
         });
 
@@ -229,21 +262,21 @@ describe('UndiciTransportFactory', () => {
                 mockPoolCreator.mockImplementation(() => {
                     throw new Error('Pool creation failed');
                 });
-                expect(() => factory.create(PROXY_URL, makeOptions())).toThrow('Pool creation failed');
+                expect(() => factory.create(PROXY_URL, makeContext())).toThrow('Pool creation failed');
             });
 
             it('propagates agentCreator errors', () => {
                 mockAgentCreator.mockImplementation(() => {
                     throw new Error('Agent creation failed');
                 });
-                expect(() => factory.create(PROXY_URL, makeOptions())).toThrow('Agent creation failed');
+                expect(() => factory.create(PROXY_URL, makeContext())).toThrow('Agent creation failed');
             });
 
             it('propagates poolFactory errors through clientFactory', () => {
                 mockPoolFactory.mockImplementation(() => {
                     throw new Error('Factory invocation failed');
                 });
-                factory.create(PROXY_URL, makeOptions());
+                factory.create(PROXY_URL, makeContext());
 
                 expect(() => getClientFactory()(new URL('https://target.com'))).toThrow('Factory invocation failed');
             });

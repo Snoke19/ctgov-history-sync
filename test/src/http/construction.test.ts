@@ -18,6 +18,16 @@ import {
     UndiciTransportFactory,
 } from '../../../src/http/transport/impl/undiciProxyTransport.js';
 
+const FAKE_POOL_CONFIG: ProxyPoolConfig = {
+    connections: 10,
+    maxConnections: 100,
+    pipelining: 1,
+    keepAliveTimeout: 4000,
+    headersTimeout: 30000,
+    bodyTimeout: 30000,
+    connectTimeout: 10000,
+};
+
 /**
  * Builds an UndiciTransportFactory that never opens real sockets.
  * We inject fake creators so ProxyAgent is never instantiated with
@@ -33,23 +43,16 @@ function createSafeTransportFactory(): UndiciTransportFactory {
     } as unknown as ProxyAgent;
     const fakeAgentCreator = jest.fn<AgentCreatorFn>().mockReturnValue(fakeAgent);
 
-    return new UndiciTransportFactory(fakePoolCreator, fakeAgentCreator);
+    return new UndiciTransportFactory({
+        poolConfig: FAKE_POOL_CONFIG,
+        poolCreator: fakePoolCreator,
+        agentCreator: fakeAgentCreator,
+    });
 }
 
 function createValidOptions(overrides: Partial<HttpClientOptions> = {}): HttpClientOptions {
-    const poolConfig: ProxyPoolConfig = {
-        connections: 10,
-        maxConnections: 100,
-        pipelining: 1,
-        keepAliveTimeout: 4000,
-        headersTimeout: 30000,
-        bodyTimeout: 30000,
-        connectTimeout: 10000,
-    };
-
     return {
         proxyUrls: 'http://user:pass@proxy1:8080,http://proxy2:9090',
-        poolConfig,
         concurrency: 5,
         acquireTimeout: 30000,
         useRateLimit: false,
@@ -58,12 +61,28 @@ function createValidOptions(overrides: Partial<HttpClientOptions> = {}): HttpCli
 }
 
 async function createManager(options: HttpClientOptions = createValidOptions()): Promise<EndpointManager> {
-    const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser());
-    const factory = new EndpointFactory(provider, new DefaultLimiterFactory());
+    const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser(), {
+        proxyUrls: options.proxyUrls ?? '',
+        concurrency: options.concurrency,
+    });
+    const factory = new EndpointFactory(
+        provider,
+        new DefaultLimiterFactory({
+            enabled: options.useRateLimit ?? false,
+            capacity: options.rateLimitCapacity,
+            windowMs: options.rateLimitWindow,
+            clock: options.monotonicClock?.now,
+            sleep: options.sleep,
+        }),
+    );
 
-    const endpoints = await factory.build(options);
+    const endpoints = await factory.build();
 
-    return new EndpointManager(endpoints, options.acquireTimeout, options.monotonicClock?.now, options.sleep);
+    return new EndpointManager(endpoints, {
+        acquireTimeout: options.acquireTimeout,
+        clock: options.monotonicClock?.now,
+        sleep: options.sleep,
+    });
 }
 
 describe('Proxy + Undici construction chain', () => {
@@ -87,9 +106,7 @@ describe('Proxy + Undici construction chain', () => {
             acquireTimeout: 0,
         });
 
-        await expect(createHttpClient(options, provider, new DefaultLimiterFactory())).rejects.toBeInstanceOf(
-            ConfigurationError,
-        );
+        await expect(createHttpClient(options, provider)).rejects.toBeInstanceOf(ConfigurationError);
 
         expect(transport.close).toHaveBeenCalledTimes(1);
     });
@@ -116,7 +133,7 @@ describe('Proxy + Undici construction chain', () => {
             acquireTimeout: 0,
         });
 
-        await expect(createHttpClient(options, provider, new DefaultLimiterFactory())).rejects.toEqual(
+        await expect(createHttpClient(options, provider)).rejects.toEqual(
             expect.objectContaining({
                 name: 'EndpointAssemblyError',
                 cleanupErrors: [cleanupError],
@@ -156,14 +173,31 @@ describe('Proxy + Undici construction chain', () => {
         expect(manager.endpointCount).toBe(3);
     });
 
-    it('throws ConfigurationError when poolConfig is missing', async () => {
-        const options = createValidOptions();
-        delete (options as unknown as Record<string, unknown>).poolConfig;
+    it('forwards pool configuration to the transport factory, not HttpClientOptions', async () => {
+        const fakePoolClientFactory = jest.fn<PoolClientFactory>().mockReturnValue({} as unknown as Dispatcher);
+        const fakePoolCreator = jest.fn<PoolCreatorFn>().mockReturnValue(fakePoolClientFactory);
+        const fakeAgent = {
+            close: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        } as unknown as ProxyAgent;
+        const fakeAgentCreator = jest.fn<AgentCreatorFn>().mockReturnValue(fakeAgent);
 
-        const result = createManager(options);
+        const transportFactory = new UndiciTransportFactory({
+            poolConfig: FAKE_POOL_CONFIG,
+            poolCreator: fakePoolCreator,
+            agentCreator: fakeAgentCreator,
+        });
 
-        await expect(result).rejects.toBeInstanceOf(ConfigurationError);
-        await expect(result).rejects.toThrow('poolConfig');
+        const provider = new ProxyEndpointProvider(transportFactory, new HttpProxyUrlParser(), {
+            proxyUrls: 'http://proxy:8080',
+            concurrency: 5,
+        });
+        const factory = new EndpointFactory(provider, new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }));
+
+        const endpoints = await factory.build();
+
+        expect(fakePoolCreator).toHaveBeenCalledWith(FAKE_POOL_CONFIG);
+
+        await Promise.all(endpoints.map((endpoint) => endpoint.close()));
     });
 
     it('throws ConfigurationError when proxyUrls is empty', async () => {

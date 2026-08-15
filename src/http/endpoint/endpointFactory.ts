@@ -1,5 +1,4 @@
 import { EndpointAssemblyError, TrialError } from '../../error/errors.js';
-import type { HttpClientOptions } from '../http.js';
 import { LimiterFactory } from '../limiter/factory/limiterFactory.js';
 import type { Limiter } from '../limiter/limiter.js';
 import type { HttpTransport } from '../transport/httpTransport.js';
@@ -28,10 +27,10 @@ export class EndpointFactory {
         private readonly limiterFactory: LimiterFactory,
     ) {}
 
-    async build(options: HttpClientOptions): Promise<Endpoint[]> {
+    async build(): Promise<Endpoint[]> {
         try {
-            const createLimiter = (): Limiter => this.limiterFactory.create(options);
-            const definitions = this.provider.build(options);
+            const createLimiter = (): Limiter => this.limiterFactory.create();
+            const definitions = this.provider.build();
 
             return await assembleEndpoints({
                 definitions,

@@ -7,6 +7,13 @@ import { Limiter } from '../limiter.js';
 // when comparing or converting token bucket credit.
 const FLOATING_POINT_TOLERANCE = 1e-9;
 
+export interface TokenBucketOptions {
+    readonly capacity: number;
+    readonly windowMs: number;
+    readonly clock?: MonotonicClock['now'] | undefined;
+    readonly sleep?: Sleeper['sleep'] | undefined;
+}
+
 /**
  * Token bucket rate limiter using credit-milliseconds.
  *
@@ -38,38 +45,34 @@ export class TokenBucket extends Limiter {
     private readonly sleep: Sleeper['sleep'];
 
     /**
-     * @param capacity - Maximum tokens the bucket can hold. Must be
+     * @param options - Bucket configuration.
+     * @param options.capacity - Maximum tokens the bucket can hold. Must be
      *   a positive integer — fractional capacities can make `timeUntil`
      *   permanently unsatisfiable since acquisition always consumes whole
      *   tokens.
-     * @param windowMs - Time window over which `capacity`
+     * @param options.windowMs - Time window over which `capacity`
      *   tokens are replenished, in milliseconds.
-     * @param now - Monotonic clock function used for elapsed-duration calculations.
+     * @param options.clock - Monotonic clock function used for elapsed-duration calculations.
      * Defaults to the shared monotonic HTTP-layer clock.
      * Intended primarily for deterministic testing.
-     * @param sleep - Async delay. Defaults to the shared HTTP-layer sleeper.
+     * @param options.sleep - Async delay. Defaults to the shared HTTP-layer sleeper.
      * @throws {TypeError} If `capacity` is not a positive integer, or
      *   `windowMs` is not a positive finite number.
      */
-    constructor(
-        capacity: number,
-        windowMs: number,
-        now: MonotonicClock['now'] = defaultMonotonicClock.now,
-        sleep: Sleeper['sleep'] = defaultSleeper.sleep,
-    ) {
+    constructor(options: TokenBucketOptions) {
         super();
 
-        assertPositiveInt(capacity, 'capacity');
-        assertPositiveInt(windowMs, 'windowMs');
+        assertPositiveInt(options.capacity, 'capacity');
+        assertPositiveInt(options.windowMs, 'windowMs');
 
-        this.capacity = capacity;
-        this.windowMs = windowMs;
-        this.msPerToken = windowMs / capacity;
-        this.creditMs = windowMs; // starts full: capacity tokens' worth of credit
+        this.capacity = options.capacity;
+        this.windowMs = options.windowMs;
+        this.msPerToken = options.windowMs / options.capacity;
+        this.creditMs = options.windowMs; // starts full: capacity tokens' worth of credit
 
-        this.clock = now;
+        this.clock = options.clock ?? defaultMonotonicClock.now;
         this.lastUpdate = this.clock();
-        this.sleep = sleep;
+        this.sleep = options.sleep ?? defaultSleeper.sleep;
     }
 
     /**

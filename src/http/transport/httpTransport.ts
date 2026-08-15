@@ -1,5 +1,3 @@
-import { ProxyPoolConfig } from '../../config/config.js';
-
 export type TransportErrorKind = 'timeout' | 'cancelled' | 'network';
 
 export interface TransportErrorClassification {
@@ -28,10 +26,4 @@ export interface HttpResponse {
     text(): Promise<string>;
     json(): Promise<unknown>;
     discard(): Promise<void>;
-}
-
-export interface CreateProxyEndpointsOptions {
-    readonly concurrency: number;
-    readonly poolConfig: ProxyPoolConfig;
-    readonly proxyCount: number;
 }

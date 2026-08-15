@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { DirectEndpointProvider } from '../../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
-import { HttpClientOptions } from '../../../../../src/http/http.js';
 import { DirectTransportFactory } from '../../../../../src/http/transport/factory/directTransportFactory.js';
 import { HttpTransport } from '../../../../../src/http/transport/httpTransport.js';
 
@@ -21,7 +20,7 @@ describe('DirectEndpointProvider', () => {
         it('returns a single definition with id "direct"', () => {
             const provider = new DirectEndpointProvider(transportFactory);
 
-            const definitions = provider.build({} as HttpClientOptions);
+            const definitions = provider.build();
 
             expect(definitions).toHaveLength(1);
             expect(definitions[0]!.id).toBe('direct');
@@ -30,7 +29,7 @@ describe('DirectEndpointProvider', () => {
         it('does not create transports during build() — creation is deferred to createTransport', () => {
             const provider = new DirectEndpointProvider(transportFactory);
 
-            provider.build({} as HttpClientOptions);
+            provider.build();
 
             expect(transportFactory.create).not.toHaveBeenCalled();
         });
@@ -40,7 +39,7 @@ describe('DirectEndpointProvider', () => {
             transportFactory.create.mockReturnValue(transport);
 
             const provider = new DirectEndpointProvider(transportFactory);
-            const [definition] = provider.build({} as HttpClientOptions);
+            const [definition] = provider.build();
 
             expect(definition!.createTransport()).toBe(transport);
             expect(transportFactory.create).toHaveBeenCalledWith();
@@ -52,7 +51,7 @@ describe('DirectEndpointProvider', () => {
             transportFactory.create.mockReturnValueOnce(t1).mockReturnValueOnce(t2);
 
             const provider = new DirectEndpointProvider(transportFactory);
-            const [definition] = provider.build({} as HttpClientOptions);
+            const [definition] = provider.build();
 
             expect(definition!.createTransport()).toBe(t1);
             expect(definition!.createTransport()).toBe(t2);
@@ -62,28 +61,18 @@ describe('DirectEndpointProvider', () => {
         it('returns a fresh definition instance on every build call', () => {
             const provider = new DirectEndpointProvider(transportFactory);
 
-            const [first] = provider.build({} as HttpClientOptions);
-            const [second] = provider.build({} as HttpClientOptions);
+            const [first] = provider.build();
+            const [second] = provider.build();
 
             expect(first).not.toBe(second);
         });
 
-        it('always returns exactly one definition regardless of options content', () => {
+        it('always returns exactly one definition regardless of how often build is called', () => {
             const provider = new DirectEndpointProvider(transportFactory);
 
-            expect(provider.build({ concurrency: 1 } as unknown as HttpClientOptions)).toHaveLength(1);
-            expect(provider.build({ concurrency: 999, timeout: 0 } as unknown as HttpClientOptions)).toHaveLength(1);
-            expect(provider.build({} as HttpClientOptions)).toHaveLength(1);
-            expect(provider.build(undefined as unknown as HttpClientOptions)).toHaveLength(1);
-        });
-
-        it('does not mutate the provided HttpClientOptions object', () => {
-            const options = { foo: 'bar', nested: { value: 42 } } as unknown as HttpClientOptions;
-            const provider = new DirectEndpointProvider(transportFactory);
-
-            provider.build(options);
-
-            expect(options).toEqual({ foo: 'bar', nested: { value: 42 } });
+            expect(provider.build()).toHaveLength(1);
+            expect(provider.build()).toHaveLength(1);
+            expect(provider.build()).toHaveLength(1);
         });
     });
 
@@ -94,7 +83,7 @@ describe('DirectEndpointProvider', () => {
 
         it('defers a missing transportFactory failure to createTransport time', () => {
             const provider = new DirectEndpointProvider(undefined as unknown as DirectTransportFactory);
-            const [definition] = provider.build({} as unknown as HttpClientOptions);
+            const [definition] = provider.build();
 
             expect(() => definition!.createTransport()).toThrow();
         });

@@ -1,4 +1,3 @@
-import { ProxyPoolConfig } from '../config/config.js';
 import type { MonotonicClock, RandomSource, Sleeper, WallClock } from './clock.js';
 import { RetryPolicyConfig } from './retryPolicy.js';
 
@@ -23,7 +22,6 @@ export interface HttpClientOptions {
     readonly rateLimitWindow: number;
     readonly acquireTimeout: number;
     readonly concurrency: number;
-    readonly poolConfig?: Readonly<ProxyPoolConfig>;
 
     /** Override real sleep (e.g. fake timers in tests). Defaults to setTimeout. */
     sleep?: Sleeper['sleep'];

@@ -1,20 +1,30 @@
-import type { HttpClientOptions } from '../../http.js';
+import { defaultMonotonicClock, MonotonicClock, Sleeper } from '../../clock.js';
 import { TokenBucket } from '../impl/tokenBucket.js';
 import { UnlimitedLimiter } from '../impl/unlimitedLimiter.js';
 import type { Limiter } from '../limiter.js';
 import { LimiterFactory } from './limiterFactory.js';
 
+export interface DefaultLimiterFactoryOptions {
+    readonly enabled: boolean;
+    readonly capacity: number;
+    readonly windowMs: number;
+    readonly clock?: MonotonicClock['now'] | undefined;
+    readonly sleep?: Sleeper['sleep'] | undefined;
+}
+
 export class DefaultLimiterFactory implements LimiterFactory {
-    create(options: HttpClientOptions): Limiter {
-        if (!options.useRateLimit) {
+    constructor(private readonly options: DefaultLimiterFactoryOptions) {}
+
+    create(): Limiter {
+        if (!this.options.enabled) {
             return new UnlimitedLimiter();
         }
 
-        return new TokenBucket(
-            options.rateLimitCapacity,
-            options.rateLimitWindow,
-            options.monotonicClock?.now,
-            options.sleep,
-        );
+        return new TokenBucket({
+            capacity: this.options.capacity,
+            windowMs: this.options.windowMs,
+            clock: this.options.clock ?? defaultMonotonicClock.now,
+            sleep: this.options.sleep,
+        });
     }
 }

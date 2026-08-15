@@ -2,14 +2,11 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { UnexpectedError } from '../../../../src/error/errors.js';
 import { EndpointFactory } from '../../../../src/http/endpoint/endpointFactory.js';
 import type { EndpointDefinition, EndpointProvider } from '../../../../src/http/endpoint/provider/endpointProvider.js';
-import type { HttpClientOptions } from '../../../../src/http/http.js';
 import type { LimiterFactory } from '../../../../src/http/limiter/factory/limiterFactory.js';
 import type { Limiter } from '../../../../src/http/limiter/limiter.js';
 import type { HttpTransport } from '../../../../src/http/transport/httpTransport.js';
 
 describe('EndpointFactory', () => {
-    const options = {} as HttpClientOptions;
-
     const createTransport: jest.MockedFunction<EndpointDefinition['createTransport']> = jest.fn();
     const providerBuild: jest.MockedFunction<EndpointProvider['build']> = jest.fn();
     const limiterFactoryCreate: jest.MockedFunction<LimiterFactory['create']> = jest.fn();
@@ -55,7 +52,7 @@ describe('EndpointFactory', () => {
                 throw constructionError;
             });
 
-            await expect(factory.build(options)).rejects.toMatchObject({
+            await expect(factory.build()).rejects.toMatchObject({
                 name: 'UnexpectedError',
                 cause: constructionError,
             });
@@ -73,7 +70,7 @@ describe('EndpointFactory', () => {
                 throw constructionError;
             });
 
-            await expect(factory.build(options)).rejects.toMatchObject({
+            await expect(factory.build()).rejects.toMatchObject({
                 name: 'UnexpectedError',
                 cause: constructionError,
             });
@@ -91,7 +88,7 @@ describe('EndpointFactory', () => {
                 throw providerError;
             });
 
-            await expect(factory.build(options)).rejects.toBeInstanceOf(UnexpectedError);
+            await expect(factory.build()).rejects.toBeInstanceOf(UnexpectedError);
 
             expect(providerBuild).toHaveBeenCalledTimes(1);
             expect(limiterFactoryCreate).not.toHaveBeenCalled();
@@ -99,7 +96,7 @@ describe('EndpointFactory', () => {
         });
 
         it('builds an endpoint successfully', async () => {
-            const endpoints = await factory.build(options);
+            const endpoints = await factory.build();
 
             expect(endpoints).toHaveLength(1);
             expect(providerBuild).toHaveBeenCalledTimes(1);
@@ -118,7 +115,7 @@ describe('EndpointFactory', () => {
 
             transport.close.mockRejectedValue(cleanupError);
 
-            await expect(factory.build(options)).rejects.toEqual(
+            await expect(factory.build()).rejects.toEqual(
                 expect.objectContaining({
                     name: 'EndpointAssemblyError',
                     message: 'Failed to construct endpoint "test-endpoint" and transport cleanup also failed.',
@@ -159,7 +156,7 @@ describe('EndpointFactory', () => {
 
             transport.close.mockRejectedValue(rollbackError);
 
-            await expect(factory.build(options)).rejects.toEqual(
+            await expect(factory.build()).rejects.toEqual(
                 expect.objectContaining({
                     name: 'EndpointAssemblyError',
                     message: 'Endpoint assembly failed and rollback cleanup also failed.',
