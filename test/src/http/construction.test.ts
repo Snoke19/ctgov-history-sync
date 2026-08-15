@@ -50,9 +50,10 @@ function createSafeTransportFactory(): UndiciTransportFactory {
     });
 }
 
+const DEFAULT_PROXY_URLS = 'http://user:pass@proxy1:8080,http://proxy2:9090';
+
 function createValidOptions(overrides: Partial<HttpClientOptions> = {}): HttpClientOptions {
     return {
-        proxyUrls: 'http://user:pass@proxy1:8080,http://proxy2:9090',
         concurrency: 5,
         acquireTimeout: 30000,
         useRateLimit: false,
@@ -60,9 +61,12 @@ function createValidOptions(overrides: Partial<HttpClientOptions> = {}): HttpCli
     } as HttpClientOptions;
 }
 
-async function createManager(options: HttpClientOptions = createValidOptions()): Promise<EndpointManager> {
+async function createManager(
+    options: HttpClientOptions = createValidOptions(),
+    proxyUrls: string = DEFAULT_PROXY_URLS,
+): Promise<EndpointManager> {
     const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser(), {
-        proxyUrls: options.proxyUrls ?? '',
+        proxyUrls,
         concurrency: options.concurrency,
     });
     const factory = new EndpointFactory(
@@ -164,11 +168,7 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('creates exactly one endpoint per valid proxy URL', async () => {
-        const manager = await createManager(
-            createValidOptions({
-                proxyUrls: 'http://p1:8080,http://p2:8080,http://p3:8080',
-            }),
-        );
+        const manager = await createManager(createValidOptions(), 'http://p1:8080,http://p2:8080,http://p3:8080');
 
         expect(manager.endpointCount).toBe(3);
     });
@@ -191,7 +191,10 @@ describe('Proxy + Undici construction chain', () => {
             proxyUrls: 'http://proxy:8080',
             concurrency: 5,
         });
-        const factory = new EndpointFactory(provider, new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }));
+        const factory = new EndpointFactory(
+            provider,
+            new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+        );
 
         const endpoints = await factory.build();
 
@@ -201,20 +204,16 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('throws ConfigurationError when proxyUrls is empty', async () => {
-        const options = createValidOptions({ proxyUrls: '' });
-
-        const result = createManager(options);
+        const result = createManager(createValidOptions(), '');
 
         await expect(result).rejects.toBeInstanceOf(ConfigurationError);
         await expect(result).rejects.toThrow('No valid proxy URLs');
     });
 
     it('throws ConfigurationError when every proxyUrl is invalid', async () => {
-        const options = createValidOptions({
-            proxyUrls: 'not-a-url,also-bad://missing-port',
-        });
-
-        await expect(createManager(options)).rejects.toBeInstanceOf(ConfigurationError);
+        await expect(createManager(createValidOptions(), 'not-a-url,also-bad://missing-port')).rejects.toBeInstanceOf(
+            ConfigurationError,
+        );
     });
 
     it('throws when acquireTimeout is missing', async () => {

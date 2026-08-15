@@ -43,7 +43,6 @@ export interface ApiClient {
 export async function createApiClient(): Promise<ApiClient> {
     const httpClient = await createHttpClient(
         {
-            proxyUrls: PROXY_URLS,
             useRateLimit: true,
             rateLimitCapacity: RATE_LIMIT_CAPACITY,
             rateLimitWindow: RATE_LIMIT_WINDOW,

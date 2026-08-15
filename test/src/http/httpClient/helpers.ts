@@ -80,7 +80,6 @@ export function createDefaultOptions(overrides: Partial<HttpClientOptions> = {})
         rateLimitCapacity: 10,
         rateLimitWindow: 1000,
         useRateLimit: false,
-        proxyUrls: 'http://test-proxy-0:8080',
 
         sleep: sleeper.sleep.bind(sleeper),
         random: () => 0.5,

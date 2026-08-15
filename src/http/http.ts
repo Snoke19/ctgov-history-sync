@@ -16,7 +16,6 @@ export interface QueryParams {
 }
 
 export interface HttpClientOptions {
-    readonly proxyUrls?: string;
     readonly useRateLimit?: boolean;
     readonly rateLimitCapacity: number;
     readonly rateLimitWindow: number;

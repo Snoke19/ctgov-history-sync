@@ -5,7 +5,7 @@ import {
     FetchDirectTransport,
     FetchDirectTransportFactory,
 } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
-import { API_URL, ENDPOINT_1, ENDPOINT_2, createDefaultOptions, jsonResponse, makeClient } from './helpers.js';
+import { API_URL, createDefaultOptions, jsonResponse, makeClient } from './helpers.js';
 
 describe('HttpClient endpoint lifecycle & resource management', () => {
     afterEach(() => {
@@ -18,9 +18,7 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
             .mockResolvedValueOnce(jsonResponse({ ep: 1 }))
             .mockResolvedValueOnce(jsonResponse({ ep: 2 }));
 
-        const client = await makeClient({
-            proxyUrls: `${ENDPOINT_1},${ENDPOINT_2}`,
-        });
+        const client = await makeClient();
 
         const first = await client.fetchJson<{ ep: number }>(`${API_URL}/req1`);
         const second = await client.fetchJson<{ ep: number }>(`${API_URL}/req2`);
