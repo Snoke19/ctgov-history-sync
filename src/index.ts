@@ -6,6 +6,8 @@ import { HttpException, NetworkException, TimeoutException, TrialError, TrialNot
 
 const DATE_RANGE = 'AREA[StartDate]RANGE[07/15/2026, 07/18/2026]';
 
+logger.info({ dateRange: DATE_RANGE, pageSize: PAGE_SIZE, concurrency: CONCURRENCY }, 'Scraper starting');
+
 const api = await createApiClient();
 
 let resumePageToken: string | undefined = '';
@@ -32,7 +34,7 @@ async function withConcurrency<T, R>(
             try {
                 results[i] = await fn(item);
             } catch (err: unknown) {
-                logger.warn(`Error processing ${String(item)}: ${err instanceof Error ? err.message : String(err)}`);
+                logger.warn({ item: String(item), err }, 'Error processing item');
 
                 results[i] = null;
             }
@@ -47,35 +49,43 @@ async function withConcurrency<T, R>(
 }
 
 async function fetchTrialSafe(nctId: string) {
+    const startedAt = Date.now();
+
     try {
-        return await api.fetchTrialDetail(nctId, { history: true });
+        const detail = await api.fetchTrialDetail(nctId, { history: true });
+
+        logger.debug({ nctId, durationMs: Date.now() - startedAt }, 'Trial detail fetched successfully');
+
+        return detail;
     } catch (err: unknown) {
+        const durationMs = Date.now() - startedAt;
+
         if (err instanceof TrialNotFoundError) {
-            logger.warn(`Not found: ${nctId}`);
+            logger.debug({ nctId, durationMs }, 'Trial not found');
             return null;
         }
 
         if (err instanceof TimeoutException) {
-            logger.warn(`Timeout: ${nctId}`);
+            logger.warn({ nctId, durationMs }, 'Trial fetch timed out');
             return null;
         }
 
         if (err instanceof HttpException) {
-            logger.warn(`HTTP ${err.status}: ${nctId}`);
+            logger.warn({ nctId, status: err.status, durationMs }, 'Trial fetch returned HTTP error');
             return null;
         }
 
         if (err instanceof NetworkException) {
-            logger.warn(`Network error: ${nctId} — ${getErrorMessage(err.cause)}`);
+            logger.warn({ nctId, durationMs, cause: getErrorMessage(err.cause) }, 'Trial fetch network error');
             return null;
         }
 
         if (err instanceof TrialError) {
-            logger.warn(`Failed: ${nctId} — ${getErrorMessage(err.cause)}`);
+            logger.warn({ nctId, durationMs, cause: getErrorMessage(err.cause) }, 'Trial fetch failed');
             return null;
         }
 
-        logger.error(`Unexpected error for ${nctId}: ${getErrorMessage(err)}`);
+        logger.error({ nctId, durationMs, err }, 'Trial fetch failed with unexpected error');
 
         return null;
     }
@@ -99,12 +109,23 @@ process.on('SIGINT', () => {
 async function main(): Promise<void> {
     const initialToken = resumePageToken;
 
+    const firstPageStartedAt = Date.now();
+
     const firstPage = await api.fetchStudiesPage({
         pageSize: PAGE_SIZE,
         countTotal: true,
         'query.term': DATE_RANGE,
         ...(initialToken && { pageToken: initialToken }),
     });
+
+    logger.info(
+        {
+            page: 1,
+            studyCount: firstPage.studies.length,
+            durationMs: Date.now() - firstPageStartedAt,
+        },
+        'First page fetched',
+    );
 
     if (!initialToken) {
         // eslint-disable-next-line require-atomic-updates -- initialToken is a local snapshot
@@ -115,8 +136,15 @@ async function main(): Promise<void> {
     let nextToken = initialToken ?? firstPage.nextPageToken;
 
     while (true) {
+        const pageStartedAt = Date.now();
+
         logger.info(
-            `Processing page ${pageNum} (${currentStudies.length} studies, pageToken=${nextToken ?? 'none'})...`,
+            {
+                page: pageNum,
+                studyCount: currentStudies.length,
+                pageToken: nextToken ?? null,
+            },
+            'Processing page',
         );
 
         const nctIds = currentStudies
@@ -128,9 +156,14 @@ async function main(): Promise<void> {
         const validDetails = details.filter(<T>(detail: T): detail is NonNullable<T> => detail !== null);
 
         logger.info(
-            `Page ${pageNum}: Fetched ${nctIds.length}, Saved ${
-                validDetails.length
-            }, Failed ${nctIds.length - validDetails.length}`,
+            {
+                page: pageNum,
+                fetched: nctIds.length,
+                saved: validDetails.length,
+                failed: nctIds.length - validDetails.length,
+                durationMs: Date.now() - pageStartedAt,
+            },
+            'Page processed',
         );
 
         if (!nextToken) {
@@ -155,30 +188,18 @@ async function main(): Promise<void> {
 
     // eslint-disable-next-line require-atomic-updates -- checkpoint written once at function end
     resumePageToken = nextToken;
+
+    logger.info({ page: pageNum, nextPageToken: nextToken ?? null }, 'Scrape completed, checkpoint saved');
 }
 
 async function run(): Promise<void> {
     try {
         await main();
     } catch (err: unknown) {
-        if (err instanceof TrialError) {
-            logger.error(`Trial error: ${err.message}`);
-
-            if (err.cause instanceof Error) {
-                logger.error(`Cause: ${err.cause.message}`);
-            }
-
-            if (err.stack) {
-                logger.error(err.stack);
-            }
-        } else if (err instanceof Error) {
-            logger.error(`Unexpected error: ${err.message}`);
-
-            if (err.stack) {
-                logger.error(err.stack);
-            }
+        if (err instanceof Error) {
+            logger.error({ err, cause: getErrorMessage(err.cause) }, 'Scraper failed');
         } else {
-            logger.error(`Unexpected error: ${String(err)}`);
+            logger.error({ error: String(err) }, 'Scraper failed');
         }
 
         process.exitCode = 1;

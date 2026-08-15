@@ -1,4 +1,4 @@
-import { BACKOFF_CAP_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
+import { BACKOFF_CAP_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
 import { logger } from '../config/logging.js';
 import {
     CallerAbortedError,
@@ -27,13 +27,13 @@ type HttpErrorLogContext = {
     errorType: string;
     url: string;
     method: 'GET';
-    error: Error;
+    err: Error;
 };
 
 function createHttpErrorLogContext(error: Error, url: string): HttpErrorLogContext {
     return {
         message: error.message,
-        error,
+        err: error,
         errorType: error.name,
         url,
         method: 'GET',
@@ -102,6 +102,16 @@ export async function createHttpClient(
         throw trialError;
     }
 
+    logger.info(
+        {
+            endpointCount: endpoints.length,
+            acquireTimeoutMs: clientOptions.acquireTimeout,
+            concurrency: clientOptions.concurrency,
+            rateLimitEnabled: clientOptions.useRateLimit ?? false,
+        },
+        'HTTP client created',
+    );
+
     async function fetchResponse(url: string, options: FetchJsonRequestOptions): Promise<HttpResponse | null> {
         const operation = new FetchOperation(
             endpointManager,
@@ -116,8 +126,33 @@ export async function createHttpClient(
             clientOptions.random ?? defaultRandom.random,
         );
 
+        logger.debug(
+            {
+                url,
+                method: 'GET',
+                allow404: options.allow404 ?? false,
+                timeoutMs: options.timeoutMs ?? FETCH_TIMEOUT_MS,
+                maxRetries: options.maxRetries ?? MAX_RETRIES,
+            },
+            'HTTP request started',
+        );
+
+        const requestStartedAt = Date.now();
+
         try {
-            return await retry.perform();
+            const response = await retry.perform();
+
+            logger.debug(
+                {
+                    url,
+                    method: 'GET',
+                    status: response.status,
+                    durationMs: Date.now() - requestStartedAt,
+                },
+                'HTTP request completed',
+            );
+
+            return response;
         } catch (error: unknown) {
             const trialError = TrialError.normalize(error);
 
@@ -151,8 +186,14 @@ export async function createHttpClient(
             return null;
         }
 
+        const parseStartedAt = Date.now();
+
         try {
-            return parseOkResponseBody(response, url) as T;
+            const parsed = parseOkResponseBody(response, url) as T;
+
+            logger.debug({ url, durationMs: Date.now() - parseStartedAt }, 'HTTP response body parsed');
+
+            return parsed;
         } catch (error) {
             const trialError = TrialError.normalize(error);
 

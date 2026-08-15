@@ -1,3 +1,4 @@
+import { logger } from '../config/logging.js';
 import { CallerAbortedError, TrialError, UnexpectedError } from '../error/errors.js';
 import { defaultSleeper } from '../http/clock.js';
 import type { Sleeper } from '../http/clock.js';
@@ -57,16 +58,45 @@ export class Retry<T> implements BusinessOperation<T> {
                 }
 
                 if (!this.shouldRetry(trialError)) {
+                    logger.debug(
+                        {
+                            errorType: trialError.name,
+                            errorMessage: trialError.message,
+                        },
+                        'Operation failed; error is not retryable',
+                    );
+
                     throw trialError;
                 }
 
                 if (retryCount >= this.maxRetries) {
+                    logger.warn(
+                        {
+                            attempts: retryCount + 1,
+                            maxRetries: this.maxRetries,
+                            errorType: trialError.name,
+                            errorMessage: trialError.message,
+                        },
+                        'Operation failed; retries exhausted',
+                    );
+
                     throw trialError;
                 }
 
                 const delay = typeof this.delayMs === 'function' ? this.delayMs(retryCount, trialError) : this.delayMs;
 
                 retryCount++;
+
+                logger.warn(
+                    {
+                        attempt: retryCount,
+                        maxRetries: this.maxRetries,
+                        delayMs: Math.max(0, delay),
+                        errorType: trialError.name,
+                        errorMessage: trialError.message,
+                    },
+                    'Operation failed; retrying',
+                );
 
                 await this.abortableSleep(Math.max(0, delay));
             }

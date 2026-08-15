@@ -1,17 +1,22 @@
 import { logger } from '../../../config/logging.js';
-import { CallerAbortedError, ConfigurationError, EndpointAcquisitionTimeoutError, TrialError } from '../../../error/errors.js';
+import {
+    CallerAbortedError,
+    ConfigurationError,
+    EndpointAcquisitionTimeoutError,
+    TrialError,
+} from '../../../error/errors.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
 import { defaultMonotonicClock, defaultSleeper, MonotonicClock, Sleeper } from '../../clock.js';
 import { Endpoint, EndpointHandle } from '../endpoint.js';
 
 type EndpointManagerErrorLogContext = {
-    error: unknown;
+    err: unknown;
     endpointCount: number;
 };
 
 function createEndpointManagerErrorLogContext(error: unknown, endpointCount: number): EndpointManagerErrorLogContext {
     return {
-        error,
+        err: error,
         endpointCount,
     };
 }
@@ -73,13 +78,30 @@ export class EndpointManager {
 
                 if (endpoint.tryAcquire(currentTime)) {
                     this.nextIndex = (index + 1) % this.endpoints.length;
+
+                    logger.debug(
+                        { endpointIndex: index, endpointCount: this.endpoints.length },
+                        'Endpoint token acquired',
+                    );
+
                     return endpoint.getHandle();
                 }
 
                 shortestWait = Math.min(shortestWait, endpoint.timeUntilToken(currentTime));
             }
 
-            await this.sleep(Math.min(shortestWait, remaining), signal);
+            const waitMs = Math.min(shortestWait, remaining);
+
+            logger.debug(
+                {
+                    endpointCount: this.endpoints.length,
+                    waitMs,
+                    acquireTimeoutMs: this.acquireTimeout,
+                },
+                'All endpoints busy; waiting for token',
+            );
+
+            await this.sleep(waitMs, signal);
         }
     }
 

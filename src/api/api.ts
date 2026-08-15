@@ -8,6 +8,7 @@ import {
     RATE_LIMIT_CAPACITY,
     RATE_LIMIT_WINDOW,
 } from '../config/config.js';
+import { logger } from '../config/logging.js';
 import { ApiResponseValidationError, TrialNotFoundError } from '../error/errors.js';
 import { ProxyEndpointProvider } from '../http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../http/endpoint/proxy/httpProxyUrlParser.js';
@@ -52,7 +53,11 @@ export async function createApiClient(): Promise<ApiClient> {
     );
 
     try {
-        return createApiClientWithHttpClient(httpClient);
+        const apiClient = createApiClientWithHttpClient(httpClient);
+
+        logger.info({ apiBaseUrl: API_BASE_URL, apiDetailUrl: API_DETAIL_URL }, 'API client created');
+
+        return apiClient;
     } catch (error) {
         await httpClient.close();
         throw error;
@@ -69,9 +74,21 @@ export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiCli
     async function fetchStudiesPage(params: FetchStudiesPageParams = {}): Promise<StudiesPageResponse> {
         const url = new UrlBuilder(API_BASE_URL).queryParams(params).build();
 
+        logger.debug(
+            { url, pageSize: params.pageSize ?? null, pageToken: params.pageToken ?? null },
+            'Fetching studies page',
+        );
+
         const data = await httpClient.fetchJson(url);
 
-        return parseStudiesPageResponse(data, url);
+        const page = parseStudiesPageResponse(data, url);
+
+        logger.debug(
+            { url, studyCount: page.studies.length, nextPageToken: page.nextPageToken ?? null },
+            'Studies page fetched',
+        );
+
+        return page;
     }
 
     async function fetchTrialDetail(nctId: string, params: FetchTrialDetailParams = {}): Promise<unknown> {
@@ -79,11 +96,17 @@ export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiCli
 
         const url = new UrlBuilder(API_DETAIL_URL).path(normalizedNctId).queryParams(params).build();
 
+        logger.debug({ nctId: normalizedNctId, url }, 'Fetching trial detail');
+
         const data = await httpClient.fetchJson(url, { allow404: true });
 
         if (data === null) {
+            logger.debug({ nctId: normalizedNctId }, 'Trial not found (404)');
+
             throw new TrialNotFoundError(normalizedNctId);
         }
+
+        logger.debug({ nctId: normalizedNctId }, 'Trial detail fetched');
 
         return data;
     }
