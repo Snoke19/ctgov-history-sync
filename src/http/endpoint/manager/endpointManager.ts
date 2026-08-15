@@ -36,10 +36,7 @@ export class EndpointManager {
     private readonly sleep: Sleeper['sleep'];
     private nextIndex = 0;
 
-    constructor(
-        endpoints: readonly Endpoint[],
-        options: EndpointManagerOptions,
-    ) {
+    constructor(endpoints: readonly Endpoint[], options: EndpointManagerOptions) {
         if (endpoints.length === 0) {
             throw new ConfigurationError('EndpointManager requires at least one endpoint.');
         }

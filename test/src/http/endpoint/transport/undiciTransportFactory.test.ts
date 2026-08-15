@@ -97,7 +97,11 @@ describe('UndiciTransportFactory', () => {
             it('does not require the poolConfig to be passed via create()', () => {
                 factory.create(PROXY_URL, makeContext());
 
-                expect(mockResolveConnections).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), POOL_CONFIG);
+                expect(mockResolveConnections).toHaveBeenCalledWith(
+                    expect.any(Number),
+                    expect.any(Number),
+                    POOL_CONFIG,
+                );
             });
 
             it('creates an agent from the proxy URL', () => {

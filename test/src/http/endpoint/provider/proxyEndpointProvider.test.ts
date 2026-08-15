@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { ConfigurationError } from '../../../../../src/error/errors.js';
 import { ProxyEndpointProviderOptions } from '../../../../../src/http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { ProxyUrlParser } from '../../../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
-import { ProxyTransportContext, ProxyTransportFactory } from '../../../../../src/http/transport/factory/proxyTransportFactory.js';
+import {
+    ProxyTransportContext,
+    ProxyTransportFactory,
+} from '../../../../../src/http/transport/factory/proxyTransportFactory.js';
 import { HttpTransport } from '../../../../../src/http/transport/httpTransport.js';
 import * as validation from '../../../../../src/utils/validation.js';
 
@@ -30,8 +33,9 @@ describe('ProxyEndpointProvider', () => {
         ...overrides,
     });
 
-    const makeProvider = (options: ProxyEndpointProviderOptions = makeOptions()): InstanceType<typeof ProxyEndpointProvider> =>
-        new ProxyEndpointProvider(transportFactory, urlParser, options);
+    const makeProvider = (
+        options: ProxyEndpointProviderOptions = makeOptions(),
+    ): InstanceType<typeof ProxyEndpointProvider> => new ProxyEndpointProvider(transportFactory, urlParser, options);
 
     beforeEach(() => {
         jest.clearAllMocks();

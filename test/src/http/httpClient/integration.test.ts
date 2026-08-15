@@ -5,7 +5,9 @@ import { NetworkException, TimeoutException } from '../../../../src/error/errors
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
+import { DefaultLimiterFactory } from '../../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
+import { testLogger } from './helpers.js';
 
 /**
  * Full createHttpClient stack against a real TCP server with the real
@@ -82,11 +84,14 @@ describe('HttpClient full-stack integration', () => {
             {
                 concurrency: 5,
                 acquireTimeout: 5000,
-                rateLimitCapacity: 10,
-                rateLimitWindow: 1000,
-                useRateLimit: false,
             },
             new DirectEndpointProvider(new FetchDirectTransportFactory()),
+            new DefaultLimiterFactory({
+                enabled: false,
+                capacity: 10,
+                windowMs: 1000,
+            }),
+            testLogger,
         );
     });
 

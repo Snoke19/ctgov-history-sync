@@ -16,9 +16,6 @@ export interface QueryParams {
 }
 
 export interface HttpClientOptions {
-    readonly useRateLimit?: boolean;
-    readonly rateLimitCapacity: number;
-    readonly rateLimitWindow: number;
     readonly acquireTimeout: number;
     readonly concurrency: number;
 

@@ -1,8 +1,13 @@
+import pino from 'pino';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import type { HttpClientOptions } from '../../../../src/http/http.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
+import { DefaultLimiterFactory } from '../../../../src/http/limiter/factory/defaultLimiterFactory.js';
+import type { LimiterFactory } from '../../../../src/http/limiter/factory/limiterFactory.js';
 import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
+
+export const testLogger = pino({ level: 'silent' });
 
 export const API_URL = 'http://api.test';
 
@@ -77,9 +82,6 @@ export function createDefaultOptions(overrides: Partial<HttpClientOptions> = {})
     return {
         concurrency: 5,
         acquireTimeout: 5000,
-        rateLimitCapacity: 10,
-        rateLimitWindow: 1000,
-        useRateLimit: false,
 
         sleep: sleeper.sleep.bind(sleeper),
         random: () => 0.5,
@@ -91,11 +93,14 @@ export function createDefaultOptions(overrides: Partial<HttpClientOptions> = {})
     };
 }
 
-export function makeClient(optionsOverrides: Partial<HttpClientOptions> = {}): Promise<HttpClient> {
+export function makeClient(
+    optionsOverrides: Partial<HttpClientOptions> = {},
+    limiterFactory: LimiterFactory = new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+): Promise<HttpClient> {
     const transportFactory = new FetchDirectTransportFactory();
     const provider = new DirectEndpointProvider(transportFactory);
 
-    return createHttpClient(createDefaultOptions(optionsOverrides), provider);
+    return createHttpClient(createDefaultOptions(optionsOverrides), provider, limiterFactory, testLogger);
 }
 
 export async function withClient(

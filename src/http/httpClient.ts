@@ -1,5 +1,5 @@
+import { Logger } from 'pino';
 import { BACKOFF_CAP_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
-import { createLogger } from '../config/logging.js';
 import {
     CallerAbortedError,
     ConfigurationError,
@@ -15,14 +15,11 @@ import { EndpointManager } from './endpoint/manager/endpointManager.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
 import { FetchOperation } from './fetchOperation.js';
 import type { FetchJsonRequestOptions, HttpClientOptions } from './http.js';
-import { DefaultLimiterFactory } from './limiter/factory/defaultLimiterFactory.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { validateFetchJsonRequestOptions } from './requestValidation.js';
 import { parseOkResponseBody } from './responseBody.js';
 import { calculateBackoff, defaultRetryPolicyConfig, RetryPolicyConfig, shouldRetry } from './retryPolicy.js';
 import { HttpResponse } from './transport/httpTransport.js';
-
-const logger = createLogger(import.meta.url);
 
 type HttpErrorLogContext = {
     message: string;
@@ -59,7 +56,8 @@ export interface HttpClient {
 export async function createHttpClient(
     clientOptions: HttpClientOptions,
     provider: EndpointProvider,
-    limiterFactory: LimiterFactory = createDefaultLimiterFactory(clientOptions),
+    limiterFactory: LimiterFactory,
+    logger: Logger,
     retryConfig: RetryPolicyConfig = defaultRetryPolicyConfig,
 ): Promise<HttpClient> {
     // Fail-fast: 404 must NOT be in retryableStatusCodes.
@@ -108,7 +106,6 @@ export async function createHttpClient(
             endpointCount: endpoints.length,
             acquireTimeoutMs: clientOptions.acquireTimeout,
             concurrency: clientOptions.concurrency,
-            rateLimitEnabled: clientOptions.useRateLimit ?? false,
         },
         'HTTP client created',
     );
@@ -249,14 +246,4 @@ export async function createHttpClient(
             options.signal,
         );
     }
-}
-
-function createDefaultLimiterFactory(options: HttpClientOptions): LimiterFactory {
-    return new DefaultLimiterFactory({
-        enabled: options.useRateLimit ?? false,
-        capacity: options.rateLimitCapacity,
-        windowMs: options.rateLimitWindow,
-        clock: options.monotonicClock?.now,
-        sleep: options.sleep,
-    });
 }

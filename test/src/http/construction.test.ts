@@ -10,6 +10,7 @@ import { HttpProxyUrlParser } from '../../../src/http/endpoint/proxy/httpProxyUr
 import { HttpClientOptions } from '../../../src/http/http.js';
 import { createHttpClient } from '../../../src/http/httpClient.js';
 import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
+import { LimiterFactory } from '../../../src/http/limiter/factory/limiterFactory.js';
 import { HttpTransport } from '../../../src/http/transport/httpTransport.js';
 import {
     AgentCreatorFn,
@@ -17,6 +18,7 @@ import {
     PoolCreatorFn,
     UndiciTransportFactory,
 } from '../../../src/http/transport/impl/undiciProxyTransport.js';
+import { testLogger } from './httpClient/helpers.js';
 
 const FAKE_POOL_CONFIG: ProxyPoolConfig = {
     connections: 10,
@@ -56,7 +58,6 @@ function createValidOptions(overrides: Partial<HttpClientOptions> = {}): HttpCli
     return {
         concurrency: 5,
         acquireTimeout: 30000,
-        useRateLimit: false,
         ...overrides,
     } as HttpClientOptions;
 }
@@ -64,21 +65,13 @@ function createValidOptions(overrides: Partial<HttpClientOptions> = {}): HttpCli
 async function createManager(
     options: HttpClientOptions = createValidOptions(),
     proxyUrls: string = DEFAULT_PROXY_URLS,
+    limiterFactory: LimiterFactory = new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
 ): Promise<EndpointManager> {
     const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser(), {
         proxyUrls,
         concurrency: options.concurrency,
     });
-    const factory = new EndpointFactory(
-        provider,
-        new DefaultLimiterFactory({
-            enabled: options.useRateLimit ?? false,
-            capacity: options.rateLimitCapacity,
-            windowMs: options.rateLimitWindow,
-            clock: options.monotonicClock?.now,
-            sleep: options.sleep,
-        }),
-    );
+    const factory = new EndpointFactory(provider, limiterFactory);
 
     const endpoints = await factory.build();
 
@@ -110,7 +103,14 @@ describe('Proxy + Undici construction chain', () => {
             acquireTimeout: 0,
         });
 
-        await expect(createHttpClient(options, provider)).rejects.toBeInstanceOf(ConfigurationError);
+        await expect(
+            createHttpClient(
+                options,
+                provider,
+                new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+                testLogger,
+            ),
+        ).rejects.toBeInstanceOf(ConfigurationError);
 
         expect(transport.close).toHaveBeenCalledTimes(1);
     });
@@ -137,7 +137,14 @@ describe('Proxy + Undici construction chain', () => {
             acquireTimeout: 0,
         });
 
-        await expect(createHttpClient(options, provider)).rejects.toEqual(
+        await expect(
+            createHttpClient(
+                options,
+                provider,
+                new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+                testLogger,
+            ),
+        ).rejects.toEqual(
             expect.objectContaining({
                 name: 'EndpointAssemblyError',
                 cleanupErrors: [cleanupError],
@@ -156,10 +163,12 @@ describe('Proxy + Undici construction chain', () => {
 
     it('builds successfully with rate limiting enabled', async () => {
         const manager = await createManager(
-            createValidOptions({
-                useRateLimit: true,
-                rateLimitCapacity: 40,
-                rateLimitWindow: 60000,
+            createValidOptions(),
+            DEFAULT_PROXY_URLS,
+            new DefaultLimiterFactory({
+                enabled: true,
+                capacity: 40,
+                windowMs: 60000,
             }),
         );
 
@@ -226,28 +235,6 @@ describe('Proxy + Undici construction chain', () => {
     it('throws when concurrency is missing', async () => {
         const options = createValidOptions();
         delete (options as unknown as Record<string, unknown>).concurrency;
-
-        await expect(createManager(options)).rejects.toThrow();
-    });
-
-    it('throws when rate limit is enabled but capacity is missing', async () => {
-        const options = createValidOptions({
-            useRateLimit: true,
-            rateLimitWindow: 60000,
-        });
-
-        delete (options as unknown as Record<string, unknown>).rateLimitCapacity;
-
-        await expect(createManager(options)).rejects.toThrow();
-    });
-
-    it('throws when rate limit is enabled but window is missing', async () => {
-        const options = createValidOptions({
-            useRateLimit: true,
-            rateLimitCapacity: 40,
-        });
-
-        delete (options as unknown as Record<string, unknown>).rateLimitWindow;
 
         await expect(createManager(options)).rejects.toThrow();
     });

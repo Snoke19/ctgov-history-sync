@@ -88,12 +88,19 @@ describe('EndpointManager', () => {
             [0.5, 'non-integer float'],
             [999.9, 'float close to integer'],
         ])('throws for acquireTimeout = %i (%s)', (timeout) => {
-            expect(() => new EndpointManager([makeEndpoint()], { acquireTimeout: timeout, clock, sleep: instantSleep })).toThrow();
+            expect(
+                () => new EndpointManager([makeEndpoint()], { acquireTimeout: timeout, clock, sleep: instantSleep }),
+            ).toThrow();
         });
 
         test('accepts the minimum valid timeout of 1 ms', () => {
-            expect(() =>
-                new EndpointManager([makeEndpoint()], { acquireTimeout: 1, clock: clockSequence(0), sleep: instantSleep }),
+            expect(
+                () =>
+                    new EndpointManager([makeEndpoint()], {
+                        acquireTimeout: 1,
+                        clock: clockSequence(0),
+                        sleep: instantSleep,
+                    }),
             ).not.toThrow();
         });
 

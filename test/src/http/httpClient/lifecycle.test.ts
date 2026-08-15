@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
+import { DefaultLimiterFactory } from '../../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import {
     FetchDirectTransport,
     FetchDirectTransportFactory,
 } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
-import { API_URL, createDefaultOptions, jsonResponse, makeClient } from './helpers.js';
+import { API_URL, createDefaultOptions, jsonResponse, makeClient, testLogger } from './helpers.js';
+
+const defaultLimiterFactory = new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 });
 
 describe('HttpClient endpoint lifecycle & resource management', () => {
     afterEach(() => {
@@ -37,7 +40,7 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
         jest.spyOn(transportFactory, 'create').mockReturnValue(transport);
 
         const provider = new DirectEndpointProvider(transportFactory);
-        const client = await createHttpClient(createDefaultOptions(), provider);
+        const client = await createHttpClient(createDefaultOptions(), provider, defaultLimiterFactory, testLogger);
 
         await client.close();
 
@@ -52,7 +55,7 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
         jest.spyOn(transportFactory, 'create').mockReturnValue(transport);
 
         const provider = new DirectEndpointProvider(transportFactory);
-        const client = await createHttpClient(createDefaultOptions(), provider);
+        const client = await createHttpClient(createDefaultOptions(), provider, defaultLimiterFactory, testLogger);
 
         await client.close();
         await client.close();

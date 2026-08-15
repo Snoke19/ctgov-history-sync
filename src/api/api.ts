@@ -13,6 +13,7 @@ import { ApiResponseValidationError, TrialNotFoundError } from '../error/errors.
 import { ProxyEndpointProvider } from '../http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../http/endpoint/proxy/httpProxyUrlParser.js';
 import { createHttpClient } from '../http/httpClient.js';
+import { DefaultLimiterFactory } from '../http/limiter/factory/defaultLimiterFactory.js';
 import { UndiciTransportFactory } from '../http/transport/impl/undiciProxyTransport.js';
 import { UrlBuilder } from '../http/urlPrepare.js';
 import { validateNctId } from '../utils/validation.js';
@@ -43,9 +44,6 @@ export interface ApiClient {
 export async function createApiClient(): Promise<ApiClient> {
     const httpClient = await createHttpClient(
         {
-            useRateLimit: true,
-            rateLimitCapacity: RATE_LIMIT_CAPACITY,
-            rateLimitWindow: RATE_LIMIT_WINDOW,
             acquireTimeout: ACQUIRE_TIMEOUT,
             concurrency: CONCURRENCY,
         },
@@ -57,6 +55,12 @@ export async function createApiClient(): Promise<ApiClient> {
                 concurrency: CONCURRENCY,
             },
         ),
+        new DefaultLimiterFactory({
+            enabled: true,
+            capacity: RATE_LIMIT_CAPACITY,
+            windowMs: RATE_LIMIT_WINDOW,
+        }),
+        logger,
     );
 
     try {

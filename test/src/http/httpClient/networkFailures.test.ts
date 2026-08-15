@@ -2,6 +2,7 @@ import { getEventListeners } from 'node:events';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { CallerAbortedError, NetworkException, TimeoutException } from '../../../../src/error/errors.js';
 import { HttpClient } from '../../../../src/http/httpClient.js';
+import { DefaultLimiterFactory } from '../../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import { API_URL, createFakes, jsonResponse, makeClient } from './helpers.js';
 
 async function expectRejected<T extends Error>(
@@ -305,15 +306,21 @@ describe('HttpClient network & timeout failures', () => {
 
         const fakes = createFakes();
 
-        const client = await makeClient({
-            useRateLimit: true,
-            rateLimitCapacity: 1,
-            rateLimitWindow: 100,
-            sleep: fakes.sleep,
-            random: fakes.random,
-            monotonicClock: fakes.monotonicClock,
-            wallClock: fakes.wallClock,
-        });
+        const client = await makeClient(
+            {
+                sleep: fakes.sleep,
+                random: fakes.random,
+                monotonicClock: fakes.monotonicClock,
+                wallClock: fakes.wallClock,
+            },
+            new DefaultLimiterFactory({
+                enabled: true,
+                capacity: 1,
+                windowMs: 100,
+                clock: fakes.monotonicClock.now,
+                sleep: fakes.sleep,
+            }),
+        );
 
         await withClosedClient(client, async () => {
             const timeBefore = fakes.monotonicClock.now();
