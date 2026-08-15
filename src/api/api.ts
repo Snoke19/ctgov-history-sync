@@ -44,7 +44,6 @@ export interface ApiClient {
  */
 export async function createApiClient(): Promise<ApiClient> {
     const httpClient = await createHttpClient({
-        clientOptions: {},
         provider: new ProxyEndpointProvider(
             new UndiciTransportFactory({ poolConfig: PROXY_POOL_CONFIG }),
             new HttpProxyUrlParser(),

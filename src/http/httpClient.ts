@@ -8,13 +8,13 @@ import {
     TrialError,
 } from '../error/errors.js';
 import { Retry } from '../retry/retry.js';
-import { defaultRandom, defaultSleeper, defaultWallClock, Sleeper } from './clock.js';
+import { defaultRandom, defaultSleeper, defaultWallClock, RandomSource, Sleeper, WallClock } from './clock.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManager } from './endpoint/manager/endpointManager.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
 import { FetchOperation } from './fetchOperation.js';
-import type { FetchJsonRequestOptions, HttpClientOptions } from './http.js';
+import type { FetchJsonRequestOptions } from './http.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { validateFetchJsonRequestOptions } from './requestValidation.js';
 import { parseOkResponseBody } from './responseBody.js';
@@ -60,8 +60,14 @@ export interface HttpClient {
 }
 
 export interface CreateHttpClientOptions {
-    /** Client-level behavior overrides (clocks, jitter source). */
-    clientOptions: HttpClientOptions;
+    /** Override real sleep (e.g. fake timers in tests). Defaults to setTimeout. */
+    sleep?: Sleeper['sleep'];
+
+    /** Override Math.random (e.g. deterministic backoff in tests). */
+    random?: RandomSource['random'];
+
+    /** Wall-clock source used for HTTP-date calculations such as Retry-After. */
+    wallClock?: WallClock;
 
     /** Supplies the endpoints the client will route requests through. */
     provider: EndpointProvider;
@@ -81,12 +87,14 @@ export interface CreateHttpClientOptions {
 
 export async function createHttpClient(options: CreateHttpClientOptions): Promise<HttpClient> {
     const {
-        clientOptions,
         provider,
         limiterFactory,
         logger,
         endpointManagerFactory,
         retryConfig = defaultRetryPolicyConfig,
+        sleep = defaultSleeper.sleep,
+        random = defaultRandom.random,
+        wallClock = defaultWallClock,
     } = options;
 
     // Fail-fast on invalid retry policy configuration.
@@ -128,18 +136,8 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
     );
 
     async function fetchResponse(url: string, options: FetchJsonRequestOptions): Promise<HttpResponse | null> {
-        const operation = new FetchOperation(
-            endpointManager,
-            url,
-            options,
-            clientOptions.wallClock?.now ?? defaultWallClock.now,
-        );
-        const retry = buildRetry(
-            operation,
-            options,
-            clientOptions.sleep ?? defaultSleeper.sleep,
-            clientOptions.random ?? defaultRandom.random,
-        );
+        const operation = new FetchOperation(endpointManager, url, options, wallClock.now);
+        const retry = buildRetry(operation, options, sleep, random);
 
         logger.debug(
             {

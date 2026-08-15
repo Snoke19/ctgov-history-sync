@@ -194,12 +194,12 @@ import { createHttpClient } from './httpClient.ts';
 
 // Wire up your HTTP infrastructure, e.g. via createApiClient() in src/api/api.ts
 const httpClient = await createHttpClient({
-    clientOptions: {}, // clocks / jitter overrides, all optional
     provider, // EndpointProvider
     limiterFactory, // LimiterFactory
     logger, // pino Logger
     endpointManagerFactory, // EndpointManagerFactory
     retryConfig, // RetryPolicyConfig, optional (defaults to module config)
+    // Optional test overrides: sleep, random, wallClock
 });
 
 const api = createApiClient();

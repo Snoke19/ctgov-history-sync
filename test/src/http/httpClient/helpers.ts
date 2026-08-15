@@ -1,7 +1,7 @@
 import pino from 'pino';
+import { MonotonicClock, RandomSource, Sleeper, WallClock } from '../../../../src/http/clock.js';
 import { DefaultEndpointManagerFactory } from '../../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
-import type { HttpClientOptions } from '../../../../src/http/http.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
 import { DefaultLimiterFactory } from '../../../../src/http/limiter/factory/defaultLimiterFactory.js';
@@ -75,9 +75,13 @@ export function jsonResponse<T>(
     });
 }
 
-export interface TestClientOptions extends HttpClientOptions {
+export interface TestClientOptions {
     readonly concurrency: number;
     readonly acquireTimeout: number;
+    readonly sleep: Sleeper['sleep'];
+    readonly random: RandomSource['random'];
+    readonly monotonicClock: MonotonicClock;
+    readonly wallClock: WallClock;
 }
 
 export function createDefaultOptions(overrides: Partial<TestClientOptions> = {}): TestClientOptions {
@@ -108,13 +112,15 @@ export function makeClient(
     const provider = new DirectEndpointProvider(transportFactory);
 
     return createHttpClient({
-        clientOptions: options,
+        sleep: options.sleep,
+        random: options.random,
+        wallClock: options.wallClock,
         provider,
         limiterFactory,
         logger: testLogger,
         endpointManagerFactory: new DefaultEndpointManagerFactory({
             acquireTimeout: options.acquireTimeout,
-            clock: options.monotonicClock?.now,
+            clock: options.monotonicClock.now,
             sleep: options.sleep,
         }),
     });
@@ -122,7 +128,7 @@ export function makeClient(
 
 export async function withClient(
     run: (client: HttpClient) => Promise<void>,
-    optionsOverrides: Partial<HttpClientOptions> = {},
+    optionsOverrides: Partial<TestClientOptions> = {},
 ): Promise<void> {
     const client = await makeClient(optionsOverrides);
 

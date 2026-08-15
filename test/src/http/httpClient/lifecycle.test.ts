@@ -42,8 +42,11 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
         jest.spyOn(transportFactory, 'create').mockReturnValue(transport);
 
         const provider = new DirectEndpointProvider(transportFactory);
+        const clientOptions = createDefaultOptions();
         const client = await createHttpClient({
-            clientOptions: createDefaultOptions(),
+            sleep: clientOptions.sleep,
+            random: clientOptions.random,
+            wallClock: clientOptions.wallClock,
             provider,
             limiterFactory: defaultLimiterFactory,
             logger: testLogger,
@@ -63,8 +66,11 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
         jest.spyOn(transportFactory, 'create').mockReturnValue(transport);
 
         const provider = new DirectEndpointProvider(transportFactory);
+        const clientOptions = createDefaultOptions();
         const client = await createHttpClient({
-            clientOptions: createDefaultOptions(),
+            sleep: clientOptions.sleep,
+            random: clientOptions.random,
+            wallClock: clientOptions.wallClock,
             provider,
             limiterFactory: defaultLimiterFactory,
             logger: testLogger,

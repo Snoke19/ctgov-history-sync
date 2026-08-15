@@ -1,4 +1,3 @@
-import type { MonotonicClock, RandomSource, Sleeper, WallClock } from './clock.js';
 import { RetryPolicyConfig } from './retryPolicy.js';
 
 export type QueryParamValue = string | number | boolean;
@@ -13,20 +12,6 @@ export type QueryParamInput = QueryParamValue | string[] | null | undefined;
 
 export interface QueryParams {
     readonly [key: string]: QueryParamInput;
-}
-
-export interface HttpClientOptions {
-    /** Override real sleep (e.g. fake timers in tests). Defaults to setTimeout. */
-    sleep?: Sleeper['sleep'];
-
-    /** Override Math.random (e.g. deterministic backoff in tests). */
-    random?: RandomSource['random'];
-
-    /** Wall-clock source used for HTTP-date calculations such as Retry-After. */
-    wallClock?: WallClock;
-
-    /** Monotonic clock used for elapsed-duration calculations. */
-    monotonicClock?: MonotonicClock;
 }
 
 /**

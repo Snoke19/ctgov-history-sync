@@ -18,7 +18,7 @@ import {
     PoolCreatorFn,
     UndiciTransportFactory,
 } from '../../../src/http/transport/impl/undiciProxyTransport.js';
-import { TestClientOptions, testLogger } from './httpClient/helpers.js';
+import { createDefaultOptions, TestClientOptions, testLogger } from './httpClient/helpers.js';
 
 const FAKE_POOL_CONFIG: ProxyPoolConfig = {
     connections: 10,
@@ -56,6 +56,7 @@ const DEFAULT_PROXY_URLS = 'http://user:pass@proxy1:8080,http://proxy2:9090';
 
 function createValidOptions(overrides: Partial<TestClientOptions> = {}): TestClientOptions {
     return {
+        ...createDefaultOptions(),
         concurrency: 5,
         acquireTimeout: 30000,
         ...overrides,
@@ -105,7 +106,9 @@ describe('Proxy + Undici construction chain', () => {
 
         await expect(
             createHttpClient({
-                clientOptions: options,
+                sleep: options.sleep,
+                random: options.random,
+                wallClock: options.wallClock,
                 provider,
                 limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
                 logger: testLogger,
@@ -140,7 +143,9 @@ describe('Proxy + Undici construction chain', () => {
 
         await expect(
             createHttpClient({
-                clientOptions: options,
+                sleep: options.sleep,
+                random: options.random,
+                wallClock: options.wallClock,
                 provider,
                 limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
                 logger: testLogger,
@@ -163,7 +168,6 @@ describe('Proxy + Undici construction chain', () => {
 
         await expect(
             createHttpClient({
-                clientOptions: createValidOptions(),
                 provider,
                 limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
                 logger: testLogger,
@@ -184,7 +188,6 @@ describe('Proxy + Undici construction chain', () => {
 
         await expect(
             createHttpClient({
-                clientOptions: createValidOptions(),
                 provider,
                 limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
                 logger: testLogger,
@@ -205,7 +208,6 @@ describe('Proxy + Undici construction chain', () => {
 
         await expect(
             createHttpClient({
-                clientOptions: createValidOptions(),
                 provider,
                 limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
                 logger: testLogger,

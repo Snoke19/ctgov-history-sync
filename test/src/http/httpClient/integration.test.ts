@@ -82,7 +82,6 @@ describe('HttpClient full-stack integration', () => {
         baseUrl = `http://127.0.0.1:${address.port}`;
 
         client = await createHttpClient({
-            clientOptions: {},
             provider: new DirectEndpointProvider(new FetchDirectTransportFactory()),
             limiterFactory: new DefaultLimiterFactory({
                 enabled: false,
