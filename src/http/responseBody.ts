@@ -62,14 +62,9 @@ function warnOnUnexpectedContentType(response: HttpResponse, url: string): void 
     const contentType = response.headers.get('Content-Type') ?? '';
 
     if (!contentType.includes('application/json')) {
-        logger.warn(
-            { url: safeHttpUrl(url), contentType },
-            'Unexpected HTTP response Content-Type',
-        );
+        logger.warn({ url: safeHttpUrl(url), contentType }, 'Unexpected HTTP response Content-Type');
     }
 }
-
-
 
 function safeHttpUrl(value: string): string {
     try {

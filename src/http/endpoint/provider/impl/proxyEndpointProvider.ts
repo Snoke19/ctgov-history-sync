@@ -28,7 +28,10 @@ export class ProxyEndpointProvider implements EndpointProvider {
             const error = new ConfigurationError('No valid proxy URLs were configured.');
 
             logger.error(
-                { err: error, configuredProxyCount: this.options.proxyUrls ? this.options.proxyUrls.split(',').length : 0 },
+                {
+                    err: error,
+                    configuredProxyCount: this.options.proxyUrls ? this.options.proxyUrls.split(',').length : 0,
+                },
                 'Proxy endpoint configuration failed',
             );
 
@@ -37,10 +40,7 @@ export class ProxyEndpointProvider implements EndpointProvider {
 
         logger.info({ proxyCount: urls.length, concurrency: this.options.concurrency }, 'Proxy endpoints configured');
 
-        logger.debug(
-            { resolvedProxyEndpoints: urls.map(sanitizeProxyUrl) },
-            'Proxy endpoints resolved',
-        );
+        logger.debug({ resolvedProxyEndpoints: urls.map(sanitizeProxyUrl) }, 'Proxy endpoints resolved');
 
         const context: ProxyTransportContext = {
             concurrency: this.options.concurrency,

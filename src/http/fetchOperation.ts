@@ -263,8 +263,6 @@ function sanitizeEndpointUrl(value: string): string {
     }
 }
 
-
-
 function sanitizeHttpUrl(value: string): string {
     try {
         const url = new URL(value);

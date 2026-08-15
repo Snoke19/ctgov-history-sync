@@ -44,10 +44,7 @@ export class UndiciHttpTransport implements HttpTransport {
     async close(): Promise<void> {
         try {
             await this.agent.close();
-            logger.debug(
-                { proxy: this.proxyUrl ? sanitizeProxyUrl(this.proxyUrl) : null },
-                'Proxy transport closed',
-            );
+            logger.debug({ proxy: this.proxyUrl ? sanitizeProxyUrl(this.proxyUrl) : null }, 'Proxy transport closed');
         } catch (error: unknown) {
             logger.error(
                 { proxy: this.proxyUrl ? sanitizeProxyUrl(this.proxyUrl) : null, err: error },
@@ -131,4 +128,3 @@ const createPoolFactory =
             },
         });
     };
-
