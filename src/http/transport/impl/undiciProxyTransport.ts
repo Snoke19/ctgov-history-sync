@@ -1,4 +1,4 @@
-import { fetch, ProxyAgent } from 'undici';
+import { fetch, Pool, ProxyAgent } from 'undici';
 import type { Dispatcher } from 'undici';
 import { ProxyPoolConfig } from '../../../config/config.js';
 import { resolveConnections } from '../../endpoint/proxy/resolveConnections.js';
@@ -12,7 +12,6 @@ import type {
     HttpTransport,
     TransportErrorClassification,
 } from '../httpTransport.js';
-import { createPoolFactory } from '../poolFactory.js';
 
 export type PoolClientFactory = (origin: URL, opts?: Record<string, unknown>) => Dispatcher;
 export type PoolCreatorFn = (config: ProxyPoolConfig) => PoolClientFactory;
@@ -70,3 +69,32 @@ function defaultAgentCreator(uri: string, clientFactory: PoolClientFactory): Pro
         clientFactory: clientFactory as (origin: URL, opts: object) => Dispatcher,
     });
 }
+
+interface PoolFactoryOptions {
+    connections?: number;
+    connect?: {
+        timeout?: number;
+        [key: string]: unknown;
+    };
+
+    [key: string]: unknown;
+}
+
+const createPoolFactory =
+    (poolConfig: ProxyPoolConfig) =>
+    (url: string | URL, opts: PoolFactoryOptions = {}): Pool => {
+        const { connections, connect = {}, ...rest } = opts;
+
+        return new Pool(url, {
+            ...rest,
+            connections: connections ?? poolConfig.connections,
+            pipelining: poolConfig.pipelining,
+            keepAliveTimeout: poolConfig.keepAliveTimeout,
+            headersTimeout: poolConfig.headersTimeout,
+            bodyTimeout: poolConfig.bodyTimeout,
+            connect: {
+                timeout: connect.timeout ?? poolConfig.connectTimeout,
+                ...connect,
+            },
+        });
+    };

@@ -6,15 +6,12 @@ const mockFetch = jest.fn<(url: string, options?: RequestInit) => Promise<Respon
 
 jest.unstable_mockModule('undici', () => ({
     fetch: mockFetch,
+    Pool: class {},
     ProxyAgent: class {},
 }));
 
 jest.unstable_mockModule('../../../../../src/http/endpoint/proxy/resolveConnections.js', () => ({
     resolveConnections: jest.fn(),
-}));
-
-jest.unstable_mockModule('../../../../../src/http/transport/poolFactory.js', () => ({
-    createPoolFactory: jest.fn(),
 }));
 
 const { UndiciHttpTransport } = await import('../../../../../src/http/transport/impl/undiciProxyTransport.js');
