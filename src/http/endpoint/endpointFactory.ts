@@ -1,9 +1,12 @@
+import { createLogger } from '../../config/logging.js';
 import { EndpointAssemblyError, TrialError } from '../../error/errors.js';
 import { LimiterFactory } from '../limiter/factory/limiterFactory.js';
 import type { Limiter } from '../limiter/limiter.js';
 import type { HttpTransport } from '../transport/httpTransport.js';
 import { Endpoint } from './endpoint.js';
 import type { EndpointDefinition, EndpointProvider } from './provider/endpointProvider.js';
+
+const logger = createLogger(import.meta.url);
 
 const defaultEndpointCtor: EndpointCtor = (id, limiter, transport) => new Endpoint(id, limiter, transport);
 
@@ -32,13 +35,21 @@ export class EndpointFactory {
             const createLimiter = (): Limiter => this.limiterFactory.create();
             const definitions = this.provider.build();
 
-            return await assembleEndpoints({
+            const endpoints = await assembleEndpoints({
                 definitions,
                 createLimiter,
                 createEndpoint: defaultEndpointCtor,
             });
+
+            logger.info({ endpointCount: endpoints.length }, 'Endpoints assembled');
+
+            return endpoints;
         } catch (error: unknown) {
-            throw TrialError.normalize(error);
+            const trialError = TrialError.normalize(error);
+
+            logger.error({ errorType: trialError.name, errorMessage: trialError.message }, 'Endpoint assembly failed');
+
+            throw trialError;
         }
     }
 }
@@ -51,6 +62,8 @@ async function assembleEndpoints(param: EndpointAssemblyOptions): Promise<Endpoi
         for (const definition of definitions) {
             const endpoint = await constructEndpoint(definition, createLimiter, createEndpoint);
             endpoints.push(endpoint);
+
+            logger.debug({ endpointId: definition.id }, 'Endpoint constructed');
         }
 
         return endpoints;
@@ -72,6 +85,11 @@ async function constructEndpoint(
 
         return createEndpoint(definition.id, createLimiter(), transport);
     } catch (error: unknown) {
+        logger.error(
+            { endpointId: definition.id, errorType: describeErrorType(error), errorMessage: describeError(error) },
+            'Endpoint construction failed',
+        );
+
         if (transport !== undefined) {
             await closeFailedEndpointTransport({
                 transport,
@@ -82,6 +100,18 @@ async function constructEndpoint(
 
         throw error;
     }
+}
+
+function describeError(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+
+    return String(error);
+}
+
+function describeErrorType(error: unknown): string {
+    return error instanceof Error ? error.name : typeof error;
 }
 
 async function closeFailedEndpointTransport(param: FailedEndpointCleanup): Promise<never> {
@@ -113,6 +143,11 @@ async function rollbackEndpoints(endpoints: readonly Endpoint[], assemblyError: 
     if (cleanupErrors.length === 0) {
         return;
     }
+
+    logger.error(
+        { endpointCount: endpoints.length, cleanupErrorCount: cleanupErrors.length },
+        'Endpoint rollback cleanup failed',
+    );
 
     throw new EndpointAssemblyError(
         'Endpoint assembly failed and rollback cleanup also failed.',

@@ -1,11 +1,14 @@
 import { fetch, Pool, ProxyAgent } from 'undici';
 import type { Dispatcher } from 'undici';
 import { ProxyPoolConfig } from '../../../config/config.js';
+import { createLogger } from '../../../config/logging.js';
 import { resolveConnections } from '../../endpoint/proxy/resolveConnections.js';
 import { adaptHttpResponse } from '../adaptHttpResponse.js';
 import { classifyTransportError } from '../classifyTransportError.js';
 import { ProxyTransportContext, ProxyTransportFactory } from '../factory/proxyTransportFactory.js';
 import type { HttpRequest, HttpResponse, HttpTransport, TransportErrorClassification } from '../httpTransport.js';
+
+const logger = createLogger(import.meta.url);
 
 export type PoolClientFactory = (origin: URL, opts?: Record<string, unknown>) => Dispatcher;
 export type PoolCreatorFn = (config: ProxyPoolConfig) => PoolClientFactory;
@@ -59,7 +62,22 @@ export class UndiciTransportFactory implements ProxyTransportFactory {
 
         const agent = agentCreator(proxyUrl, clientFactory);
 
+        logger.debug(
+            { proxyUrl: sanitizeProxyUrl(proxyUrl), connections, proxyCount: context.proxyCount },
+            'Proxy transport created',
+        );
+
         return new UndiciHttpTransport(agent);
+    }
+}
+
+function sanitizeProxyUrl(value: string): string {
+    try {
+        const url = new URL(value);
+
+        return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}`;
+    } catch {
+        return '<invalid proxy URL>';
     }
 }
 

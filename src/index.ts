@@ -109,9 +109,15 @@ process.on('SIGINT', () => {
 });
 
 async function main(): Promise<void> {
+    const startedAt = Date.now();
+
     const initialToken = resumePageToken;
 
     const firstPageStartedAt = Date.now();
+
+    let totalStudies = 0;
+    let totalSaved = 0;
+    let totalFailed = 0;
 
     const firstPage = await api.fetchStudiesPage({
         pageSize: PAGE_SIZE,
@@ -157,6 +163,10 @@ async function main(): Promise<void> {
 
         const validDetails = details.filter(<T>(detail: T): detail is NonNullable<T> => detail !== null);
 
+        totalStudies += nctIds.length;
+        totalSaved += validDetails.length;
+        totalFailed += nctIds.length - validDetails.length;
+
         logger.info(
             {
                 page: pageNum,
@@ -191,7 +201,25 @@ async function main(): Promise<void> {
     // eslint-disable-next-line require-atomic-updates -- checkpoint written once at function end
     resumePageToken = nextToken;
 
-    logger.info({ page: pageNum, nextPageToken: nextToken ?? null }, 'Scrape completed, checkpoint saved');
+    logger.info(
+        {
+            page: pageNum,
+            nextPageToken: nextToken ?? null,
+        },
+        'Checkpoint saved',
+    );
+
+    logger.info(
+        {
+            totalPages: pageNum,
+            totalStudies,
+            totalSaved,
+            totalFailed,
+            successRatePct: totalStudies > 0 ? Math.round((totalSaved / totalStudies) * 1000) / 10 : null,
+            totalDurationMs: Date.now() - startedAt,
+        },
+        'Scrape completed',
+    );
 }
 
 async function run(): Promise<void> {

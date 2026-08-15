@@ -121,7 +121,11 @@ export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiCli
     }
 
     async function close(): Promise<void> {
+        logger.debug('API client closing');
+
         await httpClient.close();
+
+        logger.debug('API client closed');
     }
 
     return {

@@ -1,7 +1,10 @@
+import { createLogger } from '../../../config/logging.js';
 import { TokenBucketTimeoutError } from '../../../error/errors.js';
 import { assertPositiveInt } from '../../../utils/validation.js';
 import { defaultMonotonicClock, defaultSleeper, MonotonicClock, Sleeper } from '../../clock.js';
 import { Limiter } from '../limiter.js';
+
+const logger = createLogger(import.meta.url);
 
 // Tolerance used to compensate for IEEE-754 floating-point rounding errors
 // when comparing or converting token bucket credit.
@@ -221,6 +224,11 @@ export class TokenBucket extends Limiter {
             const remaining = acquisitionDeadline - this.clock();
 
             if (remaining <= 0) {
+                logger.warn(
+                    { timeoutMs, capacity: this.capacity, windowMs: this.windowMs },
+                    'Token bucket acquisition timed out',
+                );
+
                 throw new TokenBucketTimeoutError(timeoutMs);
             }
 

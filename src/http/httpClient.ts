@@ -217,7 +217,11 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
     }
 
     async function close(): Promise<void> {
+        logger.debug('HTTP client closing');
+
         await endpointManager.close();
+
+        logger.debug('HTTP client closed');
     }
 
     return { fetchJson, close };
