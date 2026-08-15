@@ -29,6 +29,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         private readonly url: string,
         private readonly options: FetchJsonRequestOptions,
         private readonly now: WallClock['now'] = defaultWallClock.now,
+        private readonly requestId?: string,
     ) {
         this.requestStartedAt = Date.now();
     }
@@ -94,7 +95,8 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
         logger.debug(
             {
-                url: this.url,
+                requestId: this.requestId ?? null,
+                url: sanitizeHttpUrl(this.url),
                 endpoint: sanitizeEndpointUrl(endpoint.url),
                 timeoutMs: this.options.timeoutMs ?? FETCH_TIMEOUT_MS,
             },
@@ -130,7 +132,8 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
         logger.debug(
             {
-                url: this.url,
+                requestId: this.requestId ?? null,
+                url: sanitizeHttpUrl(this.url),
                 status: response.status,
                 statusText: response.statusText,
                 durationMs: this.requestDurationMs(),
@@ -145,7 +148,8 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
             logger.debug(
                 {
-                    url: this.url,
+                    requestId: this.requestId ?? null,
+                    url: sanitizeHttpUrl(this.url),
                     status: response.status,
                     statusText: response.statusText,
                     retryAfterMs: retryAfter ?? null,
@@ -256,5 +260,16 @@ function sanitizeEndpointUrl(value: string): string {
         return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}`;
     } catch {
         return '<invalid endpoint URL>';
+    }
+}
+
+
+
+function sanitizeHttpUrl(value: string): string {
+    try {
+        const url = new URL(value);
+        return `${url.protocol}//${url.host}${url.pathname}`;
+    } catch {
+        return '<invalid URL>';
     }
 }

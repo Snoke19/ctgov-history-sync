@@ -21,7 +21,9 @@ export class FetchDirectTransport implements HttpTransport {
         return classifyTransportError(error);
     }
 
-    async close(): Promise<void> {}
+    async close(): Promise<void> {
+        logger.debug('Direct transport closed');
+    }
 }
 
 export class FetchDirectTransportFactory implements DirectTransportFactory {

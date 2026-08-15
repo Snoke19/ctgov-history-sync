@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Logger } from 'pino';
 import { BACKOFF_CAP_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
 import {
@@ -40,7 +41,7 @@ function createHttpErrorLogContext(error: Error, url: string): HttpErrorLogConte
         message: error.message,
         err: error,
         errorType: error.name,
-        url,
+        url: sanitizeHttpUrl(url),
         method: 'GET',
     };
 }
@@ -136,12 +137,15 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
     );
 
     async function fetchResponse(url: string, options: FetchJsonRequestOptions): Promise<HttpResponse | null> {
-        const operation = new FetchOperation(endpointManager, url, options, wallClock.now);
-        const retry = buildRetry(operation, options, sleep, random);
+        const requestId = options.requestId ?? randomUUID();
+        const operation = new FetchOperation(endpointManager, url, options, wallClock.now, requestId);
+        const retry = buildRetry(operation, options, sleep, random, requestId);
 
         logger.debug(
             {
-                url,
+                requestId,
+                operation: 'http.fetchJson',
+                url: sanitizeHttpUrl(url),
                 method: 'GET',
                 allow404: options.allow404 ?? false,
                 timeoutMs: options.timeoutMs ?? FETCH_TIMEOUT_MS,
@@ -157,7 +161,9 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
 
             logger.debug(
                 {
-                    url,
+                    requestId,
+                    operation: 'http.fetchJson',
+                    url: sanitizeHttpUrl(url),
                     method: 'GET',
                     status: response.status,
                     durationMs: Date.now() - requestStartedAt,
@@ -182,8 +188,6 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
                 return null;
             }
 
-            logger.error(createHttpErrorLogContext(trialError, url), 'HTTP request failed');
-
             throw trialError;
         }
     }
@@ -191,7 +195,11 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
     async function fetchJson<T = unknown>(url: string, options: FetchJsonRequestOptions = {}): Promise<T | null> {
         validateFetchJsonRequestOptions(options);
 
-        const response = await fetchResponse(url, options);
+        const effectiveOptions: FetchJsonRequestOptions = options.requestId
+            ? options
+            : { ...options, requestId: randomUUID() };
+
+        const response = await fetchResponse(url, effectiveOptions);
 
         // fetchResponse returns null ONLY for allow404 + 404.
         // 204 No Content is handled inside parseOkResponseBody, not here.
@@ -204,24 +212,40 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
         try {
             const parsed = parseOkResponseBody(response, url) as T;
 
-            logger.debug({ url, durationMs: Date.now() - parseStartedAt }, 'HTTP response body parsed');
+            logger.debug(
+                {
+                    requestId: effectiveOptions.requestId ?? null,
+                    url: sanitizeHttpUrl(url),
+                    durationMs: Date.now() - parseStartedAt,
+                },
+                'HTTP response body parsed',
+            );
 
             return parsed;
         } catch (error) {
             const trialError = TrialError.normalize(error);
 
-            logger.error(createHttpErrorLogContext(trialError, url), 'Failed to parse HTTP response body');
+            logger.error(
+                { ...createHttpErrorLogContext(trialError, url), err: trialError },
+                'Failed to parse HTTP response body',
+            );
 
             throw trialError;
         }
     }
 
     async function close(): Promise<void> {
-        logger.debug('HTTP client closing');
+        logger.info('Closing HTTP client');
 
-        await endpointManager.close();
+        try {
+            await endpointManager.close();
+        } catch (error: unknown) {
+            const trialError = TrialError.normalize(error);
+            logger.error({ err: trialError, operation: 'httpClient.close' }, 'Failed to close HTTP client');
+            throw trialError;
+        }
 
-        logger.debug('HTTP client closed');
+        logger.info('HTTP client closed');
     }
 
     return { fetchJson, close };
@@ -231,6 +255,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
         options: FetchJsonRequestOptions,
         sleep: Sleeper['sleep'],
         random: () => number,
+        requestId: string,
     ): Retry<HttpResponse> {
         const effectiveConfig = {
             retryOnTimeout: options.retryPolicy?.retryOnTimeout ?? retryConfig.retryOnTimeout,
@@ -257,6 +282,19 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
             },
             sleep,
             options.signal,
+            {
+                operation: 'http.fetchJson',
+                requestId,
+            },
         );
+    }
+}
+
+function sanitizeHttpUrl(value: string): string {
+    try {
+        const url = new URL(value);
+        return `${url.protocol}//${url.host}${url.pathname}`;
+    } catch {
+        return '<invalid URL>';
     }
 }

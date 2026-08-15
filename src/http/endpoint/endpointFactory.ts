@@ -31,6 +31,8 @@ export class EndpointFactory {
     ) {}
 
     async build(): Promise<Endpoint[]> {
+        logger.info('Starting endpoint assembly');
+
         try {
             const createLimiter = (): Limiter => this.limiterFactory.create();
             const definitions = this.provider.build();
@@ -47,7 +49,7 @@ export class EndpointFactory {
         } catch (error: unknown) {
             const trialError = TrialError.normalize(error);
 
-            logger.error({ errorType: trialError.name, errorMessage: trialError.message }, 'Endpoint assembly failed');
+            logger.error({ err: trialError, errorType: trialError.name }, 'Endpoint assembly failed');
 
             throw trialError;
         }
@@ -86,7 +88,7 @@ async function constructEndpoint(
         return createEndpoint(definition.id, createLimiter(), transport);
     } catch (error: unknown) {
         logger.error(
-            { endpointId: definition.id, errorType: describeErrorType(error), errorMessage: describeError(error) },
+            { endpointId: definition.id, err: error, errorType: describeErrorType(error) },
             'Endpoint construction failed',
         );
 
@@ -100,14 +102,6 @@ async function constructEndpoint(
 
         throw error;
     }
-}
-
-function describeError(error: unknown): string {
-    if (error instanceof Error) {
-        return error.message;
-    }
-
-    return String(error);
 }
 
 function describeErrorType(error: unknown): string {
@@ -145,7 +139,11 @@ async function rollbackEndpoints(endpoints: readonly Endpoint[], assemblyError: 
     }
 
     logger.error(
-        { endpointCount: endpoints.length, cleanupErrorCount: cleanupErrors.length },
+        {
+            endpointCount: endpoints.length,
+            cleanupErrorCount: cleanupErrors.length,
+            err: cleanupErrors[0],
+        },
         'Endpoint rollback cleanup failed',
     );
 

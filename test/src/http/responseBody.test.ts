@@ -3,10 +3,12 @@ import { ApiResponseValidationError } from '../../../src/error/errors.js';
 import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
 
 const warnMock = jest.fn();
+const debugMock = jest.fn();
 
 jest.unstable_mockModule('../../../src/config/logging.js', () => ({
     createLogger: () => ({
         warn: warnMock,
+        debug: debugMock,
     }),
 }));
 
@@ -61,6 +63,7 @@ describe('drainBody', () => {
         const response = makeResponse({
             discard: jest.fn<() => Promise<void>>().mockRejectedValue(new Error('connection reset')),
         });
+
         await expect(drainBody(response)).resolves.toBeUndefined();
     });
 });
@@ -127,7 +130,10 @@ describe('parseOkResponseBody', () => {
             nctId: 'NCT00000001',
         });
         expect(warnMock).toHaveBeenCalledTimes(1);
-        expect(warnMock).toHaveBeenCalledWith('Unexpected Content-Type "%s" for %s', 'text/html', 'https://api.test');
+        expect(warnMock).toHaveBeenCalledWith(
+            { contentType: 'text/html', url: 'https://api.test/' },
+            'Unexpected HTTP response Content-Type',
+        );
     });
 
     it('warns when the Content-Type header is missing entirely', async () => {
@@ -139,7 +145,10 @@ describe('parseOkResponseBody', () => {
         await parseOkResponseBody(response, 'https://api.test');
 
         expect(warnMock).toHaveBeenCalledTimes(1);
-        expect(warnMock).toHaveBeenCalledWith('Unexpected Content-Type "%s" for %s', '', 'https://api.test');
+        expect(warnMock).toHaveBeenCalledWith(
+            { contentType: '', url: 'https://api.test/' },
+            'Unexpected HTTP response Content-Type',
+        );
     });
 
     it('does not warn for an application/json Content-Type', async () => {

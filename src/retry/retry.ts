@@ -6,6 +6,11 @@ import { BusinessOperation } from './businessOperation.js';
 
 const logger = createLogger(import.meta.url);
 
+export interface RetryLogContext {
+    readonly operation?: string;
+    readonly requestId?: string;
+}
+
 export class Retry<T> implements BusinessOperation<T> {
     private readonly op: BusinessOperation<T>;
     private readonly maxRetries: number;
@@ -13,6 +18,7 @@ export class Retry<T> implements BusinessOperation<T> {
     private readonly delayMs: number | ((attempt: number, error: TrialError) => number);
     private readonly sleep: Sleeper['sleep'];
     private readonly signal: AbortSignal | undefined;
+    private readonly logContext: RetryLogContext;
 
     /**
      * @param op          The operation to execute, retried on failure.
@@ -33,6 +39,7 @@ export class Retry<T> implements BusinessOperation<T> {
         delayMs: number | ((attempt: number, error: TrialError) => number),
         sleep: Sleeper['sleep'] = defaultSleeper.sleep,
         signal?: AbortSignal,
+        logContext: RetryLogContext = {},
     ) {
         if (!Number.isInteger(maxRetries) || maxRetries < 0) {
             throw new TypeError('maxRetries must be a non-negative integer');
@@ -44,14 +51,30 @@ export class Retry<T> implements BusinessOperation<T> {
         this.delayMs = delayMs;
         this.sleep = sleep;
         this.signal = signal;
+        this.logContext = logContext;
     }
 
     async perform(): Promise<T> {
         let retryCount = 0;
+        const startedAt = Date.now();
 
         while (true) {
             try {
-                return await this.op.perform();
+                const result = await this.op.perform();
+
+                if (retryCount > 0) {
+                    logger.info(
+                        {
+                            ...this.logContext,
+                            attempts: retryCount + 1,
+                            retries: retryCount,
+                            durationMs: Date.now() - startedAt,
+                        },
+                        'Operation recovered after retry',
+                    );
+                }
+
+                return result;
             } catch (error: unknown) {
                 const trialError = TrialError.normalize(error);
 
@@ -62,8 +85,9 @@ export class Retry<T> implements BusinessOperation<T> {
                 if (!this.shouldRetry(trialError)) {
                     logger.debug(
                         {
+                            ...this.logContext,
+                            err: trialError,
                             errorType: trialError.name,
-                            errorMessage: trialError.message,
                         },
                         'Operation failed; error is not retryable',
                     );
@@ -74,10 +98,12 @@ export class Retry<T> implements BusinessOperation<T> {
                 if (retryCount >= this.maxRetries) {
                     logger.warn(
                         {
+                            ...this.logContext,
                             attempts: retryCount + 1,
                             maxRetries: this.maxRetries,
+                            err: trialError,
                             errorType: trialError.name,
-                            errorMessage: trialError.message,
+                            durationMs: Date.now() - startedAt,
                         },
                         'Operation failed; retries exhausted',
                     );
@@ -91,11 +117,12 @@ export class Retry<T> implements BusinessOperation<T> {
 
                 logger.warn(
                     {
+                        ...this.logContext,
                         attempt: retryCount,
                         maxRetries: this.maxRetries,
                         delayMs: Math.max(0, delay),
+                        err: trialError,
                         errorType: trialError.name,
-                        errorMessage: trialError.message,
                     },
                     'Operation failed; retrying',
                 );

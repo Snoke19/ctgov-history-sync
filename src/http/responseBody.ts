@@ -18,7 +18,8 @@ export async function drainBody(response: HttpResponse): Promise<void> {
 
     try {
         await response.discard();
-    } catch {
+    } catch (error: unknown) {
+        logger.debug({ err: error, status: response.status }, 'Failed to drain HTTP response body');
         // Response was already closed or failed while draining.
     }
 }
@@ -61,6 +62,20 @@ function warnOnUnexpectedContentType(response: HttpResponse, url: string): void 
     const contentType = response.headers.get('Content-Type') ?? '';
 
     if (!contentType.includes('application/json')) {
-        logger.warn('Unexpected Content-Type "%s" for %s', contentType, url);
+        logger.warn(
+            { url: safeHttpUrl(url), contentType },
+            'Unexpected HTTP response Content-Type',
+        );
+    }
+}
+
+
+
+function safeHttpUrl(value: string): string {
+    try {
+        const url = new URL(value);
+        return `${url.protocol}//${url.host}${url.pathname}`;
+    } catch {
+        return '<invalid URL>';
     }
 }

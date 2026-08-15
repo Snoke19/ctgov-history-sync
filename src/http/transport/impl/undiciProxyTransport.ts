@@ -21,7 +21,10 @@ export interface UndiciTransportFactoryOptions {
 }
 
 export class UndiciHttpTransport implements HttpTransport {
-    constructor(private readonly agent: ProxyAgent) {}
+    constructor(
+        private readonly agent: ProxyAgent,
+        private readonly proxyUrl?: string,
+    ) {}
 
     async request(options: HttpRequest): Promise<HttpResponse> {
         const response = await fetch(options.url, {
@@ -38,8 +41,20 @@ export class UndiciHttpTransport implements HttpTransport {
         return classifyTransportError(error);
     }
 
-    close(): Promise<void> {
-        return this.agent.close();
+    async close(): Promise<void> {
+        try {
+            await this.agent.close();
+            logger.debug(
+                { proxy: this.proxyUrl ? sanitizeProxyUrl(this.proxyUrl) : null },
+                'Proxy transport closed',
+            );
+        } catch (error: unknown) {
+            logger.error(
+                { proxy: this.proxyUrl ? sanitizeProxyUrl(this.proxyUrl) : null, err: error },
+                'Failed to close proxy transport',
+            );
+            throw error;
+        }
     }
 }
 
@@ -67,7 +82,7 @@ export class UndiciTransportFactory implements ProxyTransportFactory {
             'Proxy transport created',
         );
 
-        return new UndiciHttpTransport(agent);
+        return new UndiciHttpTransport(agent, proxyUrl);
     }
 }
 
@@ -116,3 +131,4 @@ const createPoolFactory =
             },
         });
     };
+

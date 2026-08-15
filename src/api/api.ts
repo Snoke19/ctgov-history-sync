@@ -9,7 +9,7 @@ import {
     RATE_LIMIT_WINDOW,
 } from '../config/config.js';
 import { createLogger } from '../config/logging.js';
-import { ApiResponseValidationError, TrialNotFoundError } from '../error/errors.js';
+import { ApiResponseValidationError, TrialError, TrialNotFoundError } from '../error/errors.js';
 import { DefaultEndpointManagerFactory } from '../http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { ProxyEndpointProvider } from '../http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../http/endpoint/proxy/httpProxyUrlParser.js';
@@ -42,34 +42,76 @@ export interface ApiClient {
  * The HTTP client, proxy endpoint provider, transport factory, rate limiter,
  * and connection-pool configuration are intentionally hidden from callers.
  */
-export async function createApiClient(): Promise<ApiClient> {
-    const httpClient = await createHttpClient({
-        provider: new ProxyEndpointProvider(
-            new UndiciTransportFactory({ poolConfig: PROXY_POOL_CONFIG }),
-            new HttpProxyUrlParser(),
-            {
-                proxyUrls: PROXY_URLS,
-                concurrency: CONCURRENCY,
-            },
-        ),
-        limiterFactory: new DefaultLimiterFactory({
-            enabled: true,
-            capacity: RATE_LIMIT_CAPACITY,
-            windowMs: RATE_LIMIT_WINDOW,
-        }),
-        logger,
-        endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: ACQUIRE_TIMEOUT }),
-    });
+export interface CreateApiClientOptions {
+    readonly correlationId?: string;
+}
+
+export async function createApiClient(options: CreateApiClientOptions = {}): Promise<ApiClient> {
+    const clientLogger = options.correlationId ? logger.child({ correlationId: options.correlationId }) : logger;
+
+    clientLogger.info(
+        {
+            nodeEnv: process.env.NODE_ENV ?? null,
+            apiBaseUrl: safeApiUrl(API_BASE_URL),
+            apiDetailUrl: safeApiUrl(API_DETAIL_URL),
+            concurrency: CONCURRENCY,
+            rateLimitCapacity: RATE_LIMIT_CAPACITY,
+            rateLimitWindowMs: RATE_LIMIT_WINDOW,
+            acquireTimeoutMs: ACQUIRE_TIMEOUT,
+        },
+        'API configuration loaded',
+    );
+
+    let httpClient: ApiHttpClient | undefined;
 
     try {
+        httpClient = await createHttpClient({
+            provider: new ProxyEndpointProvider(
+                new UndiciTransportFactory({ poolConfig: PROXY_POOL_CONFIG }),
+                new HttpProxyUrlParser(),
+                {
+                    proxyUrls: PROXY_URLS,
+                    concurrency: CONCURRENCY,
+                },
+            ),
+            limiterFactory: new DefaultLimiterFactory({
+                enabled: true,
+                capacity: RATE_LIMIT_CAPACITY,
+                windowMs: RATE_LIMIT_WINDOW,
+            }),
+            logger: clientLogger,
+            endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: ACQUIRE_TIMEOUT }),
+        });
+
         const apiClient = createApiClientWithHttpClient(httpClient);
 
-        logger.info({ apiBaseUrl: API_BASE_URL, apiDetailUrl: API_DETAIL_URL }, 'API client created');
+        clientLogger.info(
+            { apiBaseUrl: safeApiUrl(API_BASE_URL), apiDetailUrl: safeApiUrl(API_DETAIL_URL) },
+            'API client created',
+        );
 
         return apiClient;
-    } catch (error) {
-        await httpClient.close();
-        throw error;
+    } catch (error: unknown) {
+        const trialError = TrialError.normalize(error);
+
+        clientLogger.error(
+            { err: trialError, operation: 'createApiClient', errorType: trialError.name },
+            'Failed to initialize API client',
+        );
+
+        if (httpClient !== undefined) {
+            try {
+                await httpClient.close();
+            } catch (cleanupError: unknown) {
+                const cleanupTrialError = TrialError.normalize(cleanupError);
+                clientLogger.error(
+                    { err: cleanupTrialError, operation: 'createApiClient.cleanup', errorType: cleanupTrialError.name },
+                    'Failed to clean up HTTP client after initialization failure',
+                );
+            }
+        }
+
+        throw trialError;
     }
 }
 
@@ -84,7 +126,12 @@ export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiCli
         const url = new UrlBuilder(API_BASE_URL).queryParams(params).build();
 
         logger.debug(
-            { url, pageSize: params.pageSize ?? null, pageToken: params.pageToken ?? null },
+            {
+                operation: 'fetchStudiesPage',
+                url: safeApiUrl(url),
+                pageSize: params.pageSize ?? null,
+                hasPageToken: Boolean(params.pageToken),
+            },
             'Fetching studies page',
         );
 
@@ -93,7 +140,12 @@ export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiCli
         const page = parseStudiesPageResponse(data, url);
 
         logger.debug(
-            { url, studyCount: page.studies.length, nextPageToken: page.nextPageToken ?? null },
+            {
+                operation: 'fetchStudiesPage',
+                url: safeApiUrl(url),
+                studyCount: page.studies.length,
+                hasNextPageToken: Boolean(page.nextPageToken),
+            },
             'Studies page fetched',
         );
 
@@ -105,17 +157,20 @@ export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiCli
 
         const url = new UrlBuilder(API_DETAIL_URL).path(normalizedNctId).queryParams(params).build();
 
-        logger.debug({ nctId: normalizedNctId, url }, 'Fetching trial detail');
+        logger.debug(
+            { operation: 'fetchTrialDetail', nctId: normalizedNctId, url: safeApiUrl(url) },
+            'Fetching trial detail',
+        );
 
         const data = await httpClient.fetchJson(url, { allow404: true });
 
         if (data === null) {
-            logger.debug({ nctId: normalizedNctId }, 'Trial not found (404)');
+            logger.debug({ operation: 'fetchTrialDetail', nctId: normalizedNctId }, 'Trial not found (404)');
 
             throw new TrialNotFoundError(normalizedNctId);
         }
 
-        logger.debug({ nctId: normalizedNctId }, 'Trial detail fetched');
+        logger.debug({ operation: 'fetchTrialDetail', nctId: normalizedNctId }, 'Trial detail fetched');
 
         return data;
     }
@@ -191,4 +246,13 @@ function isStudy(value: unknown): value is Study {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object';
+}
+
+function safeApiUrl(value: string): string {
+    try {
+        const url = new URL(value);
+        return `${url.protocol}//${url.host}${url.pathname}`;
+    } catch {
+        return '<invalid URL>';
+    }
 }

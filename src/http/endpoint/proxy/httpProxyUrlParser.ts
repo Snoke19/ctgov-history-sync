@@ -26,13 +26,19 @@ export class HttpProxyUrlParser implements ProxyUrlParser {
                 const validOrigin = parsed.pathname === '/' && !parsed.search && !parsed.hash;
 
                 if (!validProtocol || !validHost || !validPort || !validOrigin) {
-                    logger.warn('[Proxy] Skipping invalid proxy URL: "%s"', sanitizeProxyUrl(url));
+                    logger.warn(
+                        { proxy: sanitizeProxyUrl(url), reason: 'invalid-proxy-url' },
+                        'Skipping invalid proxy URL',
+                    );
                     continue;
                 }
 
                 urls.push(url);
             } catch {
-                logger.warn('[Proxy] Skipping invalid proxy URL: "%s"', sanitizeProxyUrl(url));
+                logger.warn(
+                    { proxy: sanitizeProxyUrl(url), reason: 'unparseable-proxy-url' },
+                    'Skipping invalid proxy URL',
+                );
             }
         }
 

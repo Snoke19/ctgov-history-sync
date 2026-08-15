@@ -1,16 +1,20 @@
+import { randomUUID } from 'node:crypto';
 import { createLogger } from '../src/config/logging.js';
 import { createApiClient } from './api/api.js';
 import { Study } from './api/types.js';
 import { CONCURRENCY, PAGE_SIZE } from './config/config.js';
 import { HttpException, NetworkException, TimeoutException, TrialError, TrialNotFoundError } from './error/errors.js';
 
-const logger = createLogger(import.meta.url);
+const correlationId = randomUUID();
+const logger = createLogger(import.meta.url).child({ correlationId, operation: 'scrape' });
 
 const DATE_RANGE = 'AREA[StartDate]RANGE[07/17/2026, 07/18/2026]';
 
 logger.info({ dateRange: DATE_RANGE, pageSize: PAGE_SIZE, concurrency: CONCURRENCY }, 'Scraper starting');
 
-const api = await createApiClient();
+const api = await createApiClient({ correlationId });
+
+logger.info('Scraper API client initialized');
 
 let resumePageToken: string | undefined = '';
 let pageNum = 1;
@@ -36,7 +40,7 @@ async function withConcurrency<T, R>(
             try {
                 results[i] = await fn(item);
             } catch (err: unknown) {
-                logger.warn({ item: String(item), err }, 'Error processing item');
+                logger.warn({ item: String(item), err }, 'Concurrent item processing recovered with null result');
 
                 results[i] = null;
             }
@@ -102,10 +106,10 @@ function getErrorMessage(error: unknown): string {
 }
 
 process.on('SIGINT', () => {
-    logger.info('Interrupted, saving checkpoint…');
+    logger.warn('Interrupt signal received; terminating scraper');
 
     // eslint-disable-next-line n/no-process-exit -- intentional immediate termination on Ctrl-C
-    process.exit(0);
+    process.exit(130);
 });
 
 async function main(): Promise<void> {
@@ -130,6 +134,7 @@ async function main(): Promise<void> {
         {
             page: 1,
             studyCount: firstPage.studies.length,
+            hasNextPageToken: Boolean(firstPage.nextPageToken),
             durationMs: Date.now() - firstPageStartedAt,
         },
         'First page fetched',
@@ -150,7 +155,7 @@ async function main(): Promise<void> {
             {
                 page: pageNum,
                 studyCount: currentStudies.length,
-                pageToken: nextToken ?? null,
+                hasPageToken: Boolean(nextToken),
             },
             'Processing page',
         );
@@ -204,9 +209,9 @@ async function main(): Promise<void> {
     logger.info(
         {
             page: pageNum,
-            nextPageToken: nextToken ?? null,
+            hasNextPageToken: Boolean(nextToken),
         },
-        'Checkpoint saved',
+        'Checkpoint state updated',
     );
 
     logger.info(
@@ -234,7 +239,16 @@ async function run(): Promise<void> {
 
         process.exitCode = 1;
     } finally {
-        await api.close();
+        logger.info('Scraper shutting down');
+
+        try {
+            await api.close();
+            logger.info('Scraper shutdown completed');
+        } catch (error: unknown) {
+            logger.error({ err: error }, 'Scraper shutdown failed');
+            process.exitCode = 1;
+        }
     }
 }
 void run();
+

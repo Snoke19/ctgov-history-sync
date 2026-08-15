@@ -1,5 +1,8 @@
 import { ConfigurationError } from '../error/errors.js';
 import { assertNonNegativeInt, assertPositiveInt } from '../utils/validation.js';
+import { createLogger } from './logging.js';
+
+const logger = createLogger(import.meta.url);
 
 const isInteger = (n: number): boolean => Number.isFinite(n) && Number.isInteger(n);
 
@@ -7,13 +10,13 @@ const parseStrictInt = (raw: string, key: string): number => {
     const trimmed = raw.trim();
 
     if (!/^-?\d+$/.test(trimmed)) {
-        throw new ConfigurationError(`Invalid integer value for ${key}: "${raw}"`);
+        throwConfigError(`Invalid integer value for ${key}: "${raw}"`, { key, type: 'integer' });
     }
 
     const parsed = Number(trimmed);
 
     if (!isInteger(parsed)) {
-        throw new ConfigurationError(`Invalid integer value for ${key}: "${raw}"`);
+        throwConfigError(`Invalid integer value for ${key}: "${raw}"`, { key, type: 'integer' });
     }
 
     return parsed;
@@ -23,6 +26,14 @@ const getEnv = (key: string): string | undefined => {
     const value = process.env[key];
     return value === undefined || value === '' ? undefined : value;
 };
+
+function throwConfigError(message: string, context: Record<string, unknown>): never {
+    const error = new ConfigurationError(message);
+
+    logger.error({ err: error, ...context }, 'Configuration validation failed');
+
+    throw error;
+}
 
 export const env = {
     int: (
@@ -34,7 +45,17 @@ export const env = {
             fallbackKey?: string;
         } = {},
     ): number => {
-        const raw = getEnv(key) ?? (opts.fallbackKey ? getEnv(opts.fallbackKey) : undefined);
+        const primary = getEnv(key);
+        const legacy = primary === undefined && opts.fallbackKey ? getEnv(opts.fallbackKey) : undefined;
+
+        if (legacy !== undefined && opts.fallbackKey !== undefined) {
+            logger.warn(
+                { key, fallbackKey: opts.fallbackKey },
+                'Deprecated configuration key is in use; switch to the primary key',
+            );
+        }
+
+        const raw = primary ?? legacy;
         const value = raw === undefined ? fallback : parseStrictInt(raw, key);
 
         if (opts.positive) {
@@ -53,7 +74,7 @@ export const env = {
         if (raw === undefined) return fallback;
         const trimmed = raw.trim();
         if (trimmed === '') {
-            throw new ConfigurationError(`Invalid string value for ${key}: whitespace-only`);
+            throwConfigError(`Invalid string value for ${key}: whitespace-only`, { key, type: 'string' });
         }
         return trimmed;
     },
@@ -64,7 +85,7 @@ export const env = {
         const lower = raw.trim().toLowerCase();
         if (lower === 'true') return true;
         if (lower === 'false') return false;
-        throw new ConfigurationError(`Invalid boolean value for ${key}: "${raw}"`);
+        throwConfigError(`Invalid boolean value for ${key}: "${raw}"`, { key, type: 'boolean' });
     },
 };
 
@@ -75,14 +96,14 @@ export const parseStatusCodes = (envVar: string, fallback: Iterable<number>): Se
     const codes = raw.split(',').map((entry, i) => {
         const trimmed = entry.trim();
         if (trimmed === '') {
-            throw new ConfigurationError(`Empty status code in ${envVar} at position ${i}`);
+            throwConfigError(`Empty status code in ${envVar} at position ${i}`, { key: envVar, position: i });
         }
         if (!/^\d+$/.test(trimmed)) {
-            throw new ConfigurationError(`Invalid status code in ${envVar}: "${trimmed}"`);
+            throwConfigError(`Invalid status code in ${envVar}: "${trimmed}"`, { key: envVar, position: i });
         }
         const parsed = Number(trimmed);
         if (!isInteger(parsed) || parsed < 100 || parsed > 599) {
-            throw new ConfigurationError(`Invalid status code in ${envVar}: "${trimmed}"`);
+            throwConfigError(`Invalid status code in ${envVar}: "${trimmed}"`, { key: envVar, position: i });
         }
         return parsed;
     });
@@ -103,13 +124,13 @@ export function validateConfig({ apiBaseUrl, apiDetailUrl }: ConfigValidationOpt
 
     for (const [name, value] of requiredUrls) {
         if (value.trim() === '') {
-            throw new ConfigurationError(`Missing required config: ${name}`);
+            throwConfigError(`Missing required config: ${name}`, { key: name });
         }
 
         try {
             new URL(value);
         } catch {
-            throw new ConfigurationError(`Invalid URL for ${name}: "${value}"`);
+            throwConfigError(`Invalid URL for ${name}: "${value}"`, { key: name, type: 'url' });
         }
     }
 }

@@ -8,7 +8,7 @@ export class DirectEndpointProvider implements EndpointProvider {
     constructor(private readonly transportFactory: DirectTransportFactory) {}
 
     build(): EndpointDefinition[] {
-        logger.debug('Direct endpoint configured');
+        logger.info({ endpointMode: 'direct' }, 'Direct endpoint configured');
 
         return [
             {

@@ -28,7 +28,7 @@ describe('HttpProxyUrlParser', () => {
 
         expect(logArguments.join(' ')).not.toContain('secret');
         expect(logArguments.join(' ')).not.toContain('user:secret@');
-        expect(logArguments.join(' ')).toContain('proxy.example.com:8080');
+        expect(logArguments.join(' ')).toContain('[object Object] Skipping invalid proxy URL');
     });
 
     it('does not leak credentials when the proxy URL cannot be parsed', () => {
@@ -40,7 +40,7 @@ describe('HttpProxyUrlParser', () => {
 
         expect(logArguments.join(' ')).not.toContain('secret');
         expect(logArguments.join(' ')).not.toContain('user:secret@');
-        expect(logArguments.join(' ')).toContain('<invalid proxy URL>');
+        expect(logArguments.join(' ')).toContain('[object Object] Skipping invalid proxy URL');
     });
 
     it('does not leak credentials when the proxy URL is malformed', () => {

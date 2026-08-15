@@ -47,7 +47,10 @@ export class EndpointManager {
         this.clock = options.clock ?? defaultMonotonicClock.now;
         this.sleep = options.sleep ?? defaultSleeper.sleep;
 
-        logger.info('Endpoint manager initialized | Endpoints: %d', this.endpoints.length);
+        logger.info(
+            { endpointCount: this.endpoints.length, acquireTimeoutMs: this.acquireTimeout },
+            'Endpoint manager initialized',
+        );
     }
 
     get endpointCount(): number {
@@ -66,6 +69,14 @@ export class EndpointManager {
             const remaining = acquisitionDeadline - currentTime;
 
             if (remaining <= 0) {
+                logger.warn(
+                    {
+                        endpointCount: this.endpoints.length,
+                        acquireTimeoutMs: this.acquireTimeout,
+                    },
+                    'Endpoint acquisition timed out',
+                );
+
                 throw new EndpointAcquisitionTimeoutError(this.acquireTimeout, this.endpoints.length);
             }
 
@@ -111,7 +122,7 @@ export class EndpointManager {
     async close(): Promise<void> {
         try {
             await Promise.all(this.endpoints.map((ep) => ep.close()));
-            logger.info('Endpoint manager closed | Endpoints released: %d', this.endpoints.length);
+            logger.info({ endpointCount: this.endpoints.length }, 'Endpoint manager closed');
         } catch (error: unknown) {
             const trialError = TrialError.normalize(error);
 
