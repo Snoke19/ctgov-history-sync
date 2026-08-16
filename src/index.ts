@@ -1,20 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { createLogger } from '../src/config/logging.js';
-import { createApiClient } from './api/api.js';
-import { Study } from './api/types.js';
-import { CONCURRENCY, PAGE_SIZE } from './config/config.js';
+import type { ApiClient } from './api/api.js';
+import type { Study } from './api/types.js';
+import { withLogContext } from './config/logContext.js';
+import { createLogger } from './config/logging.js';
 import { HttpException, NetworkException, TimeoutException, TrialError, TrialNotFoundError } from './error/errors.js';
 
 const correlationId = randomUUID();
-const logger = createLogger(import.meta.url).child({ correlationId, operation: 'scrape' });
+const logger = createLogger(import.meta.url);
 
 const DATE_RANGE = 'AREA[StartDate]RANGE[07/17/2026, 07/18/2026]';
-
-logger.info({ dateRange: DATE_RANGE, pageSize: PAGE_SIZE, concurrency: CONCURRENCY }, 'Scraper starting');
-
-const api = await createApiClient({ correlationId });
-
-logger.info('Scraper API client initialized');
 
 let resumePageToken: string | undefined = '';
 let pageNum = 1;
@@ -54,15 +48,11 @@ async function withConcurrency<T, R>(
     return results;
 }
 
-async function fetchTrialSafe(nctId: string) {
+async function fetchTrialSafe(api: ApiClient, nctId: string) {
     const startedAt = Date.now();
 
     try {
-        const detail = await api.fetchTrialDetail(nctId, { history: true });
-
-        logger.debug({ nctId, durationMs: Date.now() - startedAt }, 'Trial detail fetched successfully');
-
-        return detail;
+        return await api.fetchTrialDetail(nctId, { history: true });
     } catch (err: unknown) {
         const durationMs = Date.now() - startedAt;
 
@@ -105,40 +95,21 @@ function getErrorMessage(error: unknown): string {
     return String(error);
 }
 
-process.on('SIGINT', () => {
-    logger.warn('Interrupt signal received; terminating scraper');
-
-    // eslint-disable-next-line n/no-process-exit -- intentional immediate termination on Ctrl-C
-    process.exit(130);
-});
-
-async function main(): Promise<void> {
+async function scrape(api: ApiClient, pageSize: number, concurrency: number): Promise<void> {
     const startedAt = Date.now();
 
     const initialToken = resumePageToken;
-
-    const firstPageStartedAt = Date.now();
 
     let totalStudies = 0;
     let totalSaved = 0;
     let totalFailed = 0;
 
     const firstPage = await api.fetchStudiesPage({
-        pageSize: PAGE_SIZE,
+        pageSize,
         countTotal: true,
         'query.term': DATE_RANGE,
         ...(initialToken && { pageToken: initialToken }),
     });
-
-    logger.info(
-        {
-            page: 1,
-            studyCount: firstPage.studies.length,
-            hasNextPageToken: Boolean(firstPage.nextPageToken),
-            durationMs: Date.now() - firstPageStartedAt,
-        },
-        'First page fetched',
-    );
 
     if (!initialToken) {
         // eslint-disable-next-line require-atomic-updates -- initialToken is a local snapshot
@@ -164,7 +135,7 @@ async function main(): Promise<void> {
             .map((study: Study) => study.protocolSection?.identificationModule?.nctId)
             .filter((id): id is string => id !== undefined);
 
-        const details = await withConcurrency(nctIds, CONCURRENCY, fetchTrialSafe);
+        const details = await withConcurrency(nctIds, concurrency, (nctId) => fetchTrialSafe(api, nctId));
 
         const validDetails = details.filter(<T>(detail: T): detail is NonNullable<T> => detail !== null);
 
@@ -188,7 +159,7 @@ async function main(): Promise<void> {
         }
 
         const nextPage = await api.fetchStudiesPage({
-            pageSize: PAGE_SIZE,
+            pageSize,
             pageToken: nextToken,
             countTotal: true,
             'query.term': DATE_RANGE,
@@ -227,9 +198,29 @@ async function main(): Promise<void> {
     );
 }
 
+process.on('SIGINT', () => {
+    logger.warn('Interrupt signal received; terminating scraper');
+
+    // eslint-disable-next-line n/no-process-exit -- intentional immediate termination on Ctrl-C
+    process.exit(130);
+});
+
 async function run(): Promise<void> {
+    let api: ApiClient | undefined;
+
     try {
-        await main();
+        // Load configuration lazily so required-configuration failures surface here,
+        // at the application boundary, where they can be logged with full context.
+        const { CONCURRENCY, PAGE_SIZE } = await import('./config/config.js');
+        const { createApiClient } = await import('./api/api.js');
+
+        logger.info({ dateRange: DATE_RANGE, pageSize: PAGE_SIZE, concurrency: CONCURRENCY }, 'Scraper starting');
+
+        api = await createApiClient();
+
+        logger.info('Scraper API client initialized');
+
+        await scrape(api, PAGE_SIZE, CONCURRENCY);
     } catch (err: unknown) {
         if (err instanceof Error) {
             logger.error({ err, cause: getErrorMessage(err.cause) }, 'Scraper failed');
@@ -242,7 +233,7 @@ async function run(): Promise<void> {
         logger.info('Scraper shutting down');
 
         try {
-            await api.close();
+            await api?.close();
             logger.info('Scraper shutdown completed');
         } catch (error: unknown) {
             logger.error({ err: error }, 'Scraper shutdown failed');
@@ -250,4 +241,5 @@ async function run(): Promise<void> {
         }
     }
 }
-void run();
+
+void withLogContext({ correlationId, operation: 'scrape' }, run);

@@ -18,7 +18,7 @@ import {
     PoolCreatorFn,
     UndiciTransportFactory,
 } from '../../../src/http/transport/impl/undiciProxyTransport.js';
-import { createDefaultOptions, TestClientOptions, testLogger } from './httpClient/helpers.js';
+import { createDefaultOptions, TestClientOptions } from './httpClient/helpers.js';
 
 const FAKE_POOL_CONFIG: ProxyPoolConfig = {
     connections: 10,
@@ -111,7 +111,6 @@ describe('Proxy + Undici construction chain', () => {
                 wallClock: options.wallClock,
                 provider,
                 limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                logger: testLogger,
                 endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 0 }),
             }),
         ).rejects.toBeInstanceOf(ConfigurationError);
@@ -148,7 +147,6 @@ describe('Proxy + Undici construction chain', () => {
                 wallClock: options.wallClock,
                 provider,
                 limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                logger: testLogger,
                 endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 0 }),
             }),
         ).rejects.toEqual(
@@ -170,7 +168,6 @@ describe('Proxy + Undici construction chain', () => {
             createHttpClient({
                 provider,
                 limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                logger: testLogger,
                 endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 30000 }),
                 retryConfig: {
                     retryOnTimeout: true,
@@ -190,7 +187,6 @@ describe('Proxy + Undici construction chain', () => {
             createHttpClient({
                 provider,
                 limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                logger: testLogger,
                 endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 30000 }),
                 retryConfig: {
                     retryOnTimeout: true,
@@ -210,7 +206,6 @@ describe('Proxy + Undici construction chain', () => {
             createHttpClient({
                 provider,
                 limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                logger: testLogger,
                 endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 30000 }),
                 retryConfig: {
                     retryOnTimeout: true,

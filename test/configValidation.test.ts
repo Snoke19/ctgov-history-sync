@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from '@jest/globals';
+import { afterAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { env, parseStatusCodes, validateConfig } from '../src/config/configValidation.js';
 import { ConfigurationError } from '../src/error/errors.js';
 
@@ -300,6 +300,27 @@ describe('configValidation', () => {
             expect(() => validateConfig({ apiBaseUrl: '', apiDetailUrl: '' })).toThrow(
                 'Missing required config: API_BASE_URL',
             );
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // module initialization
+    // -----------------------------------------------------------------------
+    describe('module initialization', () => {
+        it('loads the configuration and logging modules without a circular initialization failure', async () => {
+            jest.resetModules();
+
+            try {
+                const config = await import('../src/config/config.js');
+                const logging = await import('../src/config/logging.js');
+
+                expect(typeof config.NODE_ENV).toBe('string');
+                expect(typeof config.CONCURRENCY).toBe('number');
+                expect(typeof config.API_BASE_URL).toBe('string');
+                expect(typeof logging.createLogger).toBe('function');
+            } finally {
+                jest.resetModules();
+            }
         });
     });
 });

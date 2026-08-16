@@ -41,15 +41,12 @@ export interface ApiClient {
  *
  * The HTTP client, proxy endpoint provider, transport factory, rate limiter,
  * and connection-pool configuration are intentionally hidden from callers.
+ *
+ * Logging context (correlationId, operation) is picked up automatically from
+ * the AsyncLocalStorage context of the caller.
  */
-export interface CreateApiClientOptions {
-    readonly correlationId?: string;
-}
-
-export async function createApiClient(options: CreateApiClientOptions = {}): Promise<ApiClient> {
-    const clientLogger = options.correlationId ? logger.child({ correlationId: options.correlationId }) : logger;
-
-    clientLogger.info(
+export async function createApiClient(): Promise<ApiClient> {
+    logger.info(
         {
             nodeEnv: process.env.NODE_ENV ?? null,
             apiBaseUrl: safeApiUrl(API_BASE_URL),
@@ -79,13 +76,14 @@ export async function createApiClient(options: CreateApiClientOptions = {}): Pro
                 capacity: RATE_LIMIT_CAPACITY,
                 windowMs: RATE_LIMIT_WINDOW,
             }),
-            logger: clientLogger,
-            endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: ACQUIRE_TIMEOUT }),
+            endpointManagerFactory: new DefaultEndpointManagerFactory({
+                acquireTimeout: ACQUIRE_TIMEOUT,
+            }),
         });
 
         const apiClient = createApiClientWithHttpClient(httpClient);
 
-        clientLogger.info(
+        logger.info(
             { apiBaseUrl: safeApiUrl(API_BASE_URL), apiDetailUrl: safeApiUrl(API_DETAIL_URL) },
             'API client created',
         );
@@ -94,7 +92,7 @@ export async function createApiClient(options: CreateApiClientOptions = {}): Pro
     } catch (error: unknown) {
         const trialError = TrialError.normalize(error);
 
-        clientLogger.error(
+        logger.error(
             { err: trialError, operation: 'createApiClient', errorType: trialError.name },
             'Failed to initialize API client',
         );
@@ -104,7 +102,7 @@ export async function createApiClient(options: CreateApiClientOptions = {}): Pro
                 await httpClient.close();
             } catch (cleanupError: unknown) {
                 const cleanupTrialError = TrialError.normalize(cleanupError);
-                clientLogger.error(
+                logger.error(
                     { err: cleanupTrialError, operation: 'createApiClient.cleanup', errorType: cleanupTrialError.name },
                     'Failed to clean up HTTP client after initialization failure',
                 );
@@ -139,16 +137,6 @@ export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiCli
 
         const page = parseStudiesPageResponse(data, url);
 
-        logger.debug(
-            {
-                operation: 'fetchStudiesPage',
-                url: safeApiUrl(url),
-                studyCount: page.studies.length,
-                hasNextPageToken: Boolean(page.nextPageToken),
-            },
-            'Studies page fetched',
-        );
-
         return page;
     }
 
@@ -169,8 +157,6 @@ export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiCli
 
             throw new TrialNotFoundError(normalizedNctId);
         }
-
-        logger.debug({ operation: 'fetchTrialDetail', nctId: normalizedNctId }, 'Trial detail fetched');
 
         return data;
     }

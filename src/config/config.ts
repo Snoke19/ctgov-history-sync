@@ -86,15 +86,12 @@ export interface ProxyPoolConfig {
 // ---------------------------------------------------------------------------
 export const RATE_LIMIT_CAPACITY = env.int('RATE_LIMIT_CAPACITY', defaults.RATE_LIMIT_CAPACITY, {
     positive: true,
-    fallbackKey: 'PROXY_RATE_LIMIT_CAPACITY',
 });
-export const RATE_LIMIT_WINDOW = env.int('RATE_LIMIT_WINDOW_MS', defaults.RATE_LIMIT_WINDOW, {
+export const RATE_LIMIT_WINDOW = env.int('RATE_LIMIT_WINDOW', defaults.RATE_LIMIT_WINDOW, {
     positive: true,
-    fallbackKey: 'PROXY_RATE_LIMIT_WINDOW_MS',
 });
-export const ACQUIRE_TIMEOUT = env.int('ACQUIRE_TIMEOUT_MS', defaults.ACQUIRE_TIMEOUT, {
+export const ACQUIRE_TIMEOUT = env.int('ACQUIRE_TIMEOUT', defaults.ACQUIRE_TIMEOUT, {
     positive: true,
-    fallbackKey: 'PROXY_ACQUIRE_TIMEOUT_MS',
 });
 
 // ---------------------------------------------------------------------------

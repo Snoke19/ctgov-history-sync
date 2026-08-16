@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { Logger } from 'pino';
 import { BACKOFF_CAP_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
+import { getLogContext, LogContext, withLogContext } from '../config/logContext.js';
+import { createLogger } from '../config/logging.js';
 import {
     CallerAbortedError,
     EndpointAssemblyError,
@@ -27,6 +28,8 @@ import {
     validateRetryPolicyConfig,
 } from './retryPolicy.js';
 import { HttpResponse } from './transport/httpTransport.js';
+
+const logger = createLogger(import.meta.url);
 
 type HttpErrorLogContext = {
     message: string;
@@ -76,9 +79,6 @@ export interface CreateHttpClientOptions {
     /** Builds the rate limiter applied per endpoint. */
     limiterFactory: LimiterFactory;
 
-    /** Logger used for HTTP-layer tracing. */
-    logger: Logger;
-
     /** Creates the endpoint manager that owns endpoint pools. */
     endpointManagerFactory: EndpointManagerFactory;
 
@@ -90,7 +90,6 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
     const {
         provider,
         limiterFactory,
-        logger,
         endpointManagerFactory,
         retryConfig = defaultRetryPolicyConfig,
         sleep = defaultSleeper.sleep,
@@ -137,14 +136,11 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
     );
 
     async function fetchResponse(url: string, options: FetchJsonRequestOptions): Promise<HttpResponse | null> {
-        const requestId = options.requestId ?? randomUUID();
-        const operation = new FetchOperation(endpointManager, url, options, wallClock.now, requestId);
-        const retry = buildRetry(operation, options, sleep, random, requestId);
+        const operation = new FetchOperation(endpointManager, url, options, wallClock.now);
+        const retry = buildRetry(operation, options, sleep, random);
 
         logger.debug(
             {
-                requestId,
-                operation: 'http.fetchJson',
                 url: sanitizeHttpUrl(url),
                 method: 'GET',
                 allow404: options.allow404 ?? false,
@@ -161,8 +157,6 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
 
             logger.debug(
                 {
-                    requestId,
-                    operation: 'http.fetchJson',
                     url: sanitizeHttpUrl(url),
                     method: 'GET',
                     status: response.status,
@@ -195,43 +189,35 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
     async function fetchJson<T = unknown>(url: string, options: FetchJsonRequestOptions = {}): Promise<T | null> {
         validateFetchJsonRequestOptions(options);
 
-        const effectiveOptions: FetchJsonRequestOptions = options.requestId
-            ? options
-            : { ...options, requestId: randomUUID() };
+        const requestId = options.requestId ?? randomUUID();
+        const parentContext = getLogContext();
 
-        const response = await fetchResponse(url, effectiveOptions);
+        const requestContext: LogContext =
+            parentContext === undefined
+                ? { correlationId: randomUUID(), requestId, operation: 'http.fetchJson' }
+                : { ...parentContext, requestId, operation: 'http.fetchJson' };
 
-        // fetchResponse returns null ONLY for allow404 + 404.
-        // 204 No Content is handled inside parseOkResponseBody, not here.
-        if (response === null) {
-            return null;
-        }
+        return withLogContext(requestContext, async () => {
+            const effectiveOptions: FetchJsonRequestOptions = { ...options, requestId };
 
-        const parseStartedAt = Date.now();
+            const response = await fetchResponse(url, effectiveOptions);
 
-        try {
-            const parsed = parseOkResponseBody(response, url) as T;
+            // fetchResponse returns null ONLY for allow404 + 404.
+            // 204 No Content is handled inside parseOkResponseBody, not here.
+            if (response === null) {
+                return null;
+            }
 
-            logger.debug(
-                {
-                    requestId: effectiveOptions.requestId ?? null,
-                    url: sanitizeHttpUrl(url),
-                    durationMs: Date.now() - parseStartedAt,
-                },
-                'HTTP response body parsed',
-            );
+            try {
+                return (await parseOkResponseBody(response, url)) as T;
+            } catch (error) {
+                const trialError = TrialError.normalize(error);
 
-            return parsed;
-        } catch (error) {
-            const trialError = TrialError.normalize(error);
+                logger.error({ ...createHttpErrorLogContext(trialError, url) }, 'Failed to parse HTTP response body');
 
-            logger.error(
-                { ...createHttpErrorLogContext(trialError, url), err: trialError },
-                'Failed to parse HTTP response body',
-            );
-
-            throw trialError;
-        }
+                throw trialError;
+            }
+        });
     }
 
     async function close(): Promise<void> {
@@ -255,7 +241,6 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
         options: FetchJsonRequestOptions,
         sleep: Sleeper['sleep'],
         random: () => number,
-        requestId: string,
     ): Retry<HttpResponse> {
         const effectiveConfig = {
             retryOnTimeout: options.retryPolicy?.retryOnTimeout ?? retryConfig.retryOnTimeout,
@@ -282,10 +267,6 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
             },
             sleep,
             options.signal,
-            {
-                operation: 'http.fetchJson',
-                requestId,
-            },
         );
     }
 }

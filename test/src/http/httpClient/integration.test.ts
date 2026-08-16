@@ -8,7 +8,6 @@ import { createHttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
 import { DefaultLimiterFactory } from '../../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
-import { testLogger } from './helpers.js';
 
 /**
  * Full createHttpClient stack against a real TCP server with the real
@@ -88,7 +87,6 @@ describe('HttpClient full-stack integration', () => {
                 capacity: 10,
                 windowMs: 1000,
             }),
-            logger: testLogger,
             endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 5000 }),
         });
     });
@@ -203,7 +201,15 @@ describe('HttpClient full-stack integration', () => {
             maxRetries: 0,
         });
 
-        setTimeout(() => controller.abort(), 50);
+        const dispatchDeadline = Date.now() + 5000;
+
+        while (stallHits === 0 && Date.now() < dispatchDeadline) {
+            await new Promise((resolve) => {
+                setTimeout(resolve, 10);
+            });
+        }
+
+        controller.abort();
 
         await expect(pending).rejects.toBeInstanceOf(NetworkException);
         expect(stallHits).toBeGreaterThanOrEqual(1);

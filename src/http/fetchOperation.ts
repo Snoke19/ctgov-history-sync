@@ -1,5 +1,4 @@
 import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../config/config.js';
-import { createLogger } from '../config/logging.js';
 import {
     CallerAbortedError,
     EndpointAcquisitionTimeoutError,
@@ -17,22 +16,15 @@ import { drainBody } from './responseBody.js';
 import { parseRetryAfterHeader } from './retryPolicy.js';
 import { HttpResponse, HttpTransport } from './transport/httpTransport.js';
 
-const logger = createLogger(import.meta.url);
-
 type AbortReason = 'caller' | 'timeout';
 
 export class FetchOperation implements BusinessOperation<HttpResponse> {
-    private readonly requestStartedAt: number;
-
     constructor(
         private readonly endpointManager: EndpointManager,
         private readonly url: string,
         private readonly options: FetchJsonRequestOptions,
         private readonly now: WallClock['now'] = defaultWallClock.now,
-        private readonly requestId?: string,
-    ) {
-        this.requestStartedAt = Date.now();
-    }
+    ) {}
 
     async perform(): Promise<HttpResponse> {
         const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
@@ -91,19 +83,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     }
 
     private async acquireEndpoint(signal: AbortSignal): Promise<EndpointHandle> {
-        const endpoint = await this.endpointManager.acquireEndpoint(signal);
-
-        logger.debug(
-            {
-                requestId: this.requestId ?? null,
-                url: sanitizeHttpUrl(this.url),
-                endpoint: sanitizeEndpointUrl(endpoint.url),
-                timeoutMs: this.options.timeoutMs ?? FETCH_TIMEOUT_MS,
-            },
-            'Endpoint acquired',
-        );
-
-        return endpoint;
+        return this.endpointManager.acquireEndpoint(signal);
     }
 
     private async executeRequest(
@@ -130,32 +110,10 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             throw this.classifyTransportError(endpoint.transport, error, getAbortReason());
         }
 
-        logger.debug(
-            {
-                requestId: this.requestId ?? null,
-                url: sanitizeHttpUrl(this.url),
-                status: response.status,
-                statusText: response.statusText,
-                durationMs: this.requestDurationMs(),
-            },
-            'HTTP response received',
-        );
-
         if (!response.ok) {
             const retryAfter = parseRetryAfterHeader(response, this.now());
 
             await drainBody(response);
-
-            logger.debug(
-                {
-                    requestId: this.requestId ?? null,
-                    url: sanitizeHttpUrl(this.url),
-                    status: response.status,
-                    statusText: response.statusText,
-                    retryAfterMs: retryAfter ?? null,
-                },
-                'Received non-OK HTTP response',
-            );
 
             throw new HttpException(
                 `HTTP ${response.status} ${response.statusText} — ${method} ${this.url}`,
@@ -247,27 +205,5 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         } catch {
             return String(error);
         }
-    }
-
-    private requestDurationMs(): number {
-        return Date.now() - this.requestStartedAt;
-    }
-}
-
-function sanitizeEndpointUrl(value: string): string {
-    try {
-        const url = new URL(value);
-        return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}`;
-    } catch {
-        return '<invalid endpoint URL>';
-    }
-}
-
-function sanitizeHttpUrl(value: string): string {
-    try {
-        const url = new URL(value);
-        return `${url.protocol}//${url.host}${url.pathname}`;
-    } catch {
-        return '<invalid URL>';
     }
 }

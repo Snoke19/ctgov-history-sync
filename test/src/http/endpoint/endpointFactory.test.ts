@@ -118,11 +118,11 @@ describe('EndpointFactory', () => {
             await expect(factory.build()).rejects.toEqual(
                 expect.objectContaining({
                     name: 'EndpointAssemblyError',
-                    message: 'Failed to construct endpoint "test-endpoint" and transport cleanup also failed.',
+                    message: 'Failed to construct endpoint "<invalid endpoint URL>" and transport cleanup also failed.',
                     cause: constructionError,
                     cleanupErrors: [cleanupError],
                     context: {
-                        endpointId: 'test-endpoint',
+                        endpointId: '<invalid endpoint URL>',
                     },
                 }),
             );

@@ -93,11 +93,6 @@ export class EndpointManager {
                 if (endpoint.tryAcquire(currentTime)) {
                     this.nextIndex = (index + 1) % this.endpoints.length;
 
-                    logger.debug(
-                        { endpointIndex: index, endpointCount: this.endpoints.length },
-                        'Endpoint token acquired',
-                    );
-
                     return endpoint.getHandle();
                 }
 

@@ -7,7 +7,7 @@ import {
     FetchDirectTransport,
     FetchDirectTransportFactory,
 } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
-import { API_URL, createDefaultOptions, jsonResponse, makeClient, testLogger } from './helpers.js';
+import { API_URL, createDefaultOptions, jsonResponse, makeClient } from './helpers.js';
 
 const defaultLimiterFactory = new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 });
 const defaultEndpointManagerFactory = new DefaultEndpointManagerFactory({ acquireTimeout: 5000 });
@@ -49,7 +49,6 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
             wallClock: clientOptions.wallClock,
             provider,
             limiterFactory: defaultLimiterFactory,
-            logger: testLogger,
             endpointManagerFactory: defaultEndpointManagerFactory,
         });
 
@@ -73,7 +72,6 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
             wallClock: clientOptions.wallClock,
             provider,
             limiterFactory: defaultLimiterFactory,
-            logger: testLogger,
             endpointManagerFactory: defaultEndpointManagerFactory,
         });
 

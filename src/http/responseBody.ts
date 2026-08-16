@@ -10,6 +10,9 @@ const logger = createLogger(import.meta.url);
  * Must be called whenever a response is not consumed
  * (e.g. 204, early return) to prevent connection leaks
  * in keep-alive connection pools.
+ *
+ * Never rejects: cleanup failures are swallowed so draining
+ * cannot change the behavior of the surrounding operation.
  */
 export async function drainBody(response: HttpResponse): Promise<void> {
     if (!response?.discard) {

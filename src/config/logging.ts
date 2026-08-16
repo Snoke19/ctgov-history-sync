@@ -1,16 +1,28 @@
 import { dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import pino, { Logger, LoggerOptions, TransportMultiOptions } from 'pino';
+import pino, { DestinationStream, Logger, LoggerOptions, TransportMultiOptions } from 'pino';
 import { defaults } from './defaults.js';
+import { getLogContext } from './logContext.js';
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
+
+let testDestination: DestinationStream | undefined;
+
+/**
+ * Test-only hook. Redirects the destination of every logger created by
+ * createLogger() to a custom stream (e.g. an in-memory sink) so tests can
+ * assert on log records without reimplementing the pino configuration.
+ */
+export function setLoggerDestinationForTests(destination: DestinationStream | undefined): void {
+    testDestination = destination;
+}
 
 function envStr(key: string, fallback: string): string {
     const value = process.env[key];
     return value === undefined || value === '' ? fallback : value.trim();
 }
 
-export function createLogger(moduleUrl: string): Logger {
+export function createLogger(moduleUrl: string, destination?: DestinationStream): Logger {
     const isProduction = envStr('NODE_ENV', defaults.NODE_ENV) === 'production';
     const logLevel = envStr('LOG_LEVEL', defaults.LOG_LEVEL) || (isProduction ? 'info' : 'debug');
     const logFileEnabled = envStr('LOG_TO_FILE', defaults.LOG_TO_FILE) === 'true';
@@ -51,12 +63,21 @@ export function createLogger(moduleUrl: string): Logger {
             service: 'clinical-trials-scrap',
         },
 
-        transport: {
-            targets,
+        // Merge the AsyncLocalStorage logging context (correlationId,
+        // requestId, operation) into every log record at write time.
+        mixin() {
+            return getLogContext() ?? {};
         },
     };
 
-    return pino(options).child({
+    const dest = destination ?? testDestination;
+
+    // pino rejects a transport and a destination stream at the same time, so
+    // the transport targets are only attached when no custom destination is
+    // used (custom destinations are a test seam).
+    const logger = dest === undefined ? pino({ ...options, transport: { targets } }) : pino(options, dest);
+
+    return logger.child({
         logger: filename,
     });
 }

@@ -1,4 +1,3 @@
-import pino from 'pino';
 import { MonotonicClock, RandomSource, Sleeper, WallClock } from '../../../../src/http/clock.js';
 import { DefaultEndpointManagerFactory } from '../../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
@@ -7,8 +6,6 @@ import type { HttpClient } from '../../../../src/http/httpClient.js';
 import { DefaultLimiterFactory } from '../../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import type { LimiterFactory } from '../../../../src/http/limiter/factory/limiterFactory.js';
 import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
-
-export const testLogger = pino({ level: 'silent' });
 
 export const API_URL = 'http://api.test';
 
@@ -117,7 +114,6 @@ export function makeClient(
         wallClock: options.wallClock,
         provider,
         limiterFactory,
-        logger: testLogger,
         endpointManagerFactory: new DefaultEndpointManagerFactory({
             acquireTimeout: options.acquireTimeout,
             clock: options.monotonicClock.now,

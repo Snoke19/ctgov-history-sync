@@ -1,8 +1,5 @@
 import { ConfigurationError } from '../error/errors.js';
 import { assertNonNegativeInt, assertPositiveInt } from '../utils/validation.js';
-import { createLogger } from './logging.js';
-
-const logger = createLogger(import.meta.url);
 
 const isInteger = (n: number): boolean => Number.isFinite(n) && Number.isInteger(n);
 
@@ -27,12 +24,8 @@ const getEnv = (key: string): string | undefined => {
     return value === undefined || value === '' ? undefined : value;
 };
 
-function throwConfigError(message: string, context: Record<string, unknown>): never {
-    const error = new ConfigurationError(message);
-
-    logger.error({ err: error, ...context }, 'Configuration validation failed');
-
-    throw error;
+function throwConfigError(message: string, _context: Record<string, unknown>): never {
+    throw new ConfigurationError(message);
 }
 
 export const env = {
@@ -47,13 +40,6 @@ export const env = {
     ): number => {
         const primary = getEnv(key);
         const legacy = primary === undefined && opts.fallbackKey ? getEnv(opts.fallbackKey) : undefined;
-
-        if (legacy !== undefined && opts.fallbackKey !== undefined) {
-            logger.warn(
-                { key, fallbackKey: opts.fallbackKey },
-                'Deprecated configuration key is in use; switch to the primary key',
-            );
-        }
 
         const raw = primary ?? legacy;
         const value = raw === undefined ? fallback : parseStrictInt(raw, key);

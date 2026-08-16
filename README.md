@@ -196,7 +196,6 @@ import { createHttpClient } from './httpClient.ts';
 const httpClient = await createHttpClient({
     provider, // EndpointProvider
     limiterFactory, // LimiterFactory
-    logger, // pino Logger
     endpointManagerFactory, // EndpointManagerFactory
     retryConfig, // RetryPolicyConfig, optional (defaults to module config)
     // Optional test overrides: sleep, random, wallClock

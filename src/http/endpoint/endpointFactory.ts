@@ -65,7 +65,7 @@ async function assembleEndpoints(param: EndpointAssemblyOptions): Promise<Endpoi
             const endpoint = await constructEndpoint(definition, createLimiter, createEndpoint);
             endpoints.push(endpoint);
 
-            logger.debug({ endpointId: definition.id }, 'Endpoint constructed');
+            logger.debug({ endpoint: sanitizeEndpointUrl(definition.id) }, 'Endpoint constructed');
         }
 
         return endpoints;
@@ -88,7 +88,7 @@ async function constructEndpoint(
         return createEndpoint(definition.id, createLimiter(), transport);
     } catch (error: unknown) {
         logger.error(
-            { endpointId: definition.id, err: error, errorType: describeErrorType(error) },
+            { endpoint: sanitizeEndpointUrl(definition.id), err: error, errorType: describeErrorType(error) },
             'Endpoint construction failed',
         );
 
@@ -113,11 +113,11 @@ async function closeFailedEndpointTransport(param: FailedEndpointCleanup): Promi
         await param.transport.close();
     } catch (cleanupError) {
         throw new EndpointAssemblyError(
-            `Failed to construct endpoint "${param.endpointId}" and transport cleanup also failed.`,
+            `Failed to construct endpoint "${sanitizeEndpointUrl(param.endpointId)}" and transport cleanup also failed.`,
             {
                 cause: param.constructionError,
                 context: {
-                    endpointId: param.endpointId,
+                    endpointId: sanitizeEndpointUrl(param.endpointId),
                 },
             },
             [cleanupError],
@@ -154,4 +154,14 @@ async function rollbackEndpoints(endpoints: readonly Endpoint[], assemblyError: 
         },
         cleanupErrors,
     );
+}
+
+function sanitizeEndpointUrl(value: string): string {
+    try {
+        const url = new URL(value);
+
+        return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}`;
+    } catch {
+        return '<invalid endpoint URL>';
+    }
 }
