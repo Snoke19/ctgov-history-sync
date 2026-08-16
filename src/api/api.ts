@@ -92,15 +92,15 @@ export async function createApiClient(): Promise<ApiClient> {
     } catch (error: unknown) {
         const trialError = TrialError.normalize(error);
 
-        logger.error(
-            { err: trialError, operation: 'createApiClient', errorType: trialError.name },
-            'Failed to initialize API client',
-        );
+        // The application boundary (src/index.ts) reports the final failure;
+        // this layer preserves the original exception and releases resources.
 
         if (httpClient !== undefined) {
             try {
                 await httpClient.close();
             } catch (cleanupError: unknown) {
+                // A cleanup failure after an initialization failure has no
+                // other reporting path, so it is logged here and swallowed.
                 const cleanupTrialError = TrialError.normalize(cleanupError);
                 logger.error(
                     { err: cleanupTrialError, operation: 'createApiClient.cleanup', errorType: cleanupTrialError.name },

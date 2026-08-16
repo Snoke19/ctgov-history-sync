@@ -1,9 +1,9 @@
 import { afterAll, afterEach, describe, expect, it, jest } from '@jest/globals';
 import type { DestinationStream } from 'pino';
 import type { Dispatcher, ProxyAgent } from 'undici';
-import { withLogContext } from '../../../src/config/logContext.js';
-import { setLoggerDestinationForTests } from '../../../src/config/logging.js';
-import { ApiResponseValidationError } from '../../../src/error/errors.js';
+import { withLogContext, getLogContext } from '../../../src/config/logContext.js';
+import { createLogger, setLoggerDestinationForTests } from '../../../src/config/logging.js';
+import { ApiResponseValidationError, NetworkException } from '../../../src/error/errors.js';
 import type { EndpointProvider } from '../../../src/http/endpoint/provider/endpointProvider.js';
 import type {
     AgentCreatorFn,
@@ -348,6 +348,18 @@ describe('logging strategy', () => {
             expect(record.correlationId).toBe('corr-retries');
         }
 
+        // The requestId is scoped to the whole request including all retries.
+        const requestIds = new Set(
+            retryRecords.map((record) => record.requestId).filter((id): id is string => typeof id === 'string'),
+        );
+
+        expect(requestIds.size).toBe(1);
+
+        const retrying = retryRecords.find((record) => record.msg === 'Operation failed; retrying');
+
+        expect(retrying).toBeDefined();
+        expect(retrying?.requestId).toBeDefined();
+
         const exhausted = retryRecords.find((record) => record.msg === 'Operation failed; retries exhausted');
 
         expect(exhausted).toBeDefined();
@@ -392,5 +404,279 @@ describe('logging strategy', () => {
         const err = parseFailed?.err as { message?: string } | undefined;
 
         expect(err?.message).toContain('Unexpected token');
+    });
+
+    it('restores the previous context after the HTTP request completes', async () => {
+        jest.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse({ ok: true }));
+
+        const client = await makeClient();
+
+        await withLogContext({ correlationId: 'corr-restore', operation: 'scrape' }, async () => {
+            try {
+                await client.fetchJson(`${API_URL}/trials`);
+
+                // After the request completes, the parent context is restored:
+                // requestId is gone and operation is no longer 'http.fetchJson'.
+                expect(getLogContext()).toEqual({ correlationId: 'corr-restore', operation: 'scrape' });
+            } finally {
+                await client.close();
+            }
+        });
+
+        const contextRecords = records.filter((record) => record.correlationId === 'corr-restore');
+
+        const completed = contextRecords.find((record) => record.msg === 'HTTP request completed');
+
+        expect(completed).toBeDefined();
+        expect(completed?.operation).toBe('http.fetchJson');
+        expect(typeof completed?.requestId).toBe('string');
+
+        // Shutdown logs run after the request and must inherit the outer
+        // context rather than the request context.
+        const closed = contextRecords.find((record) => record.msg === 'HTTP client closed');
+
+        expect(closed).toBeDefined();
+        expect(closed?.requestId).toBeUndefined();
+        expect(closed?.operation).toBe('scrape');
+    });
+
+    it('does not leak statement-local fields into the shared logging context', async () => {
+        jest.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse({ ok: true }));
+
+        const testLogger = createLogger(import.meta.url);
+
+        const client = await makeClient();
+
+        await withLogContext({ correlationId: 'corr-clean', operation: 'scrape' }, async () => {
+            try {
+                testLogger.info({ marker: 'parent-scope' }, 'Parent scope log');
+
+                await client.fetchJson(`${API_URL}/trials?pageSize=10`, { allow404: true, maxRetries: 1 });
+
+                // The shared context must only ever contain diagnostic fields.
+                expect(getLogContext()).toEqual({ correlationId: 'corr-clean', operation: 'scrape' });
+            } finally {
+                await client.close();
+            }
+        });
+
+        const contextRecords = records.filter((record) => record.correlationId === 'corr-clean');
+
+        const parentLog = contextRecords.find((record) => record.msg === 'Parent scope log');
+
+        expect(parentLog).toMatchObject({ marker: 'parent-scope', operation: 'scrape' });
+
+        const started = contextRecords.find((record) => record.msg === 'HTTP request started');
+
+        expect(started).toMatchObject({
+            url: `${API_URL}/trials`,
+            method: 'GET',
+            allow404: true,
+            maxRetries: 1,
+        });
+
+        const completed = contextRecords.find((record) => record.msg === 'HTTP request completed');
+
+        expect(completed).toBeDefined();
+
+        // Statement fields from earlier records must not reappear on later ones.
+        expect(completed?.marker).toBeUndefined();
+        expect(completed?.allow404).toBeUndefined();
+        expect(completed?.maxRetries).toBeUndefined();
+
+        const closed = contextRecords.find((record) => record.msg === 'HTTP client closed');
+
+        expect(closed).toBeDefined();
+        expect(closed?.marker).toBeUndefined();
+        expect(closed?.url).toBeUndefined();
+        expect(closed?.allow404).toBeUndefined();
+        expect(closed?.maxRetries).toBeUndefined();
+        expect(closed?.requestId).toBeUndefined();
+        expect(closed?.operation).toBe('scrape');
+    });
+
+    it('emits exactly one correlationId across a complete client run', async () => {
+        jest.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse({ ok: true }));
+
+        const before = records.length;
+
+        // Mirrors src/index.ts: the whole run (client construction, requests,
+        // shutdown) executes inside one application-boundary context, and the
+        // HTTP layer must never generate a second correlationId.
+        await withLogContext({ correlationId: 'corr-single-run' }, async () => {
+            const client = await makeClient();
+
+            try {
+                await client.fetchJson(`${API_URL}/a`);
+                await client.fetchJson(`${API_URL}/b`);
+            } finally {
+                await client.close();
+            }
+        });
+
+        const newRecords = records.slice(before);
+
+        expect(newRecords.length).toBeGreaterThan(0);
+
+        const correlationIds = new Set(
+            newRecords.map((record) => record.correlationId).filter((id): id is string => typeof id === 'string'),
+        );
+
+        expect(correlationIds).toEqual(new Set(['corr-single-run']));
+
+        for (const msg of ['HTTP client created', 'HTTP request started', 'HTTP request completed', 'HTTP client closed']) {
+            expect(newRecords.some((record) => record.msg === msg)).toBe(true);
+        }
+    });
+
+    it('creates an explicit standalone request context when no application context is active', async () => {
+        jest.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse({ ok: true }));
+
+        const client = await makeClient();
+
+        try {
+            const before = records.length;
+
+            await client.fetchJson(`${API_URL}/standalone-1`);
+            const afterFirst = records.length;
+
+            await client.fetchJson(`${API_URL}/standalone-2`);
+
+            const firstRecords = records.slice(before, afterFirst);
+            const secondRecords = records.slice(afterFirst);
+
+            // The fallback is explicit: a debug record announces the standalone
+            // context creation inside the new request context, so it carries
+            // the generated correlationId and requestId.
+            const firstFallbackRecord = firstRecords.find(
+                (record) => record.msg === 'No active logging context; generated standalone request context',
+            );
+
+            expect(firstFallbackRecord).toBeDefined();
+            expect(typeof firstFallbackRecord?.correlationId).toBe('string');
+            expect(typeof firstFallbackRecord?.requestId).toBe('string');
+            expect(firstFallbackRecord?.operation).toBe('http.fetchJson');
+
+            const secondFallbackRecord = secondRecords.find(
+                (record) => record.msg === 'No active logging context; generated standalone request context',
+            );
+
+            expect(secondFallbackRecord).toBeDefined();
+            expect(typeof secondFallbackRecord?.correlationId).toBe('string');
+            expect(typeof secondFallbackRecord?.requestId).toBe('string');
+
+            const firstCorrelationId = firstRecords.find((record) => typeof record.correlationId === 'string')
+                ?.correlationId;
+            const secondCorrelationId = secondRecords.find((record) => typeof record.correlationId === 'string')
+                ?.correlationId;
+
+            expect(typeof firstCorrelationId).toBe('string');
+            expect(typeof secondCorrelationId).toBe('string');
+            expect(firstCorrelationId).not.toBe(secondCorrelationId);
+
+            const firstRequestId = firstRecords.find((record) => typeof record.requestId === 'string')?.requestId;
+
+            expect(typeof firstRequestId).toBe('string');
+        } finally {
+            await client.close();
+        }
+    });
+
+    it('does not emit ERROR logs when retries are exhausted and the caller handles the failure', async () => {
+        const failure = new Error('socket hang up');
+
+        const failingTransport = {
+            request: async () => {
+                throw failure;
+            },
+            classifyError: () => ({ kind: 'network' as const, cause: failure }),
+            close: async () => {},
+        };
+
+        const provider: EndpointProvider = {
+            build: () => [{ id: 'direct', createTransport: () => failingTransport }],
+        };
+
+        const client = await createHttpClient({
+            provider,
+            limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+            endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 5000 }),
+            retryConfig: {
+                retryOnTimeout: false,
+                retryOnNetworkError: true,
+                retryableStatusCodes: new Set([500]),
+            },
+        });
+
+        try {
+            await withLogContext({ correlationId: 'corr-no-error' }, async () => {
+                await expect(client.fetchJson(`${API_URL}/down`, { maxRetries: 1 })).rejects.toBeInstanceOf(
+                    NetworkException,
+                );
+            });
+        } finally {
+            await client.close();
+        }
+
+        const runRecords = records.filter((record) => record.correlationId === 'corr-no-error');
+
+        expect(runRecords.length).toBeGreaterThan(0);
+
+        // No error-level record: the retry layer reports exhaustion at WARN and
+        // the caller (application boundary) is responsible for the final report.
+        expect(runRecords.some((record) => record.level >= 50)).toBe(false);
+
+        const exhausted = runRecords.find((record) => record.msg === 'Operation failed; retries exhausted');
+
+        expect(exhausted).toBeDefined();
+        expect(exhausted?.level).toBe(40);
+    });
+
+    it('sanitizes credentials out of exception messages and error logs', async () => {
+        const failure = new Error('connection refused');
+
+        const failingTransport = {
+            request: async () => {
+                throw failure;
+            },
+            classifyError: () => ({ kind: 'network' as const, cause: failure }),
+            close: async () => {},
+        };
+
+        const provider: EndpointProvider = {
+            build: () => [{ id: 'direct', createTransport: () => failingTransport }],
+        };
+
+        const client = await createHttpClient({
+            provider,
+            limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+            endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 5000 }),
+        });
+
+        let thrownMessage: string | undefined;
+
+        try {
+            await withLogContext({ correlationId: 'corr-creds-err' }, async () => {
+                try {
+                    await client.fetchJson('http://user:secret@api.test/studies', { maxRetries: 0 });
+                } catch (err: unknown) {
+                    thrownMessage = err instanceof Error ? err.message : String(err);
+                }
+            });
+        } finally {
+            await client.close();
+        }
+
+        const runRecords = records.filter((record) => record.correlationId === 'corr-creds-err');
+
+        const serialized = JSON.stringify(runRecords);
+
+        expect(serialized).not.toContain('user:secret');
+        expect(serialized).not.toContain('secret@api.test');
+        expect(serialized).toContain('http://api.test');
+
+        expect(thrownMessage).toBeDefined();
+        expect(thrownMessage).not.toContain('user:secret');
+        expect(thrownMessage).toContain('http://api.test/studies');
     });
 });

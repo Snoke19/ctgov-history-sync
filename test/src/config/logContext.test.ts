@@ -46,6 +46,44 @@ describe('logContext', () => {
         expect(seen[1]).toEqual({ correlationId: 'corr-1' });
     });
 
+    it('restores operation after a nested request context ends', async () => {
+        const seen: Array<LogContext | undefined> = [];
+
+        await withLogContext({ correlationId: 'corr-op', operation: 'scrape' }, async () => {
+            await withLogContext(
+                { correlationId: 'corr-op', requestId: 'req-op', operation: 'http.fetchJson' },
+                async () => {
+                    seen.push(getLogContext());
+                },
+            );
+
+            seen.push(getLogContext());
+        });
+
+        expect(seen[0]).toEqual({ correlationId: 'corr-op', requestId: 'req-op', operation: 'http.fetchJson' });
+        expect(seen[1]).toEqual({ correlationId: 'corr-op', operation: 'scrape' });
+    });
+
+    it('stores only correlationId, requestId, and operation in the context', async () => {
+        const seen: LogContext[] = [];
+
+        await withLogContext({ correlationId: 'corr-keys', operation: 'scrape' }, async () => {
+            await withLogContext(
+                { correlationId: 'corr-keys', requestId: 'req-keys', operation: 'http.fetchJson' },
+                async () => {
+                    const context = getLogContext();
+
+                    if (context !== undefined) {
+                        seen.push(context);
+                    }
+                },
+            );
+        });
+
+        expect(seen).toHaveLength(1);
+        expect(Object.keys(seen[0]!).sort()).toEqual(['correlationId', 'operation', 'requestId']);
+    });
+
     it('isolates concurrent contexts (AsyncLocalStorage correctness)', async () => {
         const results = await Promise.all([
             withLogContext({ correlationId: 'corr-a', requestId: 'req-a' }, async () => {

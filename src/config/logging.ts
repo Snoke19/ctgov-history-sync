@@ -65,8 +65,15 @@ export function createLogger(moduleUrl: string, destination?: DestinationStream)
 
         // Merge the AsyncLocalStorage logging context (correlationId,
         // requestId, operation) into every log record at write time.
+        //
+        // A fresh copy is returned because pino merges statement fields into
+        // the mixin result with Object.assign. Returning the live ALS store
+        // would mutate the shared context with statement-local data and
+        // overwrite `operation` for every subsequent log record.
         mixin() {
-            return getLogContext() ?? {};
+            const context = getLogContext();
+
+            return context === undefined ? {} : { ...context };
         },
     };
 

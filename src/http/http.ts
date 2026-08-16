@@ -46,11 +46,5 @@ export interface FetchJsonRequestOptions {
     /** Caller-controlled cancellation signal. */
     signal?: AbortSignal;
 
-    /**
-     * Optional diagnostic request identifier. It is never transmitted as an HTTP
-     * header; it is only attached to application logs.
-     */
-    requestId?: string;
-
     retryPolicy?: Partial<RetryPolicyConfig>;
 }

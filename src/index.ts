@@ -34,7 +34,9 @@ async function withConcurrency<T, R>(
             try {
                 results[i] = await fn(item);
             } catch (err: unknown) {
-                logger.warn({ item: String(item), err }, 'Concurrent item processing recovered with null result');
+                // fetchTrialSafe handles every expected TrialError subclass, so
+                // an error escaping it is unexpected and must be visible.
+                logger.error({ item: String(item), err }, 'Concurrent item processing failed unexpectedly');
 
                 results[i] = null;
             }
@@ -62,22 +64,22 @@ async function fetchTrialSafe(api: ApiClient, nctId: string) {
         }
 
         if (err instanceof TimeoutException) {
-            logger.warn({ nctId, durationMs }, 'Trial fetch timed out');
+            logger.warn({ nctId, durationMs, err }, 'Trial fetch timed out');
             return null;
         }
 
         if (err instanceof HttpException) {
-            logger.warn({ nctId, status: err.status, durationMs }, 'Trial fetch returned HTTP error');
+            logger.warn({ nctId, status: err.status, durationMs, err }, 'Trial fetch returned HTTP error');
             return null;
         }
 
         if (err instanceof NetworkException) {
-            logger.warn({ nctId, durationMs, cause: getErrorMessage(err.cause) }, 'Trial fetch network error');
+            logger.warn({ nctId, durationMs, err }, 'Trial fetch network error');
             return null;
         }
 
         if (err instanceof TrialError) {
-            logger.warn({ nctId, durationMs, cause: getErrorMessage(err.cause) }, 'Trial fetch failed');
+            logger.warn({ nctId, durationMs, err }, 'Trial fetch failed');
             return null;
         }
 
@@ -85,14 +87,6 @@ async function fetchTrialSafe(api: ApiClient, nctId: string) {
 
         return null;
     }
-}
-
-function getErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-        return error.message;
-    }
-
-    return String(error);
 }
 
 async function scrape(api: ApiClient, pageSize: number, concurrency: number): Promise<void> {
@@ -223,7 +217,7 @@ async function run(): Promise<void> {
         await scrape(api, PAGE_SIZE, CONCURRENCY);
     } catch (err: unknown) {
         if (err instanceof Error) {
-            logger.error({ err, cause: getErrorMessage(err.cause) }, 'Scraper failed');
+            logger.error({ err }, 'Scraper failed');
         } else {
             logger.error({ error: String(err) }, 'Scraper failed');
         }

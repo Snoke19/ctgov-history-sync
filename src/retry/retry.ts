@@ -55,7 +55,7 @@ export class Retry<T> implements BusinessOperation<T> {
                 const result = await this.op.perform();
 
                 if (retryCount > 0) {
-                    logger.info(
+                    logger.debug(
                         {
                             attempts: retryCount + 1,
                             retries: retryCount,
@@ -86,7 +86,11 @@ export class Retry<T> implements BusinessOperation<T> {
                 }
 
                 if (retryCount >= this.maxRetries) {
-                    logger.error(
+                    // Not an ERROR: higher-level application code intentionally
+                    // handles the final failure (e.g. fetchTrialSafe), so the
+                    // retry layer reports exhaustion at WARN and preserves the
+                    // original exception for the handling boundary.
+                    logger.warn(
                         {
                             attempts: retryCount + 1,
                             maxRetries: this.maxRetries,

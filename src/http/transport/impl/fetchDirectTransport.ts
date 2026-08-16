@@ -1,10 +1,7 @@
-import { createLogger } from '../../../config/logging.js';
 import { adaptHttpResponse } from '../adaptHttpResponse.js';
 import { classifyTransportError } from '../classifyTransportError.js';
 import { DirectTransportFactory } from '../factory/directTransportFactory.js';
 import type { HttpRequest, HttpResponse, HttpTransport, TransportErrorClassification } from '../httpTransport.js';
-
-const logger = createLogger(import.meta.url);
 
 export class FetchDirectTransport implements HttpTransport {
     async request(options: HttpRequest): Promise<HttpResponse> {
@@ -21,15 +18,11 @@ export class FetchDirectTransport implements HttpTransport {
         return classifyTransportError(error);
     }
 
-    async close(): Promise<void> {
-        logger.debug('Direct transport closed');
-    }
+    async close(): Promise<void> {}
 }
 
 export class FetchDirectTransportFactory implements DirectTransportFactory {
     create(): HttpTransport {
-        logger.debug('Direct transport created');
-
         return new FetchDirectTransport();
     }
 }

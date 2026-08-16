@@ -31,27 +31,20 @@ export class EndpointFactory {
     ) {}
 
     async build(): Promise<Endpoint[]> {
-        logger.info('Starting endpoint assembly');
-
         try {
             const createLimiter = (): Limiter => this.limiterFactory.create();
             const definitions = this.provider.build();
 
-            const endpoints = await assembleEndpoints({
+            return await assembleEndpoints({
                 definitions,
                 createLimiter,
                 createEndpoint: defaultEndpointCtor,
             });
-
-            logger.info({ endpointCount: endpoints.length }, 'Endpoints assembled');
-
-            return endpoints;
         } catch (error: unknown) {
-            const trialError = TrialError.normalize(error);
-
-            logger.error({ err: trialError, errorType: trialError.name }, 'Endpoint assembly failed');
-
-            throw trialError;
+            // Lower layer: the exception is preserved and rethrown; the
+            // composition root (createApiClient) and the application boundary
+            // (src/index.ts) report the final failure.
+            throw TrialError.normalize(error);
         }
     }
 }
@@ -87,7 +80,9 @@ async function constructEndpoint(
 
         return createEndpoint(definition.id, createLimiter(), transport);
     } catch (error: unknown) {
-        logger.error(
+        // Low-level diagnostic only; the composition root reports the final
+        // failure. The sanitized endpoint id keeps proxy topology diagnosable.
+        logger.debug(
             { endpoint: sanitizeEndpointUrl(definition.id), err: error, errorType: describeErrorType(error) },
             'Endpoint construction failed',
         );

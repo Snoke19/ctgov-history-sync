@@ -106,6 +106,22 @@ describe('error classes', () => {
 
             expect(err.cause).toBe(cause);
         });
+
+        it('redacts userinfo credentials from the URL and the message', () => {
+            const err = new ApiResponseValidationError('http://user:pass@api.test/x', 'Invalid JSON response');
+
+            expect(err.url).toBe('http://api.test/x');
+            expect(err.message).toBe('Invalid API response from http://api.test/x: Invalid JSON response');
+            expect(err.message).not.toContain('user:pass');
+            expect(err.url).not.toContain('user:pass');
+        });
+
+        it('redacts userinfo even when the URL cannot be parsed', () => {
+            const err = new ApiResponseValidationError('http://user:pass@invalid host:8080', 'Invalid JSON response');
+
+            expect(err.url).not.toContain('user:pass');
+            expect(err.message).not.toContain('user:pass');
+        });
     });
 
     describe('HttpException', () => {

@@ -32,7 +32,6 @@ import { HttpResponse } from './transport/httpTransport.js';
 const logger = createLogger(import.meta.url);
 
 type HttpErrorLogContext = {
-    message: string;
     errorType: string;
     url: string;
     method: 'GET';
@@ -41,7 +40,6 @@ type HttpErrorLogContext = {
 
 function createHttpErrorLogContext(error: Error, url: string): HttpErrorLogContext {
     return {
-        message: error.message,
         err: error,
         errorType: error.name,
         url: sanitizeHttpUrl(url),
@@ -173,7 +171,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
             // client exposes caller cancellation as NetworkException while retaining
             // the original cancellation error as `cause`.
             if (trialError instanceof CallerAbortedError && options.signal?.aborted) {
-                throw new NetworkException(`Request cancelled by caller: ${url}`, {
+                throw new NetworkException(`Request cancelled by caller: ${sanitizeHttpUrl(url)}`, {
                     cause: trialError,
                 });
             }
@@ -189,18 +187,35 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
     async function fetchJson<T = unknown>(url: string, options: FetchJsonRequestOptions = {}): Promise<T | null> {
         validateFetchJsonRequestOptions(options);
 
-        const requestId = options.requestId ?? randomUUID();
+        // One requestId per HTTP request, shared by every retry attempt and all
+        // request-scoped log records. It is an infrastructure concern and is
+        // therefore never part of the public FetchJsonRequestOptions API.
+        const requestId = randomUUID();
         const parentContext = getLogContext();
 
         const requestContext: LogContext =
             parentContext === undefined
-                ? { correlationId: randomUUID(), requestId, operation: 'http.fetchJson' }
-                : { ...parentContext, requestId, operation: 'http.fetchJson' };
+                ? {
+                      correlationId: randomUUID(),
+                      requestId,
+                      operation: 'http.fetchJson',
+                  }
+                : {
+                      ...parentContext,
+                      requestId,
+                      operation: 'http.fetchJson',
+                  };
 
         return withLogContext(requestContext, async () => {
-            const effectiveOptions: FetchJsonRequestOptions = { ...options, requestId };
+            if (parentContext === undefined) {
+                // Standalone/library use: there is no application boundary context,
+                // so a fresh correlationId was created for this single request.
+                // In application use (src/index.ts) the correlationId always comes
+                // from the active context and is never regenerated here.
+                logger.debug('No active logging context; generated standalone request context');
+            }
 
-            const response = await fetchResponse(url, effectiveOptions);
+            const response = await fetchResponse(url, options);
 
             // fetchResponse returns null ONLY for allow404 + 404.
             // 204 No Content is handled inside parseOkResponseBody, not here.
@@ -213,7 +228,10 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
             } catch (error) {
                 const trialError = TrialError.normalize(error);
 
-                logger.error({ ...createHttpErrorLogContext(trialError, url) }, 'Failed to parse HTTP response body');
+                // The application-level boundary (e.g. fetchTrialSafe) reports
+                // response-parsing failures; this layer only adds a low-level
+                // diagnostic while preserving the original exception.
+                logger.debug({ ...createHttpErrorLogContext(trialError, url) }, 'Failed to parse HTTP response body');
 
                 throw trialError;
             }
@@ -226,9 +244,9 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
         try {
             await endpointManager.close();
         } catch (error: unknown) {
-            const trialError = TrialError.normalize(error);
-            logger.error({ err: trialError, operation: 'httpClient.close' }, 'Failed to close HTTP client');
-            throw trialError;
+            // The EndpointManager and the application boundary report close
+            // failures; this layer only normalizes and preserves the exception.
+            throw TrialError.normalize(error);
         }
 
         logger.info('HTTP client closed');

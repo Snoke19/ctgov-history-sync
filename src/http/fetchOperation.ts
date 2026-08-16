@@ -65,7 +65,9 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             }
 
             if (error instanceof EndpointAcquisitionTimeoutError) {
-                throw new TimeoutException(`Endpoint acquisition timed out after ${error.timeoutMs}ms: ${this.url}`);
+                throw new TimeoutException(
+                    `Endpoint acquisition timed out after ${error.timeoutMs}ms: ${this.sanitizedUrl()}`,
+                );
             }
 
             throw error;
@@ -116,7 +118,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             await drainBody(response);
 
             throw new HttpException(
-                `HTTP ${response.status} ${response.statusText} — ${method} ${this.url}`,
+                `HTTP ${response.status} ${response.statusText} — ${method} ${this.sanitizedUrl()}`,
                 response.status,
                 retryAfter ?? undefined,
             );
@@ -137,7 +139,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         switch (classification.kind) {
             case 'timeout':
                 return new TimeoutException(
-                    `Request timed out after ${timeoutMs}ms: ${this.url} — cause: ${causeDescription}`,
+                    `Request timed out after ${timeoutMs}ms: ${this.sanitizedUrl()} — cause: ${causeDescription}`,
                     { cause: classification.cause },
                 );
 
@@ -145,7 +147,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 return this.mapAbortReason(classification.cause, abortReason, timeoutMs);
 
             case 'network':
-                return new NetworkException(`Network failure: ${this.url} — cause: ${causeDescription}`, {
+                return new NetworkException(`Network failure: ${this.sanitizedUrl()} — cause: ${causeDescription}`, {
                     cause: classification.cause,
                 });
         }
@@ -159,15 +161,33 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         const causeDescription = this.describeError(cause);
 
         if (abortReason === 'caller') {
-            return new CallerAbortedError(`Request cancelled by caller: ${this.url} — cause: ${causeDescription}`, {
-                cause,
-            });
+            return new CallerAbortedError(
+                `Request cancelled by caller: ${this.sanitizedUrl()} — cause: ${causeDescription}`,
+                {
+                    cause,
+                },
+            );
         }
 
         return new TimeoutException(
-            `Request timed out after ${timeoutMs}ms: ${this.url} — cause: ${causeDescription}`,
+            `Request timed out after ${timeoutMs}ms: ${this.sanitizedUrl()} — cause: ${causeDescription}`,
             { cause },
         );
+    }
+
+    /**
+     * The request URL is never embedded verbatim in exception messages:
+     * userinfo credentials (protocol://user:password@host) are stripped so
+     * they cannot leak through err.message or logged error context.
+     */
+    private sanitizedUrl(): string {
+        try {
+            const url = new URL(this.url);
+
+            return `${url.protocol}//${url.host}${url.pathname}`;
+        } catch {
+            return this.url.replace(/\/\/[^@/?#]+@/, '//');
+        }
     }
 
     private buildHeaders(): Record<string, string> {

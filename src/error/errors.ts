@@ -57,13 +57,20 @@ export class TrialValidationError extends TrialError {
 
 export class ApiResponseValidationError extends TrialError {
     override readonly name = 'ApiResponseValidationError';
+    readonly url: string;
 
     constructor(
-        readonly url: string,
+        url: string,
         message: string,
         options: TrialErrorOptions = {},
     ) {
-        super(`Invalid API response from ${url}: ${message}`, options);
+        // Userinfo credentials (protocol://user:password@host) are stripped so
+        // proxy/API credentials can never leak through err.message, err.url,
+        // or logged error context.
+        const sanitizedUrl = stripUserInfo(url);
+
+        super(`Invalid API response from ${sanitizedUrl}: ${message}`, options);
+        this.url = sanitizedUrl;
     }
 }
 
@@ -144,4 +151,27 @@ export class EndpointAssemblyError extends TrialError {
     ) {
         super(message, options);
     }
+}
+
+/**
+ * Strips `user:password@` from the authority of a URL string without
+ * normalizing anything else. Falls back to the raw string when the URL
+ * cannot be parsed, still removing anything that looks like userinfo.
+ */
+function stripUserInfo(value: string): string {
+    if (!value.includes('@')) {
+        return value;
+    }
+
+    try {
+        const url = new URL(value);
+
+        if (url.username === '' && url.password === '') {
+            return value;
+        }
+    } catch {
+        // Fall through to the conservative regex below.
+    }
+
+    return value.replace(/\/\/[^@/?#]+@/, '//');
 }

@@ -44,7 +44,6 @@ export class UndiciHttpTransport implements HttpTransport {
     async close(): Promise<void> {
         try {
             await this.agent.close();
-            logger.debug({ proxy: this.proxyUrl ? sanitizeProxyUrl(this.proxyUrl) : null }, 'Proxy transport closed');
         } catch (error: unknown) {
             logger.error(
                 { proxy: this.proxyUrl ? sanitizeProxyUrl(this.proxyUrl) : null, err: error },
@@ -73,11 +72,6 @@ export class UndiciTransportFactory implements ProxyTransportFactory {
             } as Parameters<typeof poolFactory>[1]);
 
         const agent = agentCreator(proxyUrl, clientFactory);
-
-        logger.debug(
-            { proxyUrl: sanitizeProxyUrl(proxyUrl), connections, proxyCount: context.proxyCount },
-            'Proxy transport created',
-        );
 
         return new UndiciHttpTransport(agent, proxyUrl);
     }
