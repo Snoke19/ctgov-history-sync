@@ -60,6 +60,47 @@ describe('UndiciHttpTransport', () => {
         jest.clearAllMocks();
     });
 
+    describe('classifyError()', () => {
+        it('classifies a transient TLS handshake failure as network', () => {
+            const error = Object.assign(new Error('TLS handshake failure'), {
+                code: 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE',
+            });
+
+            expect(transport.classifyError(error)).toEqual({
+                kind: 'network',
+                cause: error,
+            });
+        });
+
+        it('classifies a wrapped transient TLS failure as network', () => {
+            const tlsError = Object.assign(new Error('TLS handshake failure'), {
+                code: 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE',
+            });
+
+            const fetchError = new TypeError('fetch failed');
+            fetchError.cause = tlsError;
+
+            expect(transport.classifyError(fetchError)).toEqual({
+                kind: 'network',
+                cause: fetchError,
+            });
+        });
+
+        it.each(['CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'])(
+            'does not classify certificate validation error %s as network',
+            (code) => {
+                const error = Object.assign(new Error('TLS certificate failure'), {
+                    code,
+                });
+
+                expect(transport.classifyError(error)).toEqual({
+                    kind: 'unknown',
+                    cause: error,
+                });
+            },
+        );
+    });
+
     describe('request()', () => {
         it('passes signal to fetch', async () => {
             const { signal } = new AbortController();

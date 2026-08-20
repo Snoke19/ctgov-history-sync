@@ -105,6 +105,29 @@ describe('HttpClient network & timeout failures', () => {
         jest.restoreAllMocks();
     });
 
+    it('retries a transient TLS handshake failure and succeeds on the next attempt', async () => {
+        const tlsError = Object.assign(new Error('TLS handshake failure'), {
+            code: 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE',
+        });
+
+        const fetchError = new TypeError('fetch failed');
+        fetchError.cause = tlsError;
+
+        const fetchMock = jest
+            .spyOn(globalThis, 'fetch')
+            .mockRejectedValueOnce(fetchError)
+            .mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+        const client = await makeClient();
+
+        const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/tls-failure`, {
+            maxRetries: 1,
+        });
+
+        expect(result).toEqual({ ok: true });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
     it('retries a network failure and succeeds on the next attempt', async () => {
         const fetchMock = jest
             .spyOn(globalThis, 'fetch')

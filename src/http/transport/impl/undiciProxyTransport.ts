@@ -139,11 +139,15 @@ const NETWORK_ERROR_CODES = new Set([
     'ETIMEDOUT',
 ]);
 
+const TLS_RETRYABLE_ERROR_CODES = new Set(['ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE']);
+
 const undiciErrorPredicates: TransportErrorPredicates = {
     isAbortError: (error) =>
         error.name === 'AbortError' || (typeof error.code === 'string' && ABORT_ERROR_CODES.has(error.code)),
 
     isTimeoutError: (error) => typeof error.code === 'string' && TIMEOUT_ERROR_CODES.has(error.code),
 
-    isNetworkError: (error) => typeof error.code === 'string' && NETWORK_ERROR_CODES.has(error.code),
+    isNetworkError: (error) =>
+        typeof error.code === 'string' &&
+        (NETWORK_ERROR_CODES.has(error.code) || TLS_RETRYABLE_ERROR_CODES.has(error.code)),
 };
