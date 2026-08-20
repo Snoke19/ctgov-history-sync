@@ -1,4 +1,4 @@
-export type TransportErrorKind = 'timeout' | 'cancelled' | 'network';
+export type TransportErrorKind = 'timeout' | 'cancelled' | 'network' | 'unknown';
 
 export interface TransportErrorClassification {
     readonly kind: TransportErrorKind;

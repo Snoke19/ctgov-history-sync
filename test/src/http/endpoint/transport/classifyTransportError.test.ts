@@ -1,60 +1,84 @@
 import { describe, expect, it } from '@jest/globals';
-import { classifyTransportError } from '../../../../../src/http/transport/classifyTransportError.js';
+import {
+    classifyTransportError,
+    type TransportErrorPredicates,
+} from '../../../../../src/http/transport/classifyTransportError.js';
 
 describe('classifyTransportError', () => {
-    it.each(['UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'])(
-        'classifies %s as timeout',
-        (code) => {
-            const error = Object.assign(new Error('timeout'), { code });
+    const predicates: TransportErrorPredicates = {
+        isAbortError: (error) => error.code === 'ABORT',
+        isTimeoutError: (error) => error.code === 'TIMEOUT',
+        isNetworkError: (error) => error.code === 'NETWORK',
+    };
 
-            expect(classifyTransportError(error)).toEqual({
-                kind: 'timeout',
-                cause: error,
-            });
-        },
-    );
+    it('classifies abort errors as cancelled', () => {
+        const error = Object.assign(new Error('aborted'), { code: 'ABORT' });
 
-    it('classifies a wrapped Undici timeout as timeout', () => {
-        const cause = Object.assign(new Error('Connect Timeout Error'), {
-            name: 'ConnectTimeoutError',
-            code: 'UND_ERR_CONNECT_TIMEOUT',
+        expect(classifyTransportError(error, predicates)).toEqual({
+            kind: 'cancelled',
+            cause: error,
         });
+    });
 
-        const error = new TypeError('fetch failed');
-        error.cause = cause;
+    it('classifies timeout errors as timeout', () => {
+        const error = Object.assign(new Error('timeout'), { code: 'TIMEOUT' });
 
-        expect(classifyTransportError(error)).toEqual({
+        expect(classifyTransportError(error, predicates)).toEqual({
             kind: 'timeout',
             cause: error,
         });
     });
 
-    it('classifies AbortError as cancelled', () => {
-        const error = new DOMException('The operation was aborted.', 'AbortError');
+    it('classifies network errors as network', () => {
+        const error = Object.assign(new Error('network failure'), { code: 'NETWORK' });
 
-        expect(classifyTransportError(error)).toEqual({
-            kind: 'cancelled',
-            cause: error,
-        });
-    });
-
-    it('classifies UND_ERR_ABORTED as cancelled', () => {
-        const error = Object.assign(new Error('Request aborted'), {
-            code: 'UND_ERR_ABORTED',
-        });
-
-        expect(classifyTransportError(error)).toEqual({
-            kind: 'cancelled',
-            cause: error,
-        });
-    });
-
-    it('classifies unknown errors as network', () => {
-        const error = new Error('ECONNRESET');
-
-        expect(classifyTransportError(error)).toEqual({
+        expect(classifyTransportError(error, predicates)).toEqual({
             kind: 'network',
             cause: error,
+        });
+    });
+
+    it('classifies unrecognized errors as unknown', () => {
+        const error = new TypeError('unexpected failure');
+
+        expect(classifyTransportError(error, predicates)).toEqual({
+            kind: 'unknown',
+            cause: error,
+        });
+    });
+
+    it('returns the original error as the cause', () => {
+        const error = Object.assign(new Error('failure'), { code: 'NETWORK' });
+
+        const result = classifyTransportError(error, predicates);
+
+        expect(result.cause).toBe(error);
+    });
+
+    it('traverses the cause chain', () => {
+        const cause = Object.assign(new Error('network failure'), {
+            code: 'NETWORK',
+        });
+
+        const error = new Error('fetch failed');
+        error.cause = cause;
+
+        expect(classifyTransportError(error, predicates)).toEqual({
+            kind: 'network',
+            cause: error,
+        });
+    });
+
+    it('handles cycles in the cause chain without looping', () => {
+        const first = new Error('first');
+        const second = new Error('second');
+
+        first.cause = second;
+        second.cause = first;
+
+        expect(classifyTransportError(first, predicates)).toEqual({
+            kind: 'unknown',
+            cause: first,
         });
     });
 });

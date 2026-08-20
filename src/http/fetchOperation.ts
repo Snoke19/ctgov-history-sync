@@ -1,4 +1,5 @@
 import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../config/config.js';
+import { createLogger } from '../config/logging.js';
 import {
     CallerAbortedError,
     EndpointAcquisitionTimeoutError,
@@ -6,6 +7,7 @@ import {
     NetworkException,
     TimeoutException,
     TrialError,
+    UnexpectedError,
 } from '../error/errors.js';
 import { BusinessOperation } from '../retry/businessOperation.js';
 import { defaultWallClock, WallClock } from './clock.js';
@@ -15,6 +17,8 @@ import { FetchJsonRequestOptions } from './http.js';
 import { drainBody } from './responseBody.js';
 import { parseRetryAfterHeader } from './retryPolicy.js';
 import { HttpResponse, HttpTransport } from './transport/httpTransport.js';
+
+const logger = createLogger(import.meta.url);
 
 type AbortReason = 'caller' | 'timeout';
 
@@ -131,7 +135,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         transport: HttpTransport,
         error: unknown,
         abortReason: AbortReason | undefined,
-    ): NetworkException | TimeoutException | CallerAbortedError {
+    ): NetworkException | TimeoutException | CallerAbortedError | UnexpectedError {
         const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
         const classification = transport.classifyError(error);
         const causeDescription = this.describeError(classification.cause);
@@ -150,6 +154,19 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 return new NetworkException(`Network failure: ${this.sanitizedUrl()} — cause: ${causeDescription}`, {
                     cause: classification.cause,
                 });
+
+            case 'unknown': {
+                const unexpectedError = new UnexpectedError(classification.cause);
+                logger.debug(
+                    {
+                        errorType: unexpectedError.name,
+                        err: unexpectedError,
+                    },
+                    'Unknown transport error; retry disabled',
+                );
+
+                return unexpectedError;
+            }
         }
     }
 

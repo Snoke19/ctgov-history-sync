@@ -1,5 +1,5 @@
 import { adaptHttpResponse } from '../adaptHttpResponse.js';
-import { classifyTransportError } from '../classifyTransportError.js';
+import { classifyTransportError, TransportErrorPredicates } from '../classifyTransportError.js';
 import { DirectTransportFactory } from '../factory/directTransportFactory.js';
 import type { HttpRequest, HttpResponse, HttpTransport, TransportErrorClassification } from '../httpTransport.js';
 
@@ -15,7 +15,7 @@ export class FetchDirectTransport implements HttpTransport {
     }
 
     classifyError(error: unknown): TransportErrorClassification {
-        return classifyTransportError(error);
+        return classifyTransportError(error, fetchErrorPredicates);
     }
 
     async close(): Promise<void> {}
@@ -26,3 +26,12 @@ export class FetchDirectTransportFactory implements DirectTransportFactory {
         return new FetchDirectTransport();
     }
 }
+
+const fetchErrorPredicates: TransportErrorPredicates = {
+    isAbortError: (error) => error.name === 'AbortError',
+
+    isTimeoutError: () => false,
+
+    isNetworkError: (error) =>
+        error.name === 'TypeError' && typeof error.message === 'string' && /fetch failed/i.test(error.message),
+};

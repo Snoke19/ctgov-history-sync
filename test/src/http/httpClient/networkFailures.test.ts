@@ -49,25 +49,17 @@ export async function withClosedClient(client: HttpClient, callback: () => Promi
     }
 }
 
-export async function waitForAbortSignal(getSignal: () => AbortSignal | undefined): Promise<void> {
-    await new Promise<void>((resolve) => {
-        const check = (): void => {
-            if (getSignal()) {
-                resolve();
-                return;
-            }
+export function createAbortableSleepMock(): {
+    sleep: jest.MockedFunction<(ms: number, signal?: AbortSignal) => Promise<void>>;
+    started: Promise<void>;
+} {
+    let resolveStarted!: () => void;
 
-            queueMicrotask(check);
-        };
-
-        check();
+    const started = new Promise<void>((resolve) => {
+        resolveStarted = resolve;
     });
-}
 
-export function createAbortableSleepMock(signalRef: {
-    signal?: AbortSignal;
-}): jest.MockedFunction<(ms: number, signal?: AbortSignal) => Promise<void>> {
-    return jest.fn(
+    const sleep = jest.fn(
         (_ms: number, signal?: AbortSignal) =>
             new Promise<void>((_, reject) => {
                 if (!signal || signal.aborted) {
@@ -75,11 +67,13 @@ export function createAbortableSleepMock(signalRef: {
                     return;
                 }
 
-                signalRef.signal = signal;
+                resolveStarted();
 
                 signal.addEventListener('abort', () => reject(createAbortError()), { once: true });
             }),
     );
+
+    return { sleep, started };
 }
 
 export function createAbortableRequestMock(onRequestStarted: () => void): jest.SpiedFunction<typeof fetch> {
@@ -111,31 +105,14 @@ describe('HttpClient network & timeout failures', () => {
         jest.restoreAllMocks();
     });
 
-    it.each(['UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'])(
-        'maps Undici %s to TimeoutException',
-        async (code) => {
-            const fetchMock = jest
-                .spyOn(globalThis, 'fetch')
-                .mockRejectedValueOnce(Object.assign(new Error(`${code} Error`), { code }));
-
-            const client = await makeClient();
-
-            const error = await expectRejected(
-                client.fetchJson(`${API_URL}/timeout`, {
-                    maxRetries: 0,
-                }),
-                TimeoutException,
-            );
-
-            expect(error.message).toContain('Request timed out after');
-            expect(fetchMock).toHaveBeenCalledTimes(1);
-        },
-    );
-
     it('retries a network failure and succeeds on the next attempt', async () => {
         const fetchMock = jest
             .spyOn(globalThis, 'fetch')
-            .mockRejectedValueOnce(new TypeError('fetch failed: ECONNRESET'))
+            .mockRejectedValueOnce(
+                Object.assign(new TypeError('fetch failed: ECONNRESET'), {
+                    code: 'ECONNRESET',
+                }),
+            )
             .mockResolvedValueOnce(jsonResponse({ ok: true }));
 
         const client = await makeClient();
@@ -147,9 +124,11 @@ describe('HttpClient network & timeout failures', () => {
     });
 
     it('throws NetworkException after exhausting all retry attempts', async () => {
-        const fetchMock = jest
-            .spyOn(globalThis, 'fetch')
-            .mockRejectedValue(new TypeError('fetch failed: ECONNREFUSED'));
+        const fetchMock = jest.spyOn(globalThis, 'fetch').mockRejectedValue(
+            Object.assign(new TypeError('fetch failed: ECONNREFUSED'), {
+                code: 'ECONNREFUSED',
+            }),
+        );
 
         const client = await makeClient();
 
@@ -161,7 +140,7 @@ describe('HttpClient network & timeout failures', () => {
         );
 
         expect(error.message).toContain(
-            'Network failure: http://api.test/unreachable — cause: TypeError: fetch failed: ECONNREFUSED',
+            'Network failure: http://api.test/unreachable — cause: TypeError (ECONNREFUSED): fetch failed: ECONNREFUSED',
         );
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
@@ -225,11 +204,15 @@ describe('HttpClient network & timeout failures', () => {
     });
 
     it('aborts the retry backoff wait immediately when the caller cancels mid-delay', async () => {
-        const fetchMock = jest.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed: ECONNRESET'));
+        const fetchMock = jest.spyOn(globalThis, 'fetch').mockRejectedValue(
+            Object.assign(new TypeError('fetch failed: ECONNRESET'), {
+                code: 'ECONNRESET',
+            }),
+        );
 
         const controller = new AbortController();
-        const backoffSignalRef: { signal?: AbortSignal } = {};
-        const sleepMock = createAbortableSleepMock(backoffSignalRef);
+
+        const { sleep: sleepMock, started } = createAbortableSleepMock();
 
         const client = await makeClient({ sleep: sleepMock });
 
@@ -239,8 +222,7 @@ describe('HttpClient network & timeout failures', () => {
                 maxRetries: 3,
             });
 
-            await waitForAbortSignal(() => backoffSignalRef.signal);
-
+            await started;
             controller.abort();
 
             await expect(pending).rejects.toBeInstanceOf(NetworkException);

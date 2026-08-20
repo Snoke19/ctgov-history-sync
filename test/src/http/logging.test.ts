@@ -3,7 +3,7 @@ import type { DestinationStream } from 'pino';
 import type { Dispatcher, ProxyAgent } from 'undici';
 import { withLogContext, getLogContext } from '../../../src/config/logContext.js';
 import { createLogger, setLoggerDestinationForTests } from '../../../src/config/logging.js';
-import { ApiResponseValidationError, NetworkException } from '../../../src/error/errors.js';
+import { ApiResponseValidationError, NetworkException, UnexpectedError } from '../../../src/error/errors.js';
 import type { EndpointProvider } from '../../../src/http/endpoint/provider/endpointProvider.js';
 import type {
     AgentCreatorFn,
@@ -81,6 +81,60 @@ describe('logging strategy', () => {
 
     afterEach(() => {
         jest.restoreAllMocks();
+    });
+
+    it('logs when an unknown transport error is classified as non-retryable', async () => {
+        const failure = new TypeError('unexpected transport failure');
+
+        const failingTransport = {
+            request: async () => {
+                throw failure;
+            },
+            classifyError: () => ({
+                kind: 'unknown' as const,
+                cause: failure,
+            }),
+            close: async () => {},
+        };
+
+        const provider: EndpointProvider = {
+            build: () => [
+                {
+                    id: 'direct',
+                    createTransport: () => failingTransport,
+                },
+            ],
+        };
+
+        const client = await createHttpClient({
+            provider,
+            limiterFactory: new DefaultLimiterFactory({
+                enabled: false,
+                capacity: 1,
+                windowMs: 1000,
+            }),
+            endpointManagerFactory: new DefaultEndpointManagerFactory({
+                acquireTimeout: 5000,
+            }),
+        });
+
+        try {
+            await withLogContext({ correlationId: 'corr-unknown-error' }, async () => {
+                await expect(client.fetchJson(`${API_URL}/unexpected`, { maxRetries: 3 })).rejects.toBeInstanceOf(
+                    UnexpectedError,
+                );
+            });
+        } finally {
+            await client.close();
+        }
+
+        const record = records.find((record) => record.msg === 'Unknown transport error; retry disabled');
+
+        expect(record).toBeDefined();
+        expect(record).toMatchObject({
+            correlationId: 'corr-unknown-error',
+            errorType: 'UnexpectedError',
+        });
     });
 
     it('propagates correlationId across all layers and assigns one requestId per request', async () => {

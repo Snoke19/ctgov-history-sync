@@ -4,7 +4,7 @@ import { ProxyPoolConfig } from '../../../config/config.js';
 import { createLogger } from '../../../config/logging.js';
 import { resolveConnections } from '../../endpoint/proxy/resolveConnections.js';
 import { adaptHttpResponse } from '../adaptHttpResponse.js';
-import { classifyTransportError } from '../classifyTransportError.js';
+import { classifyTransportError, TransportErrorPredicates } from '../classifyTransportError.js';
 import { ProxyTransportContext, ProxyTransportFactory } from '../factory/proxyTransportFactory.js';
 import type { HttpRequest, HttpResponse, HttpTransport, TransportErrorClassification } from '../httpTransport.js';
 
@@ -38,7 +38,7 @@ export class UndiciHttpTransport implements HttpTransport {
     }
 
     classifyError(error: unknown): TransportErrorClassification {
-        return classifyTransportError(error);
+        return classifyTransportError(error, undiciErrorPredicates);
     }
 
     async close(): Promise<void> {
@@ -122,3 +122,28 @@ const createPoolFactory =
             },
         });
     };
+
+const TIMEOUT_ERROR_CODES = new Set(['UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT']);
+
+const ABORT_ERROR_CODES = new Set(['UND_ERR_ABORTED', 'ABORT_ERR']);
+
+const NETWORK_ERROR_CODES = new Set([
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ENOTFOUND',
+    'EAI_AGAIN',
+    'EAI_FAIL',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+    'ECONNABORTED',
+    'ETIMEDOUT',
+]);
+
+const undiciErrorPredicates: TransportErrorPredicates = {
+    isAbortError: (error) =>
+        error.name === 'AbortError' || (typeof error.code === 'string' && ABORT_ERROR_CODES.has(error.code)),
+
+    isTimeoutError: (error) => typeof error.code === 'string' && TIMEOUT_ERROR_CODES.has(error.code),
+
+    isNetworkError: (error) => typeof error.code === 'string' && NETWORK_ERROR_CODES.has(error.code),
+};
