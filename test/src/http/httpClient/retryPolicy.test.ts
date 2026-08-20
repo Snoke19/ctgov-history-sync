@@ -23,7 +23,7 @@ describe('HttpClient retry policy', () => {
 
         await withClient(async (client) => {
             const result = await client.fetchJson<{ recovered: boolean }>(`${API_URL}/request-timeout`, {
-                maxRetries: 1,
+                maxRetries: 2,
             });
 
             expect(result).toEqual({ recovered: true });

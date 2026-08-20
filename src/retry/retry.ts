@@ -8,16 +8,16 @@ const logger = createLogger(import.meta.url);
 
 export class Retry<T> implements BusinessOperation<T> {
     private readonly operation: BusinessOperation<T>;
-    private readonly maxRetries: number;
+    private readonly maxAttempts: number;
     private readonly shouldRetry: (error: TrialError) => boolean;
-    private readonly delayMs: number | ((attempt: number, error: TrialError) => number);
+    private readonly delayMs: number | ((retryAttempt: number, error: TrialError) => number);
     private readonly sleep: Sleeper['sleep'];
     private readonly signal: AbortSignal | undefined;
 
     /**
-     * @param op          The operation to execute, retried on failure.
-     * @param maxRetries  Number of retries after the initial attempt.
-     * @param shouldRetry  Decides whether a failed attempt warrants another try.
+     * @param operation   The operation to execute, retried on failure.
+     * @param maxAttempts Maximum number of total attempts, including the initial attempt.
+     * @param shouldRetry Decides whether a failed attempt warrants another try.
      * @param delayMs     Fixed delay between attempts, or a function of the
      *                    zero-indexed retry attempt and the last error.
      * @param sleep       Async delay implementation. Defaults to the shared
@@ -28,18 +28,18 @@ export class Retry<T> implements BusinessOperation<T> {
      */
     constructor(
         operation: BusinessOperation<T>,
-        maxRetries: number,
+        maxAttempts: number,
         shouldRetry: (error: TrialError) => boolean,
-        delayMs: number | ((attempt: number, error: TrialError) => number),
+        delayMs: number | ((retryAttempt: number, error: TrialError) => number),
         sleep: Sleeper['sleep'] = defaultSleeper.sleep,
         signal?: AbortSignal,
     ) {
-        if (!Number.isInteger(maxRetries) || maxRetries < 0) {
-            throw new TypeError('maxRetries must be a non-negative integer');
+        if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+            throw new TypeError(`maxAttempts must be a positive integer. value is ${maxAttempts}`);
         }
 
         this.operation = operation;
-        this.maxRetries = maxRetries;
+        this.maxAttempts = maxAttempts;
         this.shouldRetry = shouldRetry;
         this.delayMs = delayMs;
         this.sleep = sleep;
@@ -47,18 +47,20 @@ export class Retry<T> implements BusinessOperation<T> {
     }
 
     async perform(): Promise<T> {
-        let retryCount = 0;
+        let retries = 0;
         const startedAt = Date.now();
 
         while (true) {
+            const attempt = retries + 1;
+
             try {
                 const result = await this.operation.perform();
 
-                if (retryCount > 0) {
+                if (retries > 0) {
                     logger.debug(
                         {
-                            attempts: retryCount + 1,
-                            retries: retryCount,
+                            attempts: attempt,
+                            retries,
                             durationMs: Date.now() - startedAt,
                         },
                         'Operation recovered after retry',
@@ -85,33 +87,33 @@ export class Retry<T> implements BusinessOperation<T> {
                     throw trialError;
                 }
 
-                if (retryCount >= this.maxRetries) {
+                if (attempt >= this.maxAttempts) {
                     // Not an ERROR: higher-level application code intentionally
                     // handles the final failure (e.g. fetchTrialSafe), so the
                     // retry layer reports exhaustion at WARN and preserves the
                     // original exception for the handling boundary.
                     logger.warn(
                         {
-                            attempts: retryCount + 1,
-                            maxRetries: this.maxRetries,
+                            attempts: attempt,
+                            maxAttempts: this.maxAttempts,
                             err: trialError,
                             errorType: trialError.name,
                             durationMs: Date.now() - startedAt,
                         },
-                        'Operation failed; retries exhausted',
+                        'Operation failed; maximum attempts reached',
                     );
 
                     throw trialError;
                 }
 
-                const delay = typeof this.delayMs === 'function' ? this.delayMs(retryCount, trialError) : this.delayMs;
+                const delay = typeof this.delayMs === 'function' ? this.delayMs(retries, trialError) : this.delayMs;
 
-                retryCount++;
+                const nextAttempt = attempt + 1;
 
                 logger.warn(
                     {
-                        attempt: retryCount,
-                        maxRetries: this.maxRetries,
+                        attempt: nextAttempt,
+                        maxAttempts: this.maxAttempts,
                         delayMs: Math.max(0, delay),
                         reason: trialError.name,
                         statusCode: trialError instanceof HttpException ? trialError.status : undefined,
@@ -122,6 +124,8 @@ export class Retry<T> implements BusinessOperation<T> {
                 );
 
                 await this.abortableSleep(Math.max(0, delay));
+
+                retries++;
             }
         }
     }

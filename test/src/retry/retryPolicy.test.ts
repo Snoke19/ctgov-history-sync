@@ -1,13 +1,13 @@
 import { describe, expect, it } from '@jest/globals';
-import { HttpException, NetworkException, TimeoutException, TrialError } from '../../../../src/error/errors.js';
+import { HttpException, NetworkException, TimeoutException, TrialError } from '../../../src/error/errors.js';
 import {
     calculateBackoff,
     defaultRetryPolicyConfig,
     parseRetryAfterHeader,
     RetryPolicyConfig,
     shouldRetry,
-} from '../../../../src/http/retryPolicy.js';
-import { HttpResponse } from '../../../../src/http/transport/httpTransport.js';
+} from '../../../src/http/retryPolicy.js';
+import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
 
 describe('defaultRetryPolicyConfig', () => {
     it('contains the configured retry defaults', () => {

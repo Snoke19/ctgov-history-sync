@@ -311,28 +311,49 @@ describe('logging strategy', () => {
             request: async () => {
                 throw failure;
             },
-            classifyError: () => ({ kind: 'network' as const, cause: failure }),
+            classifyError: () => ({
+                kind: 'network' as const,
+                cause: failure,
+            }),
             close: async () => {},
         };
 
         const provider: EndpointProvider = {
-            build: () => [{ id: 'direct', createTransport: () => failingTransport }],
+            build: () => [
+                {
+                    id: 'direct',
+                    createTransport: () => failingTransport,
+                },
+            ],
         };
+
+        const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
         const client = await createHttpClient({
             provider,
-            limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-            endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 5000 }),
+            limiterFactory: new DefaultLimiterFactory({
+                enabled: false,
+                capacity: 1,
+                windowMs: 1000,
+            }),
+            endpointManagerFactory: new DefaultEndpointManagerFactory({
+                acquireTimeout: 5000,
+            }),
             retryConfig: {
                 retryOnTimeout: false,
                 retryOnNetworkError: true,
                 retryableStatusCodes: new Set([500]),
             },
+            sleep,
         });
 
         try {
             await withLogContext({ correlationId: 'corr-retries' }, async () => {
-                await expect(client.fetchJson(`${API_URL}/down`, { maxRetries: 1 })).rejects.toMatchObject({
+                await expect(
+                    client.fetchJson(`${API_URL}/down`, {
+                        maxRetries: 1,
+                    }),
+                ).rejects.toMatchObject({
                     name: 'NetworkException',
                 });
             });
@@ -348,24 +369,29 @@ describe('logging strategy', () => {
             expect(record.correlationId).toBe('corr-retries');
         }
 
-        // The requestId is scoped to the whole request including all retries.
         const requestIds = new Set(
             retryRecords.map((record) => record.requestId).filter((id): id is string => typeof id === 'string'),
         );
 
         expect(requestIds.size).toBe(1);
 
+        const requestId = [...requestIds][0];
+
+        expect(requestId).toBeDefined();
+
         const retrying = retryRecords.find((record) => record.msg === 'Operation failed; retrying');
 
         expect(retrying).toBeDefined();
-        expect(retrying?.requestId).toBeDefined();
+        expect(retrying?.requestId).toBe(requestId);
 
-        const exhausted = retryRecords.find((record) => record.msg === 'Operation failed; retries exhausted');
+        const exhausted = retryRecords.find((record) => record.msg === 'Operation failed; maximum attempts reached');
 
         expect(exhausted).toBeDefined();
+        expect(exhausted?.requestId).toBe(requestId);
+
         expect(exhausted).toMatchObject({
             attempts: 2,
-            maxRetries: 1,
+            maxAttempts: 2,
             errorType: 'NetworkException',
         });
 
@@ -373,6 +399,8 @@ describe('logging strategy', () => {
 
         expect(err?.message).toContain('socket hang up');
         expect(err?.stack).toContain('Error: socket hang up');
+
+        expect(sleep).toHaveBeenCalledTimes(1);
     });
 
     it('preserves the original exception in response parse error logs', async () => {
@@ -524,7 +552,12 @@ describe('logging strategy', () => {
 
         expect(correlationIds).toEqual(new Set(['corr-single-run']));
 
-        for (const msg of ['HTTP client created', 'HTTP request started', 'HTTP request completed', 'HTTP client closed']) {
+        for (const msg of [
+            'HTTP client created',
+            'HTTP request started',
+            'HTTP request completed',
+            'HTTP client closed',
+        ]) {
             expect(newRecords.some((record) => record.msg === msg)).toBe(true);
         }
     });
@@ -565,10 +598,12 @@ describe('logging strategy', () => {
             expect(typeof secondFallbackRecord?.correlationId).toBe('string');
             expect(typeof secondFallbackRecord?.requestId).toBe('string');
 
-            const firstCorrelationId = firstRecords.find((record) => typeof record.correlationId === 'string')
-                ?.correlationId;
-            const secondCorrelationId = secondRecords.find((record) => typeof record.correlationId === 'string')
-                ?.correlationId;
+            const firstCorrelationId = firstRecords.find(
+                (record) => typeof record.correlationId === 'string',
+            )?.correlationId;
+            const secondCorrelationId = secondRecords.find(
+                (record) => typeof record.correlationId === 'string',
+            )?.correlationId;
 
             expect(typeof firstCorrelationId).toBe('string');
             expect(typeof secondCorrelationId).toBe('string');
@@ -589,23 +624,40 @@ describe('logging strategy', () => {
             request: async () => {
                 throw failure;
             },
-            classifyError: () => ({ kind: 'network' as const, cause: failure }),
+            classifyError: () => ({
+                kind: 'network' as const,
+                cause: failure,
+            }),
             close: async () => {},
         };
 
         const provider: EndpointProvider = {
-            build: () => [{ id: 'direct', createTransport: () => failingTransport }],
+            build: () => [
+                {
+                    id: 'direct',
+                    createTransport: () => failingTransport,
+                },
+            ],
         };
+
+        const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
         const client = await createHttpClient({
             provider,
-            limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-            endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 5000 }),
+            limiterFactory: new DefaultLimiterFactory({
+                enabled: false,
+                capacity: 1,
+                windowMs: 1000,
+            }),
+            endpointManagerFactory: new DefaultEndpointManagerFactory({
+                acquireTimeout: 5000,
+            }),
             retryConfig: {
                 retryOnTimeout: false,
                 retryOnNetworkError: true,
                 retryableStatusCodes: new Set([500]),
             },
+            sleep,
         });
 
         try {
@@ -622,13 +674,18 @@ describe('logging strategy', () => {
 
         expect(runRecords.length).toBeGreaterThan(0);
 
-        // No error-level record: the retry layer reports exhaustion at WARN and
-        // the caller (application boundary) is responsible for the final report.
+        // Retry exhaustion is WARN, not ERROR.
         expect(runRecords.some((record) => record.level >= 50)).toBe(false);
 
-        const exhausted = runRecords.find((record) => record.msg === 'Operation failed; retries exhausted');
+        const exhausted = runRecords.find((record) => record.msg === 'Operation failed; maximum attempts reached');
 
         expect(exhausted).toBeDefined();
+        expect(exhausted).toMatchObject({
+            attempts: 2,
+            maxAttempts: 2,
+            errorType: 'NetworkException',
+        });
+
         expect(exhausted?.level).toBe(40);
     });
 

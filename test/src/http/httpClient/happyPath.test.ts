@@ -9,6 +9,41 @@ describe('HttpClient happy path & request construction', () => {
         jest.restoreAllMocks();
     });
 
+    it('performs exactly one attempt and zero retries when maxRetries is 0', async () => {
+        const fetchMock = jest
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValueOnce(jsonResponse('Bad Gateway', 502, {}, 'Bad Gateway'));
+
+        await withClient(async (client) => {
+            await expect(
+                client.fetchJson(`${API_URL}/no-retry`, {
+                    maxRetries: 0,
+                }),
+            ).rejects.toMatchObject({
+                status: 502,
+            });
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    it('performs three total attempts when maxRetries is 2', async () => {
+        const fetchMock = jest
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValueOnce(jsonResponse('Bad Gateway', 502, {}, 'Bad Gateway'))
+            .mockResolvedValueOnce(jsonResponse('Bad Gateway', 502, {}, 'Bad Gateway'))
+            .mockResolvedValueOnce(jsonResponse({ recovered: true }));
+
+        await withClient(async (client) => {
+            const result = await client.fetchJson<{ recovered: boolean }>(`${API_URL}/retry-twice`, {
+                maxRetries: 2,
+            });
+
+            expect(result).toEqual({ recovered: true });
+            expect(fetchMock).toHaveBeenCalledTimes(3);
+        });
+    });
+
     it('allows custom headers to override Accept and User-Agent defaults', async () => {
         const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
 
