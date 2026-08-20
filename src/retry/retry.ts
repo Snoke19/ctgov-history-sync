@@ -7,7 +7,7 @@ import { BusinessOperation } from './businessOperation.js';
 const logger = createLogger(import.meta.url);
 
 export class Retry<T> implements BusinessOperation<T> {
-    private readonly op: BusinessOperation<T>;
+    private readonly operation: BusinessOperation<T>;
     private readonly maxRetries: number;
     private readonly shouldRetry: (error: TrialError) => boolean;
     private readonly delayMs: number | ((attempt: number, error: TrialError) => number);
@@ -27,7 +27,7 @@ export class Retry<T> implements BusinessOperation<T> {
      *                    instead of running it to completion.
      */
     constructor(
-        op: BusinessOperation<T>,
+        operation: BusinessOperation<T>,
         maxRetries: number,
         shouldRetry: (error: TrialError) => boolean,
         delayMs: number | ((attempt: number, error: TrialError) => number),
@@ -38,7 +38,7 @@ export class Retry<T> implements BusinessOperation<T> {
             throw new TypeError('maxRetries must be a non-negative integer');
         }
 
-        this.op = op;
+        this.operation = operation;
         this.maxRetries = maxRetries;
         this.shouldRetry = shouldRetry;
         this.delayMs = delayMs;
@@ -52,7 +52,7 @@ export class Retry<T> implements BusinessOperation<T> {
 
         while (true) {
             try {
-                const result = await this.op.perform();
+                const result = await this.operation.perform();
 
                 if (retryCount > 0) {
                     logger.debug(
