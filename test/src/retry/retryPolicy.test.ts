@@ -181,6 +181,18 @@ describe('calculateBackoff', () => {
         backoffCapMs: CAP,
     };
 
+    describe('overflow protection', () => {
+        it('caps the delay at backoffCapMs for very large attempt counts', () => {
+            const result = calculateBackoff(10_000, null, {
+                baseDelayMs: 100,
+                backoffCapMs: 10_000,
+                random: () => 0,
+            });
+
+            expect(result).toBe(10_000);
+        });
+    });
+
     describe('exponential backoff', () => {
         it('returns exponential backoff for first retry (attempt 0)', () => {
             const backoff = calculateBackoff(0, null, noJitter);

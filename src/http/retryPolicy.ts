@@ -17,6 +17,8 @@ import { assertPositiveInt } from '../utils/validation.js';
 import { defaultRandom } from './clock.js';
 import { HttpResponse } from './transport/httpTransport.js';
 
+const JITTER_FACTOR = 0.5;
+
 /**
  * Configurable retry policy. All fields are plain values, so the object
  * can be constructed ad-hoc in tests without touching module-level state.
@@ -91,8 +93,20 @@ export function calculateBackoff(attempt: number, retryAfterMs: number | null, o
         return Math.min(retryAfterMs, backoffCapMs);
     }
 
-    const base = baseDelayMs * 2 ** attempt;
-    const jitter = random() * base * 0.5;
+    const exponent = 2 ** attempt;
+
+    if (!Number.isFinite(exponent)) {
+        return backoffCapMs;
+    }
+
+    const base = baseDelayMs * exponent;
+
+    if (!Number.isFinite(base)) {
+        return backoffCapMs;
+    }
+
+    const jitter = random() * base * JITTER_FACTOR;
+
     return Math.min(base + jitter, backoffCapMs);
 }
 
