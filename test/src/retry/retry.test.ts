@@ -473,56 +473,52 @@ describe('Retry', () => {
 
             expect(perform).toHaveBeenCalledTimes(2000);
         });
+    });
 
-        describe('logging', () => {
-            it('logs recovery with attempt count, retry count, and elapsed time after eventual success', async () => {
-                const error = retryableError();
+    describe('logging', () => {
+        it('logs recovery with attempt count, retry count, and elapsed time after eventual success', async () => {
+            const error = retryableError();
 
-                const operation = makeOperation(
-                    jest.fn<() => Promise<string>>().mockRejectedValueOnce(error).mockResolvedValueOnce('ok'),
-                );
+            const operation = makeOperation(
+                jest.fn<() => Promise<string>>().mockRejectedValueOnce(error).mockResolvedValueOnce('ok'),
+            );
 
-                const sleep = jest
-                    .fn<(ms: number, signal?: AbortSignal) => Promise<void>>()
-                    .mockResolvedValue(undefined);
+            const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-                await new Retry(operation, 2, () => true, 0, sleep).perform();
+            await new Retry(operation, 2, () => true, 0, sleep).perform();
 
-                expect(mockLogger.debug).toHaveBeenCalledWith(
-                    expect.objectContaining({
-                        attempts: 2,
-                        retries: 1,
-                        durationMs: expect.any(Number),
-                    }),
-                    'Operation recovered after retry',
-                );
-            });
+            expect(mockLogger.debug).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    attempts: 2,
+                    retries: 1,
+                    durationMs: expect.any(Number),
+                }),
+                'Operation recovered after retry',
+            );
+        });
+    });
 
-            describe('resource stability', () => {
-                it('does not hold references to large error payloads after a cycle completes (stability smoke test)', async () => {
-                    const perform = jest.fn<() => Promise<string>>();
-                    const sleep = jest
-                        .fn<(ms: number, signal?: AbortSignal) => Promise<void>>()
-                        .mockResolvedValue(undefined);
-                    const retry = new Retry(makeOperation(perform), 2, () => true, 0, sleep);
+    describe('resource stability', () => {
+        it('does not hold references to large error payloads after a cycle completes (stability smoke test)', async () => {
+            const perform = jest.fn<() => Promise<string>>();
+            const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
+            const retry = new Retry(makeOperation(perform), 2, () => true, 0, sleep);
 
-                    for (let i = 0; i < 100; i++) {
-                        perform
-                            .mockRejectedValueOnce(
-                                new HttpException(`error ${i}`, 500, undefined, {
-                                    context: {
-                                        payload: 'x'.repeat(10_000),
-                                    },
-                                }),
-                            )
-                            .mockResolvedValueOnce('ok');
+            for (let i = 0; i < 100; i++) {
+                perform
+                    .mockRejectedValueOnce(
+                        new HttpException(`error ${i}`, 500, undefined, {
+                            context: {
+                                payload: 'x'.repeat(10_000),
+                            },
+                        }),
+                    )
+                    .mockResolvedValueOnce('ok');
 
-                        await expect(retry.perform()).resolves.toBe('ok');
-                    }
+                await expect(retry.perform()).resolves.toBe('ok');
+            }
 
-                    expect(perform).toHaveBeenCalledTimes(200);
-                });
-            });
+            expect(perform).toHaveBeenCalledTimes(200);
         });
     });
 });
