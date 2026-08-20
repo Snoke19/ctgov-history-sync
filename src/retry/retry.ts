@@ -57,14 +57,7 @@ export class Retry<T> implements BusinessOperation<T> {
                 const result = await this.operation.perform();
 
                 if (retries > 0) {
-                    logger.debug(
-                        {
-                            attempts: attempt,
-                            retries,
-                            durationMs: Date.now() - startedAt,
-                        },
-                        'Operation recovered after retry',
-                    );
+                    this.logRecovered(attempt, retries, startedAt);
                 }
 
                 return result;
@@ -76,33 +69,12 @@ export class Retry<T> implements BusinessOperation<T> {
                 }
 
                 if (!this.shouldRetry(trialError)) {
-                    logger.debug(
-                        {
-                            err: trialError,
-                            errorType: trialError.name,
-                        },
-                        'Operation failed; error is not retryable',
-                    );
-
+                    this.logNotRetryable(trialError);
                     throw trialError;
                 }
 
                 if (attempt >= this.maxAttempts) {
-                    // Not an ERROR: higher-level application code intentionally
-                    // handles the final failure (e.g. fetchTrialSafe), so the
-                    // retry layer reports exhaustion at WARN and preserves the
-                    // original exception for the handling boundary.
-                    logger.warn(
-                        {
-                            attempts: attempt,
-                            maxAttempts: this.maxAttempts,
-                            err: trialError,
-                            errorType: trialError.name,
-                            durationMs: Date.now() - startedAt,
-                        },
-                        'Operation failed; maximum attempts reached',
-                    );
-
+                    this.logMaxAttempts(attempt, trialError, startedAt);
                     throw trialError;
                 }
 
@@ -110,18 +82,7 @@ export class Retry<T> implements BusinessOperation<T> {
 
                 const nextAttempt = attempt + 1;
 
-                logger.warn(
-                    {
-                        attempt: nextAttempt,
-                        maxAttempts: this.maxAttempts,
-                        delayMs: Math.max(0, delay),
-                        reason: trialError.name,
-                        statusCode: trialError instanceof HttpException ? trialError.status : undefined,
-                        err: trialError,
-                        errorType: trialError.name,
-                    },
-                    'Operation failed; retrying',
-                );
+                this.logRetry(nextAttempt, delay, trialError);
 
                 await this.abortableSleep(Math.max(0, delay));
 
@@ -148,5 +109,54 @@ export class Retry<T> implements BusinessOperation<T> {
         if (this.signal?.aborted) {
             throw new CallerAbortedError();
         }
+    }
+
+    private logRecovered(attempts: number, retries: number, startedAt: number): void {
+        logger.debug(
+            {
+                attempts,
+                retries,
+                durationMs: Date.now() - startedAt,
+            },
+            'Operation recovered after retry',
+        );
+    }
+
+    private logNotRetryable(trialError: TrialError): void {
+        logger.debug(
+            {
+                err: trialError,
+                errorType: trialError.name,
+            },
+            'Operation failed; error is not retryable',
+        );
+    }
+
+    private logMaxAttempts(attempt: number, trialError: TrialError, startedAt: number): void {
+        logger.warn(
+            {
+                attempts: attempt,
+                maxAttempts: this.maxAttempts,
+                err: trialError,
+                errorType: trialError.name,
+                durationMs: Date.now() - startedAt,
+            },
+            'Operation failed; maximum attempts reached',
+        );
+    }
+
+    private logRetry(nextAttempt: number, delayMs: number, trialError: TrialError): void {
+        logger.warn(
+            {
+                attempt: nextAttempt,
+                maxAttempts: this.maxAttempts,
+                delayMs,
+                reason: trialError.name,
+                statusCode: trialError instanceof HttpException ? trialError.status : undefined,
+                err: trialError,
+                errorType: trialError.name,
+            },
+            'Operation failed; retrying',
+        );
     }
 }
