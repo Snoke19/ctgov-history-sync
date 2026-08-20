@@ -28,7 +28,7 @@ describe('Retry', () => {
         jest.restoreAllMocks();
     });
 
-    it('accepts maxRetries: 1', async () => {
+    it('accepts maxAttempts: 1', async () => {
         const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
         const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
@@ -50,7 +50,7 @@ describe('Retry', () => {
         );
     });
 
-    it.each([-1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY])('rejects invalid maxRetries: %s', (maxAttempts) => {
+    it.each([-1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY])('rejects invalid maxAttempts: %s', (maxAttempts) => {
         const operation = makeOperation(jest.fn<() => Promise<string>>());
         const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>();
 
@@ -141,21 +141,6 @@ describe('Retry', () => {
         });
     });
 
-    it('does not retry unknown or unclassified errors', async () => {
-        const error = new Error('test');
-        const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(error));
-
-        const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-        const shouldRetry = jest.fn<(error: TrialError) => boolean>().mockReturnValue(false);
-
-        const retry = new Retry(operation, 3, shouldRetry, 1, sleep);
-
-        await expect(retry.perform()).rejects.toBeInstanceOf(UnexpectedError);
-
-        expect(operation.perform).toHaveBeenCalledTimes(1);
-        expect(sleep).not.toHaveBeenCalled();
-    });
-
     describe('Abort/cancellation errors are not retried', () => {
         it('throws CallerAbortedError when the signal is already aborted', async () => {
             const controller = new AbortController();
@@ -231,23 +216,6 @@ describe('Retry', () => {
     });
 
     describe('delay', () => {
-        it('retries a failed attempt and returns the eventual success', async () => {
-            const error = retryableError();
-
-            const operation = makeOperation(
-                jest.fn<() => Promise<string>>().mockRejectedValueOnce(error).mockResolvedValueOnce('ok'),
-            );
-
-            const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-
-            const result = await new Retry(operation, 2, () => true, 10, sleep).perform();
-
-            expect(result).toBe('ok');
-            expect(operation.perform).toHaveBeenCalledTimes(2);
-            expect(sleep).toHaveBeenCalledTimes(1);
-            expect(sleep).toHaveBeenCalledWith(10, undefined);
-        });
-
         it('uses exponential backoff delays between retries', async () => {
             const error = retryableError();
 
@@ -270,21 +238,6 @@ describe('Retry', () => {
             expect(sleep).toHaveBeenNthCalledWith(1, 100, undefined);
             expect(sleep).toHaveBeenNthCalledWith(2, 200, undefined);
         });
-
-        it('calculates exponential backoff as base * factor^attempt', () => {
-            const base = 100;
-            const factor = 2;
-
-            const delay = (attempt: number): number => {
-                return base * factor ** attempt;
-            };
-
-            expect(delay(0)).toBe(100);
-            expect(delay(1)).toBe(200);
-            expect(delay(2)).toBe(400);
-            expect(delay(3)).toBe(800);
-            expect(delay(4)).toBe(1600);
-        });
     });
 
     it('returns the operation result on the first successful attempt', async () => {
@@ -298,12 +251,13 @@ describe('Retry', () => {
         expect(sleep).not.toHaveBeenCalled();
     });
 
-    it('does not delay after a successful retry', async () => {
+    it('retries a failed attempt, waits once, and returns the eventual success', async () => {
         const error = retryableError();
 
         const operation = makeOperation(
             jest.fn<() => Promise<string>>().mockRejectedValueOnce(error).mockResolvedValueOnce('ok'),
         );
+
         const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
         const result = await new Retry(operation, 2, () => true, 10, sleep).perform();
@@ -311,6 +265,7 @@ describe('Retry', () => {
         expect(result).toBe('ok');
         expect(operation.perform).toHaveBeenCalledTimes(2);
         expect(sleep).toHaveBeenCalledTimes(1);
+        expect(sleep).toHaveBeenCalledWith(10, undefined);
     });
 
     it('does not delay after the final failed attempt', async () => {
@@ -339,29 +294,6 @@ describe('Retry', () => {
         expect(sleep).not.toHaveBeenCalled();
     });
 
-    it('keeps retry state local to each perform invocation', async () => {
-        const error = retryableError();
-
-        const perform = jest
-            .fn<() => Promise<string>>()
-            .mockRejectedValueOnce(error)
-            .mockResolvedValueOnce('first')
-            .mockRejectedValueOnce(error)
-            .mockResolvedValueOnce('second');
-
-        const operation = makeOperation(perform);
-
-        const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-
-        const retry = new Retry(operation, 2, () => true, 10, sleep);
-
-        await expect(retry.perform()).resolves.toBe('first');
-        await expect(retry.perform()).resolves.toBe('second');
-
-        expect(perform).toHaveBeenCalledTimes(4);
-        expect(sleep).toHaveBeenCalledTimes(2);
-    });
-
     it('resets retry state for each perform invocation', async () => {
         const error = retryableError();
 
@@ -386,21 +318,26 @@ describe('Retry', () => {
     });
 
     it('keeps concurrent perform invocations independent', async () => {
-        const firstError = retryableError();
-        const secondError = retryableError();
+        const error = retryableError();
+        const delayAttempts: number[] = [];
 
         const perform = jest
             .fn<() => Promise<string>>()
-            .mockRejectedValueOnce(firstError)
-            .mockRejectedValueOnce(secondError)
+            .mockRejectedValueOnce(error)
+            .mockRejectedValueOnce(error)
             .mockResolvedValueOnce('first')
             .mockResolvedValueOnce('second');
 
         const operation = makeOperation(perform);
 
+        const delay = jest.fn<(attempt: number, error: TrialError) => number>((attempt) => {
+            delayAttempts.push(attempt);
+            return 0;
+        });
+
         const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-        const retry = new Retry(operation, 2, () => true, 10, sleep);
+        const retry = new Retry(operation, 2, () => true, delay, sleep);
 
         const first = retry.perform();
         const second = retry.perform();
@@ -409,6 +346,8 @@ describe('Retry', () => {
 
         expect(results).toEqual(['first', 'second']);
         expect(perform).toHaveBeenCalledTimes(4);
+        expect(delayAttempts).toHaveLength(2);
+        expect(delayAttempts.every((attempt) => attempt === 0)).toBe(true);
         expect(sleep).toHaveBeenCalledTimes(2);
     });
 
@@ -479,29 +418,6 @@ describe('Retry', () => {
         expect(perform).toHaveBeenCalledTimes(200);
     });
 
-    it('logs final retry exhaustion distinctly from a non-retryable failure', async () => {
-        const error = retryableError();
-
-        const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(error));
-
-        const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-
-        const retry = new Retry(operation, 2, () => true, 10, sleep);
-
-        await expect(retry.perform()).rejects.toBe(error);
-
-        expect(mockLogger.warn).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-                attempts: 2,
-                maxAttempts: 2,
-                errorType: 'HttpException',
-            }),
-            'Operation failed; maximum attempts reached',
-        );
-
-        expect(mockLogger.warn).not.toHaveBeenLastCalledWith(expect.anything(), 'Operation failed; retrying');
-    });
-
     it('logs final retry exhaustion distinctly', async () => {
         const error = retryableError();
 
@@ -533,32 +449,13 @@ describe('Retry', () => {
         );
     });
 
-    it('retries a failed attempt and returns the eventual success', async () => {
-        const error = retryableError();
-        const operation = makeOperation(
-            jest.fn<() => Promise<string>>().mockRejectedValueOnce(error).mockResolvedValueOnce('ok'),
-        );
-        const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-
-        const result = await new Retry(operation, 2, () => true, 10, sleep).perform();
-
-        expect(result).toBe('ok');
-        expect(operation.perform).toHaveBeenCalledTimes(2);
-        expect(sleep).toHaveBeenCalledTimes(1);
-        expect(sleep).toHaveBeenCalledWith(10, undefined);
-    });
-
     it('normalizes a non-TrialError immediately without retrying', async () => {
         const boom = new Error('boom');
-
         const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(boom));
-
         const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-
         const promise = new Retry(operation, 3, () => true, 1, sleep).perform();
 
         await expect(promise).rejects.toBeInstanceOf(UnexpectedError);
-
         await expect(promise).rejects.toMatchObject({
             cause: boom,
         });
@@ -567,7 +464,7 @@ describe('Retry', () => {
         expect(sleep).not.toHaveBeenCalled();
     });
 
-    it('passes the zero-indexed attempt and the failed error to a delay function', async () => {
+    it('passes the zero-indexed retry number and failed error to the delay function', async () => {
         const error = retryableError();
         const operation = makeOperation(
             jest.fn<() => Promise<string>>().mockRejectedValueOnce(error).mockResolvedValueOnce('ok'),
@@ -595,11 +492,8 @@ describe('Retry', () => {
 
     it('normalizes a sleep rejection when the signal is not aborted', async () => {
         const sleepError = new Error('sleep boom');
-
         const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
-
         const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockRejectedValue(sleepError);
-
         const promise = new Retry(operation, 2, () => true, 1, sleep).perform();
 
         await expect(promise).rejects.toBeInstanceOf(UnexpectedError);
