@@ -6,11 +6,13 @@ import { BusinessOperation } from './businessOperation.js';
 
 const logger = createLogger(import.meta.url);
 
+type DelayMs = number | ((retryAttempt: number, error: TrialError) => number);
+
 export class Retry<T> implements BusinessOperation<T> {
     private readonly operation: BusinessOperation<T>;
     private readonly maxAttempts: number;
     private readonly shouldRetry: (error: TrialError) => boolean;
-    private readonly delayMs: number | ((retryAttempt: number, error: TrialError) => number);
+    private readonly delayMs: DelayMs;
     private readonly sleep: Sleeper['sleep'];
     private readonly signal: AbortSignal | undefined;
 
@@ -18,19 +20,19 @@ export class Retry<T> implements BusinessOperation<T> {
      * @param operation   The operation to execute, retried on failure.
      * @param maxAttempts Maximum number of total attempts, including the initial attempt.
      * @param shouldRetry Decides whether a failed attempt warrants another try.
-     * @param delayMs     Fixed delay between attempts, or a function of the
-     *                    zero-indexed retry attempt and the last error.
-     * @param sleep       Async delay implementation. Defaults to the shared
-     *                    HTTP-layer sleeper.
-     * @param signal      Caller-controlled cancellation signal. Forwarded into
-     *                    the backoff sleep so an abort cuts the wait short
-     *                    instead of running it to completion.
+     *                    If it throws, that error propagates immediately.
+     * @param delayMs     Fixed delay in ms between attempts, or a function receiving
+     *                    the zero-indexed retry count and the triggering error.
+     * @param sleep       Async delay implementation. Defaults to the shared HTTP-layer sleeper.
+     * @param signal      Caller-controlled cancellation. Checked before the first attempt
+     *                    and before each backoff sleep, so an abort always stops execution
+     *                    before the next unit of work begins.
      */
     constructor(
         operation: BusinessOperation<T>,
         maxAttempts: number,
         shouldRetry: (error: TrialError) => boolean,
-        delayMs: number | ((retryAttempt: number, error: TrialError) => number),
+        delayMs: DelayMs,
         sleep: Sleeper['sleep'] = defaultSleeper.sleep,
         signal?: AbortSignal,
     ) {
@@ -47,17 +49,18 @@ export class Retry<T> implements BusinessOperation<T> {
     }
 
     async perform(): Promise<T> {
-        let retries = 0;
+        if (this.signal?.aborted) {
+            throw new CallerAbortedError();
+        }
+
         const startedAt = Date.now();
 
-        while (true) {
-            const attempt = retries + 1;
-
+        for (let attempt = 1; ; attempt++) {
             try {
                 const result = await this.operation.perform();
 
-                if (retries > 0) {
-                    this.logRecovered(attempt, retries, startedAt);
+                if (attempt > 1) {
+                    this.logRecovery(attempt, attempt - 1, startedAt);
                 }
 
                 return result;
@@ -74,24 +77,26 @@ export class Retry<T> implements BusinessOperation<T> {
                 }
 
                 if (attempt >= this.maxAttempts) {
-                    this.logMaxAttempts(attempt, trialError, startedAt);
+                    this.logExhausted(attempt, trialError, startedAt);
                     throw trialError;
                 }
 
-                const delay = typeof this.delayMs === 'function' ? this.delayMs(retries, trialError) : this.delayMs;
+                const retryIndex = attempt - 1;
+                const delayMs = this.resolveDelay(retryIndex, trialError);
 
-                const nextAttempt = attempt + 1;
+                this.logRetrying(attempt + 1, delayMs, trialError);
 
-                this.logRetry(nextAttempt, delay, trialError);
-
-                await this.abortableSleep(Math.max(0, delay));
-
-                retries++;
+                await this.sleepWithAbortCheck(delayMs);
             }
         }
     }
 
-    private async abortableSleep(ms: number): Promise<void> {
+    private resolveDelay(retryIndex: number, error: TrialError): number {
+        const raw = typeof this.delayMs === 'function' ? this.delayMs(retryIndex, error) : this.delayMs;
+        return Math.max(0, raw);
+    }
+
+    private async sleepWithAbortCheck(ms: number): Promise<void> {
         if (this.signal?.aborted) {
             throw new CallerAbortedError();
         }
@@ -111,10 +116,10 @@ export class Retry<T> implements BusinessOperation<T> {
         }
     }
 
-    private logRecovered(attempts: number, retries: number, startedAt: number): void {
+    private logRecovery(attempt: number, retries: number, startedAt: number): void {
         logger.debug(
             {
-                attempts,
+                attempts: attempt,
                 retries,
                 durationMs: Date.now() - startedAt,
             },
@@ -122,39 +127,39 @@ export class Retry<T> implements BusinessOperation<T> {
         );
     }
 
-    private logNotRetryable(trialError: TrialError): void {
+    private logNotRetryable(error: TrialError): void {
         logger.debug(
             {
-                err: trialError,
-                errorType: trialError.name,
+                err: error,
+                errorType: error.name,
             },
             'Operation failed; error is not retryable',
         );
     }
 
-    private logMaxAttempts(attempt: number, trialError: TrialError, startedAt: number): void {
+    private logExhausted(attempt: number, error: TrialError, startedAt: number): void {
         logger.warn(
             {
                 attempts: attempt,
                 maxAttempts: this.maxAttempts,
-                err: trialError,
-                errorType: trialError.name,
+                err: error,
+                errorType: error.name,
                 durationMs: Date.now() - startedAt,
             },
             'Operation failed; maximum attempts reached',
         );
     }
 
-    private logRetry(nextAttempt: number, delayMs: number, trialError: TrialError): void {
+    private logRetrying(nextAttempt: number, delayMs: number, error: TrialError): void {
         logger.warn(
             {
                 attempt: nextAttempt,
                 maxAttempts: this.maxAttempts,
                 delayMs,
-                reason: trialError.name,
-                statusCode: trialError instanceof HttpException ? trialError.status : undefined,
-                err: trialError,
-                errorType: trialError.name,
+                reason: error.name,
+                statusCode: error instanceof HttpException ? error.status : undefined,
+                err: error,
+                errorType: error.name,
             },
             'Operation failed; retrying',
         );
