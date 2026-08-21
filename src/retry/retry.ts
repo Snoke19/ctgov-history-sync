@@ -71,6 +71,8 @@ export class Retry<T> implements BusinessOperation<T> {
                     throw trialError;
                 }
 
+                // Caller cancellation is a control-flow signal, not a retry-policy decision.
+                // It always takes precedence over shouldRetry().
                 if (trialError instanceof CallerAbortedError) {
                     throw trialError;
                 }

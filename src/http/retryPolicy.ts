@@ -200,6 +200,8 @@ export function validateRetryPolicyConfig(config: RetryPolicyConfig): void {
  *                     config.retryableStatusCodes.
  */
 export function shouldRetry(error: TrialError, config: RetryPolicyConfig): boolean {
+    // Keep the policy safe when evaluated independently of Retry.
+    // CallerAbortedError is never considered retryable.
     if (error instanceof CallerAbortedError) {
         return false;
     }
