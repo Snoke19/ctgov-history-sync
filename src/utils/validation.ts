@@ -14,10 +14,6 @@ export interface Assertions {
 
 /**
  * Builds a set of assert helpers bound to a specific error type.
- *
- * Exported so tests can drive every branch (ranges, labels, error classes)
- * through {@link Assertions.assertInteger} directly. Production callers use
- * the ready-made config/trial assertion sets below.
  */
 export function makeAssertions(ErrorType: ErrorCtor): Assertions {
     const fail = (message: string): never => {
@@ -34,12 +30,17 @@ export function makeAssertions(ErrorType: ErrorCtor): Assertions {
         },
 
         assertPattern(value: string, pattern: RegExp, message: string): void {
-            if (!pattern.test(value.trim())) fail(message);
+            if (!pattern.test(value.trim())) {
+                fail(message);
+            }
         },
 
         assertInteger(value: number, name: string, opts: { min?: number; max?: number; label?: string } = {}): void {
             const { min = -Infinity, max = Infinity, label } = opts;
-            if (Number.isInteger(value) && value >= min && value <= max) return;
+
+            if (Number.isInteger(value) && value >= min && value <= max) {
+                return;
+            }
 
             const description =
                 label ??
@@ -58,7 +59,19 @@ export function assertPositiveInt(value: number, name: string): void {
     configAssertions.assertInteger(value, name, { min: 1 });
 }
 
+export function assertNonNegativeInt(value: number, name: string): void {
+    configAssertions.assertInteger(value, name, { min: 0 });
+}
+
 const trialAssertions: Assertions = makeAssertions(TrialValidationError);
+
+export function assertTrialPositiveInt(value: number, name: string): void {
+    trialAssertions.assertInteger(value, name, { min: 1 });
+}
+
+export function assertTrialNonNegativeInt(value: number, name: string): void {
+    trialAssertions.assertInteger(value, name, { min: 0 });
+}
 
 const NCT_ID_PATTERN = /^NCT\d{8}$/i;
 
@@ -74,8 +87,4 @@ export function validateNctId(value: string): string {
     );
 
     return normalized;
-}
-
-export function assertNonNegativeInt(value: number, name: string): void {
-    configAssertions.assertInteger(value, name, { min: 0 });
 }

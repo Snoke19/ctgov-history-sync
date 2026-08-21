@@ -282,11 +282,6 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
         validateRetryPolicyConfig(effectiveConfig);
 
         const maxRetries = options.maxRetries ?? MAX_RETRIES;
-
-        if (!Number.isInteger(maxRetries) || maxRetries < 0) {
-            throw new TypeError(`maxRetries must be a non-negative integer. value is ${maxRetries}`);
-        }
-
         const maxAttempts = maxRetries + 1;
 
         return new Retry<HttpResponse>(

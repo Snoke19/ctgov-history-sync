@@ -68,11 +68,25 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
             return await this.executeRequest(endpoint, controller.signal);
         } catch (error: unknown) {
-            // Defensive abort: cancels any in-flight operation on the error path.
-            // abort() is a no-op when the signal is already aborted, so an
-            // existing 'caller' or 'timeout' reason is preserved.
+            /*
+             * Capture the abort reason before performing defensive abort().
+             * This preserves the actual source of cancellation:
+             * caller > internal timeout > no abort.
+             */
+            const abortReason = controller.signal.reason;
+
+            // Defensive abort: cancel any in-flight operation on the error path.
             controller.abort();
 
+            // Caller cancellation always has precedence over internal timeout.
+            // This guarantees caller cancellation can never accidentally become
+            // a retryable TimeoutException.
+            if (callerSignal?.aborted || abortReason === 'caller') {
+                throw this.buildAbortError('caller', error);
+            }
+
+            // Endpoint acquisition has its own timeout domain and is exposed as
+            // the standard retryable TimeoutException.
             if (error instanceof EndpointAcquisitionTimeoutError) {
                 throw new TimeoutException(
                     `Endpoint acquisition timed out after ${error.timeoutMs}ms: ${this.sanitizedUrl()}`,
@@ -81,17 +95,13 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             }
 
             if (error instanceof CallerAbortedError) {
-                throw this.buildAbortError(controller.signal.reason, error);
+                throw this.buildAbortError('caller', error);
             }
 
-            // Be defensive if an endpoint manager/transport rejects with a
-            // generic error even though our controller was already aborted.
-            if (controller.signal.aborted) {
-                const reason = controller.signal.reason;
-
-                if (reason === 'caller' || reason === 'timeout') {
-                    throw this.buildAbortError(reason, error);
-                }
+            // If the internal request timeout caused the abort, preserve that
+            // classification even if the transport returned a generic error.
+            if (abortReason === 'timeout') {
+                throw this.buildAbortError('timeout', error);
             }
 
             throw error;
