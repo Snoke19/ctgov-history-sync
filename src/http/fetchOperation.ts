@@ -1,4 +1,4 @@
-import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../config/config.js';
+﻿import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../config/config.js';
 import { createLogger } from '../config/logging.js';
 import {
     CallerAbortedError,
@@ -9,18 +9,29 @@ import {
     TrialError,
     UnexpectedError,
 } from '../error/errors.js';
-import { BusinessOperation } from '../retry/businessOperation.js';
-import { defaultWallClock, WallClock } from './clock.js';
-import { EndpointHandle } from './endpoint/endpoint.js';
-import { EndpointManager } from './endpoint/manager/endpointManager.js';
-import { FetchJsonRequestOptions } from './http.js';
+import type { BusinessOperation } from '../retry/businessOperation.js';
+import { defaultWallClock } from './clock.js';
+import type { WallClock } from './clock.js';
+import type { EndpointHandle } from './endpoint/endpoint.js';
+import type { EndpointManager } from './endpoint/manager/endpointManager.js';
+import type { FetchJsonRequestOptions } from './http.js';
 import { drainBody } from './responseBody.js';
 import { parseRetryAfterHeader } from './retryPolicy.js';
-import { HttpResponse, HttpTransport } from './transport/httpTransport.js';
+import type { HttpResponse, HttpTransport } from './transport/httpTransport.js';
 
 const logger = createLogger(import.meta.url);
 
-type AbortReason = 'caller' | 'timeout';
+type AbortKind = 'caller' | 'timeout';
+
+const DEFAULT_REQUEST_HEADERS: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent': DEFAULT_USER_AGENT,
+};
+
+const CANONICAL_HEADER_NAMES = new Map<string, string>([
+    ['accept', 'Accept'],
+    ['user-agent', 'User-Agent'],
+]);
 
 export class FetchOperation implements BusinessOperation<HttpResponse> {
     constructor(
@@ -31,60 +42,62 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     ) {}
 
     async perform(): Promise<HttpResponse> {
-        const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
         const controller = new AbortController();
-        let abortReason: AbortReason | undefined;
         const callerSignal = this.options.signal;
 
         const forwardAbort = (): void => {
-            abortReason = 'caller';
-            controller.abort();
+            controller.abort('caller');
         };
 
         if (callerSignal?.aborted) {
-            abortReason = 'caller';
-            controller.abort();
+            forwardAbort();
         } else {
             callerSignal?.addEventListener('abort', forwardAbort, { once: true });
         }
 
-        let succeeded = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
         try {
             const endpoint = await this.acquireEndpoint(controller.signal);
 
+            // The request timeout starts only after an endpoint is acquired.
+            // Endpoint-pool wait time is governed separately by EndpointManager.
             timeoutId = setTimeout(() => {
-                abortReason = 'timeout';
-                controller.abort();
-            }, timeoutMs);
+                controller.abort('timeout');
+            }, this.options.timeoutMs ?? FETCH_TIMEOUT_MS);
 
-            const response = await this.executeRequest(endpoint, controller.signal, () => abortReason);
-
-            succeeded = true;
-            return response;
-        } catch (error) {
-            if (error instanceof CallerAbortedError) {
-                throw this.mapAbortReason(error, abortReason, timeoutMs);
-            }
+            return await this.executeRequest(endpoint, controller.signal);
+        } catch (error: unknown) {
+            // Defensive abort: cancels any in-flight operation on the error path.
+            // abort() is a no-op when the signal is already aborted, so an
+            // existing 'caller' or 'timeout' reason is preserved.
+            controller.abort();
 
             if (error instanceof EndpointAcquisitionTimeoutError) {
                 throw new TimeoutException(
                     `Endpoint acquisition timed out after ${error.timeoutMs}ms: ${this.sanitizedUrl()}`,
+                    { cause: error },
                 );
+            }
+
+            if (error instanceof CallerAbortedError) {
+                throw this.buildAbortError(controller.signal.reason, error);
+            }
+
+            // Be defensive if an endpoint manager/transport rejects with a
+            // generic error even though our controller was already aborted.
+            if (controller.signal.aborted) {
+                const reason = controller.signal.reason;
+
+                if (reason === 'caller' || reason === 'timeout') {
+                    throw this.buildAbortError(reason, error);
+                }
             }
 
             throw error;
         } finally {
-            if (timeoutId !== undefined) {
-                clearTimeout(timeoutId);
-            }
-
+            clearTimeout(timeoutId);
             callerSignal?.removeEventListener('abort', forwardAbort);
-
-            if (!succeeded) {
-                controller.abort();
-            }
         }
     }
 
@@ -92,19 +105,13 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         return this.endpointManager.acquireEndpoint(signal);
     }
 
-    private async executeRequest(
-        endpoint: EndpointHandle,
-        signal: AbortSignal,
-        getAbortReason: () => AbortReason | undefined,
-    ): Promise<HttpResponse> {
-        const method = 'GET';
-
+    private async executeRequest(endpoint: EndpointHandle, signal: AbortSignal): Promise<HttpResponse> {
         let response: HttpResponse;
 
         try {
             response = await endpoint.transport.request({
                 url: this.url,
-                method,
+                method: 'GET',
                 headers: this.buildHeaders(),
                 signal,
             });
@@ -113,16 +120,28 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 throw error;
             }
 
-            throw this.classifyTransportError(endpoint.transport, error, getAbortReason());
+            throw this.classifyTransportError(endpoint.transport, error, signal);
         }
 
         if (!response.ok) {
             const retryAfter = parseRetryAfterHeader(response, this.now());
 
-            await drainBody(response);
+            // Preserve the primary HTTP failure even if draining the body fails.
+            try {
+                await drainBody(response);
+            } catch (error: unknown) {
+                logger.debug(
+                    {
+                        error,
+                        status: response.status,
+                        url: this.sanitizedUrl(),
+                    },
+                    'Failed to drain non-success HTTP response body',
+                );
+            }
 
             throw new HttpException(
-                `HTTP ${response.status} ${response.statusText} — ${method} ${this.sanitizedUrl()}`,
+                `HTTP ${response.status} ${response.statusText} — GET ${this.sanitizedUrl()}`,
                 response.status,
                 retryAfter ?? undefined,
             );
@@ -134,29 +153,51 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     private classifyTransportError(
         transport: HttpTransport,
         error: unknown,
-        abortReason: AbortReason | undefined,
+        signal: AbortSignal,
     ): NetworkException | TimeoutException | CallerAbortedError | UnexpectedError {
-        const timeoutMs = this.options.timeoutMs ?? FETCH_TIMEOUT_MS;
         const classification = transport.classifyError(error);
-        const causeDescription = this.describeError(classification.cause);
+        const cause = classification.cause;
 
         switch (classification.kind) {
             case 'timeout':
                 return new TimeoutException(
-                    `Request timed out after ${timeoutMs}ms: ${this.sanitizedUrl()} — cause: ${causeDescription}`,
-                    { cause: classification.cause },
+                    `Request timed out after ${
+                        this.options.timeoutMs ?? FETCH_TIMEOUT_MS
+                    }ms: ${this.sanitizedUrl()} — cause: ${describeError(cause)}`,
+                    { cause },
                 );
 
-            case 'cancelled':
-                return this.mapAbortReason(classification.cause, abortReason, timeoutMs);
+            case 'cancelled': {
+                const reason = signal.reason;
+
+                if (reason === 'caller' || reason === 'timeout') {
+                    return this.buildAbortError(reason, cause);
+                }
+
+                // A cancelled transport error without our own abort reason
+                // should not be incorrectly classified as caller cancellation.
+                const unexpectedError = new UnexpectedError(cause);
+
+                logger.debug(
+                    {
+                        errorType: unexpectedError.name,
+                        err: unexpectedError,
+                    },
+                    'Transport reported cancellation without a known abort reason; retry disabled',
+                );
+
+                return unexpectedError;
+            }
 
             case 'network':
-                return new NetworkException(`Network failure: ${this.sanitizedUrl()} — cause: ${causeDescription}`, {
-                    cause: classification.cause,
-                });
+                return new NetworkException(
+                    `Network failure: ${this.sanitizedUrl()} — cause: ${describeError(cause)}`,
+                    { cause },
+                );
 
             case 'unknown': {
-                const unexpectedError = new UnexpectedError(classification.cause);
+                const unexpectedError = new UnexpectedError(cause);
+
                 logger.debug(
                     {
                         errorType: unexpectedError.name,
@@ -170,32 +211,48 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         }
     }
 
-    private mapAbortReason(
-        cause: unknown,
-        abortReason: AbortReason | undefined,
-        timeoutMs: number,
-    ): CallerAbortedError | TimeoutException {
-        const causeDescription = this.describeError(cause);
+    /**
+     * Maps an AbortKind to the correct typed error.
+     *
+     * Both perform() and the cancelled branch of classifyTransportError()
+     * use this method so the mapping is defined in one place.
+     */
+    private buildAbortError(kind: AbortKind | unknown, cause: unknown): CallerAbortedError | TimeoutException {
+        const causeDescription = describeError(cause);
 
-        if (abortReason === 'caller') {
-            return new CallerAbortedError(
-                `Request cancelled by caller: ${this.sanitizedUrl()} — cause: ${causeDescription}`,
-                {
-                    cause,
-                },
+        if (kind === 'timeout') {
+            return new TimeoutException(
+                `Request timed out after ${
+                    this.options.timeoutMs ?? FETCH_TIMEOUT_MS
+                }ms: ${this.sanitizedUrl()} — cause: ${causeDescription}`,
+                { cause },
             );
         }
 
-        return new TimeoutException(
-            `Request timed out after ${timeoutMs}ms: ${this.sanitizedUrl()} — cause: ${causeDescription}`,
+        return new CallerAbortedError(
+            `Request cancelled by caller: ${this.sanitizedUrl()} — cause: ${causeDescription}`,
             { cause },
         );
     }
 
+    private buildHeaders(): Record<string, string> {
+        const headers = { ...DEFAULT_REQUEST_HEADERS };
+
+        for (const [key, value] of Object.entries(this.options.headers ?? {})) {
+            const canonical = CANONICAL_HEADER_NAMES.get(key.toLowerCase());
+
+            headers[canonical ?? key] = value;
+        }
+
+        return headers;
+    }
+
     /**
-     * The request URL is never embedded verbatim in exception messages:
-     * userinfo credentials (protocol://user:password@host) are stripped so
-     * they cannot leak through err.message or logged error context.
+     * Removes credentials, query parameters and fragments from the URL used
+     * in exception messages and logs.
+     *
+     * If the URL is invalid, deliberately return a safe placeholder instead
+     * of exposing potentially sensitive raw input.
      */
     private sanitizedUrl(): string {
         try {
@@ -203,44 +260,30 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
             return `${url.protocol}//${url.host}${url.pathname}`;
         } catch {
-            return this.url.replace(/\/\/[^@/?#]+@/, '//');
+            return '[invalid URL]';
         }
     }
+}
 
-    private buildHeaders(): Record<string, string> {
-        const defaults: Record<string, string> = {
-            Accept: 'application/json',
-            'User-Agent': DEFAULT_USER_AGENT,
-        };
+/**
+ * Produces a human-readable one-line description of any thrown value.
+ * Named error codes (e.g. ECONNRESET) are included when present.
+ */
+function describeError(error: unknown): string {
+    if (error instanceof Error) {
+        const code = 'code' in error ? (error as NodeJS.ErrnoException).code : undefined;
 
-        const KNOWN_KEYS = new Map([
-            ['accept', 'Accept'],
-            ['user-agent', 'User-Agent'],
-        ]);
-
-        for (const [key, value] of Object.entries(this.options.headers ?? {})) {
-            const canonical = KNOWN_KEYS.get(key.toLowerCase());
-            defaults[canonical ?? key] = value;
-        }
-
-        return defaults;
+        return code ? `${error.name} (${code}): ${error.message}` : `${error.name}: ${error.message}`;
     }
 
-    private describeError(error: unknown): string {
-        if (error instanceof Error) {
-            const code = 'code' in error ? error.code : undefined;
+    if (typeof error === 'string') {
+        return error;
+    }
 
-            return code ? `${error.name} (${code}): ${error.message}` : `${error.name}: ${error.message}`;
-        }
-
-        if (typeof error === 'string') {
-            return error;
-        }
-
-        try {
-            return JSON.stringify(error);
-        } catch {
-            return String(error);
-        }
+    try {
+        const serialized = JSON.stringify(error);
+        return serialized ?? String(error);
+    } catch {
+        return String(error);
     }
 }
