@@ -9,7 +9,7 @@ import {
     RATE_LIMIT_WINDOW,
 } from '../config/config.js';
 import { createLogger } from '../config/logging.js';
-import { ApiResponseValidationError, TrialError, TrialNotFoundError } from '../error/errors.js';
+import { ApiResponseValidationError, TrialError, TrialNotFoundError, TrialValidationError } from '../error/errors.js';
 import { DefaultEndpointManagerFactory } from '../http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { ProxyEndpointProvider } from '../http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../http/endpoint/proxy/httpProxyUrlParser.js';
@@ -17,10 +17,12 @@ import { createHttpClient } from '../http/httpClient.js';
 import { DefaultLimiterFactory } from '../http/limiter/factory/defaultLimiterFactory.js';
 import { UndiciTransportFactory } from '../http/transport/impl/undiciProxyTransport.js';
 import { UrlBuilder } from '../http/urlPrepare.js';
-import { validateNctId } from './trialValidation.js';
+import { Assertions, makeAssertions } from '../utils/assertions.js';
 import { FetchStudiesPageParams, FetchTrialDetailParams, StudiesPageResponse, Study } from './types.js';
 
 const logger = createLogger(import.meta.url);
+const NCT_ID_PATTERN = /^NCT\d{8}$/;
+const trialAssert: Assertions = makeAssertions(TrialValidationError);
 
 export interface ApiHttpClient {
     fetchJson(url: string, options?: { allow404?: boolean }): Promise<unknown | null>;
@@ -241,4 +243,18 @@ function safeApiUrl(value: string): string {
     } catch {
         return '<invalid URL>';
     }
+}
+
+function validateNctId(value: string): string {
+    trialAssert.assertNonEmptyString(value, 'nctId');
+
+    const normalized = value.trim().toUpperCase();
+
+    trialAssert.assertPattern(
+        normalized,
+        NCT_ID_PATTERN,
+        `Invalid nctId format. Expected: NCT followed by 8 digits. Got: "${value}"`,
+    );
+
+    return normalized;
 }

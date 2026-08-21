@@ -137,6 +137,40 @@ describe('ApiClient', () => {
     });
 
     describe('fetchTrialDetail', () => {
+        it('normalizes a valid NCT ID before making the request', async () => {
+            const httpClient = createHttpClientMock({ protocolSection: {} });
+            const api = makeApi(httpClient);
+
+            await api.fetchTrialDetail(' nct12345678 ');
+
+            expect(httpClient.fetchJson).toHaveBeenCalledWith(`${TEST_DETAIL_URL}/NCT12345678`, {
+                allow404: true,
+            });
+        });
+
+        it.each(['', '   ', '12345678', 'XYZ12345678', 'NCT1234567', 'NCT123456789'])(
+            'rejects invalid NCT ID "%s" without making a request',
+            async (nctId) => {
+                const httpClient = createHttpClientMock();
+                const api = makeApi(httpClient);
+
+                await expect(api.fetchTrialDetail(nctId)).rejects.toBeInstanceOf(TrialValidationError);
+
+                expect(httpClient.fetchJson).not.toHaveBeenCalled();
+            },
+        );
+
+        it('accepts NCT IDs case-insensitively', async () => {
+            const httpClient = createHttpClientMock({ protocolSection: {} });
+            const api = makeApi(httpClient);
+
+            await api.fetchTrialDetail('nct12345678');
+
+            expect(httpClient.fetchJson).toHaveBeenCalledWith(`${TEST_DETAIL_URL}/NCT12345678`, {
+                allow404: true,
+            });
+        });
+
         it('builds a URL with the NCT path segment and detail params', async () => {
             const data = { nctId: 'NCT00000001' };
             const httpClient = createHttpClientMock(data);
