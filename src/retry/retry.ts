@@ -115,6 +115,9 @@ export class Retry<T> implements BusinessOperation<T> {
             throw TrialError.normalize(error);
         }
 
+        // Safety net: a conforming Sleeper rejects when the signal aborts during
+        // the delay. Re-check after resolution so Retry still honors cancellation
+        // if a custom Sleeper resolves despite an abort (for example, a test double).
         if (this.signal?.aborted) {
             throw new CallerAbortedError();
         }
