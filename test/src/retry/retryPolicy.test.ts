@@ -279,10 +279,10 @@ describe('calculateBackoff', () => {
             expect(backoff).toBe(BASE);
         });
 
-        it('falls back to exponential backoff when Retry-After is 0', () => {
+        it('uses 0 Retry-After as an immediate retry delay', () => {
             const backoff = calculateBackoff(0, 0, noJitter);
 
-            expect(backoff).toBe(BASE);
+            expect(backoff).toBe(0);
         });
 
         it('falls back to exponential backoff when Retry-After is negative', () => {

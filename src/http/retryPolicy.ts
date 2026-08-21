@@ -89,7 +89,7 @@ export interface BackoffOptions {
 export function calculateBackoff(attempt: number, retryAfterMs: number | null, options: BackoffOptions = {}): number {
     const { random = defaultRandom.random, baseDelayMs = RETRY_BASE_DELAY_MS, backoffCapMs = BACKOFF_CAP_MS } = options;
 
-    if (retryAfterMs !== null && retryAfterMs > 0) {
+    if (retryAfterMs !== null && retryAfterMs >= 0) {
         return Math.min(retryAfterMs, backoffCapMs);
     }
 
