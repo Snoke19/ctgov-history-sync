@@ -14,8 +14,8 @@ import {
     TrialError,
 } from '../error/errors.js';
 import { assertPositiveInt } from '../utils/validation.js';
-import { defaultRandom } from './clock.js';
-import { HttpResponse } from './transport/httpTransport.js';
+import { defaultRandom } from '../http/clock.js';
+import { HttpResponse } from '../http/transport/httpTransport.js';
 
 const JITTER_FACTOR = 0.5;
 

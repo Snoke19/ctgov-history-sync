@@ -5,6 +5,13 @@ import { createLogger } from '../config/logging.js';
 import { CallerAbortedError, EndpointAssemblyError, HttpException, TrialError } from '../error/errors.js';
 import { Retry } from '../retry/retry.js';
 import {
+    calculateBackoff,
+    defaultRetryPolicyConfig,
+    RetryPolicyConfig,
+    shouldRetry,
+    validateRetryPolicyConfig,
+} from '../retry/retryPolicy.js';
+import {
     defaultMonotonicClock,
     defaultRandom,
     defaultSleeper,
@@ -23,13 +30,6 @@ import { HTTP_METHOD_GET, type FetchJsonRequestOptions } from './http.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { validateFetchJsonRequestOptions } from './requestValidation.js';
 import { parseOkResponseBody } from './responseBody.js';
-import {
-    calculateBackoff,
-    defaultRetryPolicyConfig,
-    RetryPolicyConfig,
-    shouldRetry,
-    validateRetryPolicyConfig,
-} from './retryPolicy.js';
 import { HttpResponse } from './transport/httpTransport.js';
 
 const logger = createLogger(import.meta.url);

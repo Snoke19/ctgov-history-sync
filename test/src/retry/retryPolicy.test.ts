@@ -7,6 +7,7 @@ import {
     TimeoutException,
     TrialError,
 } from '../../../src/error/errors.js';
+import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
 import {
     calculateBackoff,
     defaultRetryPolicyConfig,
@@ -14,8 +15,7 @@ import {
     RetryPolicyConfig,
     shouldRetry,
     validateRetryPolicyConfig,
-} from '../../../src/http/retryPolicy.js';
-import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
+} from '../../../src/retry/retryPolicy.js';
 
 describe('defaultRetryPolicyConfig', () => {
     it('contains the configured retry defaults', () => {

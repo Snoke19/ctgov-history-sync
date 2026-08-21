@@ -1,4 +1,4 @@
-import { RetryPolicyConfig } from './retryPolicy.js';
+import { RetryPolicyConfig } from '../retry/retryPolicy.js';
 
 export const HTTP_METHOD_GET = 'GET' as const;
 
