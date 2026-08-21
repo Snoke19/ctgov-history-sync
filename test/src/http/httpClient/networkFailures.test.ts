@@ -120,12 +120,16 @@ describe('HttpClient network & timeout failures', () => {
 
         const client = await makeClient();
 
-        const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/tls-failure`, {
-            maxRetries: 1,
-        });
+        try {
+            const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/tls-failure`, {
+                maxRetries: 1,
+            });
 
-        expect(result).toEqual({ ok: true });
-        expect(fetchMock).toHaveBeenCalledTimes(2);
+            expect(result).toEqual({ ok: true });
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+        } finally {
+            await client.close();
+        }
     });
 
     it('retries a network failure and succeeds on the next attempt', async () => {
@@ -140,10 +144,14 @@ describe('HttpClient network & timeout failures', () => {
 
         const client = await makeClient();
 
-        const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/conn-reset`, { maxRetries: 2 });
+        try {
+            const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/conn-reset`, { maxRetries: 2 });
 
-        expect(result).toEqual({ ok: true });
-        expect(fetchMock).toHaveBeenCalledTimes(2);
+            expect(result).toEqual({ ok: true });
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+        } finally {
+            await client.close();
+        }
     });
 
     it('throws NetworkException after exhausting all retry attempts', async () => {
@@ -155,20 +163,24 @@ describe('HttpClient network & timeout failures', () => {
 
         const client = await makeClient();
 
-        const error = await expectRejected(
-            client.fetchJson(`${API_URL}/unreachable`, {
-                maxRetries: 1,
-            }),
-            NetworkException,
-        );
+        try {
+            const error = await expectRejected(
+                client.fetchJson(`${API_URL}/unreachable`, {
+                    maxRetries: 1,
+                }),
+                NetworkException,
+            );
 
-        expect(error.message).toContain(
-            'Network failure: http://api.test/unreachable — cause: TypeError (ECONNREFUSED): fetch failed: ECONNREFUSED',
-        );
-        expect(fetchMock).toHaveBeenCalledTimes(2);
+            expect(error.message).toContain(
+                'Network failure: http://api.test/unreachable — cause: TypeError (ECONNREFUSED): fetch failed: ECONNREFUSED',
+            );
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+        } finally {
+            await client.close();
+        }
     });
 
-    it('throws NetworkException without making a request when caller AbortSignal is already aborted', async () => {
+    it('throws CallerAbortedError without making a request when caller AbortSignal is already aborted', async () => {
         const fetchMock = jest.spyOn(globalThis, 'fetch');
 
         const client = await makeClient();
@@ -180,7 +192,7 @@ describe('HttpClient network & timeout failures', () => {
             client.fetchJson(`${API_URL}/cancelled`, {
                 signal: controller.signal,
             }),
-            NetworkException,
+            CallerAbortedError,
         );
 
         expect(error.message).toContain('Request cancelled by caller: http://api.test/cancelled');
@@ -248,7 +260,7 @@ describe('HttpClient network & timeout failures', () => {
             await started;
             controller.abort();
 
-            await expect(pending).rejects.toBeInstanceOf(NetworkException);
+            await expect(pending).rejects.toBeInstanceOf(CallerAbortedError);
 
             expect(fetchMock).toHaveBeenCalledTimes(1);
             expect(sleepMock).toHaveBeenCalledTimes(1);
@@ -256,7 +268,7 @@ describe('HttpClient network & timeout failures', () => {
         });
     });
 
-    it('throws NetworkException when caller aborts during HTTP request', async () => {
+    it('throws CallerAbortedError when caller aborts during HTTP request', async () => {
         const controller = new AbortController();
 
         let requestStarted = false;
@@ -281,8 +293,8 @@ describe('HttpClient network & timeout failures', () => {
 
             controller.abort();
 
-            const error = await expectRejected(pending, NetworkException);
-            expect(error.cause).toBeInstanceOf(CallerAbortedError);
+            const error = await expectRejected(pending, CallerAbortedError);
+            expect(error.name).toBe('CallerAbortedError');
         });
     });
 

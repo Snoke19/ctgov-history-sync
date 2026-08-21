@@ -1,7 +1,7 @@
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
 import { DEFAULT_USER_AGENT } from '../../../../src/config/config.js';
-import { NetworkException, TimeoutException } from '../../../../src/error/errors.js';
+import { CallerAbortedError, TimeoutException } from '../../../../src/error/errors.js';
 import { DefaultEndpointManagerFactory } from '../../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
@@ -193,7 +193,7 @@ describe('HttpClient full-stack integration', () => {
         expect(slowHits).toBe(1);
     });
 
-    it('throws NetworkException when the caller aborts a real in-flight request', async () => {
+    it('throws CallerAbortedError when the caller aborts a real in-flight request', async () => {
         const controller = new AbortController();
 
         const pending = client.fetchJson(`${baseUrl}/stall`, {
@@ -211,7 +211,7 @@ describe('HttpClient full-stack integration', () => {
 
         controller.abort();
 
-        await expect(pending).rejects.toBeInstanceOf(NetworkException);
+        await expect(pending).rejects.toBeInstanceOf(CallerAbortedError);
         expect(stallHits).toBeGreaterThanOrEqual(1);
     });
 

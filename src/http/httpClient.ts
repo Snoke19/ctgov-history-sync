@@ -2,13 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { BACKOFF_CAP_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
 import { getLogContext, LogContext, withLogContext } from '../config/logContext.js';
 import { createLogger } from '../config/logging.js';
-import {
-    CallerAbortedError,
-    EndpointAssemblyError,
-    HttpException,
-    NetworkException,
-    TrialError,
-} from '../error/errors.js';
+import { CallerAbortedError, EndpointAssemblyError, HttpException, TrialError } from '../error/errors.js';
 import { Retry } from '../retry/retry.js';
 import { defaultRandom, defaultSleeper, defaultWallClock, RandomSource, Sleeper, WallClock } from './clock.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
@@ -167,13 +161,13 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
         } catch (error: unknown) {
             const trialError = TrialError.normalize(error);
 
-            // CallerAbortedError is an internal control-flow error. The public HTTP
-            // client exposes caller cancellation as NetworkException while retaining
-            // the original cancellation error as `cause`.
-            if (trialError instanceof CallerAbortedError && options.signal?.aborted) {
-                throw new NetworkException(`Request cancelled by caller: ${sanitizeHttpUrl(url)}`, {
-                    cause: trialError,
-                });
+            if (trialError instanceof CallerAbortedError) {
+                if (trialError.message === 'The operation was aborted.' || !trialError.message.includes(sanitizeHttpUrl(url))) {
+                    throw new CallerAbortedError(`Request cancelled by caller: ${sanitizeHttpUrl(url)}`, {
+                        cause: trialError,
+                    });
+                }
+                throw trialError;
             }
 
             if (options.allow404 && trialError instanceof HttpException && trialError.status === 404) {

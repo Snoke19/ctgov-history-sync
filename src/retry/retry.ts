@@ -71,6 +71,10 @@ export class Retry<T> implements BusinessOperation<T> {
                     throw trialError;
                 }
 
+                if (trialError instanceof CallerAbortedError) {
+                    throw trialError;
+                }
+
                 if (!this.shouldRetry(trialError)) {
                     this.logNotRetryable(trialError);
                     throw trialError;
