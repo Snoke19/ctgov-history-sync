@@ -573,6 +573,23 @@ describe('Retry', () => {
                 'Operation recovered after retry',
             );
         });
+
+        it('uses the injected monotonic clock for duration logging', async () => {
+            const error = retryableError();
+            const perform = jest.fn<() => Promise<string>>().mockRejectedValueOnce(error).mockResolvedValueOnce('ok');
+            const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
+            const clock = jest.fn<() => number>().mockReturnValueOnce(100).mockReturnValueOnce(250);
+
+            const retry = new Retry(makeOperation(perform), 2, () => true, 0, sleep, undefined, clock);
+
+            await expect(retry.perform()).resolves.toBe('ok');
+            expect(mockLogger.debug).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    durationMs: 150,
+                }),
+                'Operation recovered after retry',
+            );
+        });
     });
 
     describe('resource stability', () => {

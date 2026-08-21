@@ -59,11 +59,7 @@ export class ApiResponseValidationError extends TrialError {
     override readonly name = 'ApiResponseValidationError';
     readonly url: string;
 
-    constructor(
-        url: string,
-        message: string,
-        options: TrialErrorOptions = {},
-    ) {
+    constructor(url: string, message: string, options: TrialErrorOptions = {}) {
         // Userinfo credentials (protocol://user:password@host) are stripped so
         // proxy/API credentials can never leak through err.message, err.url,
         // or logged error context.

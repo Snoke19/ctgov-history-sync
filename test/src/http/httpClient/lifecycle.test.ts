@@ -17,8 +17,6 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
         jest.restoreAllMocks();
     });
 
-    
-
     it('handles sequential requests through a single direct endpoint', async () => {
         const fetchMock = jest
             .spyOn(globalThis, 'fetch')

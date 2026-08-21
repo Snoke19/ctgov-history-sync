@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { ProxyAgent, Response } from 'undici';
+import { HTTP_METHOD_GET } from '../../../../../src/http/http.js';
 import type { HttpRequest } from '../../../../../src/http/transport/httpTransport.js';
 
 const mockFetch = jest.fn<(url: string, options?: RequestInit) => Promise<Response>>();
@@ -19,7 +20,7 @@ const { UndiciHttpTransport } = await import('../../../../../src/http/transport/
 function makeRequest(overrides: Partial<HttpRequest> = {}): HttpRequest {
     return {
         url: 'https://api.example.com/resource',
-        method: 'GET',
+        method: HTTP_METHOD_GET,
         headers: { Authorization: 'Bearer test-token' },
         signal: new AbortController().signal,
         ...overrides,

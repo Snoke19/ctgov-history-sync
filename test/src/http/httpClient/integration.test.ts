@@ -4,6 +4,7 @@ import { DEFAULT_USER_AGENT } from '../../../../src/config/config.js';
 import { CallerAbortedError, TimeoutException } from '../../../../src/error/errors.js';
 import { DefaultEndpointManagerFactory } from '../../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
+import { HTTP_METHOD_GET } from '../../../../src/http/http.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
 import { DefaultLimiterFactory } from '../../../../src/http/limiter/factory/defaultLimiterFactory.js';
@@ -61,7 +62,7 @@ describe('HttpClient full-stack integration', () => {
                     break;
             }
 
-            if (path === '/echo' && req.method === 'GET') {
+            if (path === '/echo' && req.method === HTTP_METHOD_GET) {
                 handleEchoRequest(req, res);
                 return;
             }
@@ -131,7 +132,7 @@ describe('HttpClient full-stack integration', () => {
         });
 
         expect(result).toMatchObject({
-            method: 'GET',
+            method: HTTP_METHOD_GET,
         });
 
         expect(result?.headers.accept).toBe('application/json');

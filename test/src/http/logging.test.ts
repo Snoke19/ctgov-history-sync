@@ -5,6 +5,7 @@ import { withLogContext, getLogContext } from '../../../src/config/logContext.js
 import { createLogger, setLoggerDestinationForTests } from '../../../src/config/logging.js';
 import { ApiResponseValidationError, NetworkException, UnexpectedError } from '../../../src/error/errors.js';
 import type { EndpointProvider } from '../../../src/http/endpoint/provider/endpointProvider.js';
+import { HTTP_METHOD_GET } from '../../../src/http/http.js';
 import type {
     AgentCreatorFn,
     PoolClientFactory,
@@ -199,7 +200,7 @@ describe('logging strategy', () => {
         expect(started).toMatchObject({
             correlationId: 'corr-lifecycle',
             operation: 'http.fetchJson',
-            method: 'GET',
+            method: HTTP_METHOD_GET,
             url: `${API_URL}/trials`,
             allow404: false,
         });
@@ -211,7 +212,7 @@ describe('logging strategy', () => {
         expect(completed).toMatchObject({
             correlationId: 'corr-lifecycle',
             operation: 'http.fetchJson',
-            method: 'GET',
+            method: HTTP_METHOD_GET,
             status: 200,
         });
         expect(typeof completed?.durationMs).toBe('number');
@@ -552,7 +553,7 @@ describe('logging strategy', () => {
 
         expect(started).toMatchObject({
             url: `${API_URL}/trials`,
-            method: 'GET',
+            method: HTTP_METHOD_GET,
             allow404: true,
             maxRetries: 1,
         });

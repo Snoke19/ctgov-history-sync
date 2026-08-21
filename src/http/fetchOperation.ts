@@ -14,7 +14,7 @@ import { defaultWallClock } from './clock.js';
 import type { WallClock } from './clock.js';
 import type { EndpointHandle } from './endpoint/endpoint.js';
 import type { EndpointManager } from './endpoint/manager/endpointManager.js';
-import type { FetchJsonRequestOptions } from './http.js';
+import { HTTP_METHOD_GET, type FetchJsonRequestOptions } from './http.js';
 import { drainBody } from './responseBody.js';
 import { parseRetryAfterHeader } from './retryPolicy.js';
 import type { HttpResponse, HttpTransport } from './transport/httpTransport.js';
@@ -111,7 +111,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         try {
             response = await endpoint.transport.request({
                 url: this.url,
-                method: 'GET',
+                method: HTTP_METHOD_GET,
                 headers: this.buildHeaders(),
                 signal,
             });

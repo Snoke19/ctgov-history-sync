@@ -11,7 +11,6 @@ describe('classifyTransportError', () => {
         isNetworkError: (error) => error.code === 'NETWORK',
     };
 
-    
     it('classifies abort errors as cancelled', () => {
         const error = Object.assign(new Error('aborted'), { code: 'ABORT' });
 

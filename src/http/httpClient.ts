@@ -4,13 +4,22 @@ import { getLogContext, LogContext, withLogContext } from '../config/logContext.
 import { createLogger } from '../config/logging.js';
 import { CallerAbortedError, EndpointAssemblyError, HttpException, TrialError } from '../error/errors.js';
 import { Retry } from '../retry/retry.js';
-import { defaultRandom, defaultSleeper, defaultWallClock, RandomSource, Sleeper, WallClock } from './clock.js';
+import {
+    defaultMonotonicClock,
+    defaultRandom,
+    defaultSleeper,
+    defaultWallClock,
+    MonotonicClock,
+    RandomSource,
+    Sleeper,
+    WallClock,
+} from './clock.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManager } from './endpoint/manager/endpointManager.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
 import { FetchOperation } from './fetchOperation.js';
-import type { FetchJsonRequestOptions } from './http.js';
+import { HTTP_METHOD_GET, type FetchJsonRequestOptions } from './http.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { validateFetchJsonRequestOptions } from './requestValidation.js';
 import { parseOkResponseBody } from './responseBody.js';
@@ -28,7 +37,7 @@ const logger = createLogger(import.meta.url);
 type HttpErrorLogContext = {
     errorType: string;
     url: string;
-    method: 'GET';
+    method: typeof HTTP_METHOD_GET;
     err: Error;
 };
 
@@ -37,7 +46,7 @@ function createHttpErrorLogContext(error: Error, url: string): HttpErrorLogConte
         err: error,
         errorType: error.name,
         url: sanitizeHttpUrl(url),
-        method: 'GET',
+        method: HTTP_METHOD_GET,
     };
 }
 
@@ -76,6 +85,9 @@ export interface CreateHttpClientOptions {
 
     /** Retry policy. Defaults to the module-level default policy. */
     retryConfig?: RetryPolicyConfig;
+
+    /** Monotonic source used for elapsed-duration measurements. */
+    monotonicClock?: MonotonicClock;
 }
 
 export async function createHttpClient(options: CreateHttpClientOptions): Promise<HttpClient> {
@@ -87,6 +99,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
         sleep = defaultSleeper.sleep,
         random = defaultRandom.random,
         wallClock = defaultWallClock,
+        monotonicClock = defaultMonotonicClock,
     } = options;
 
     // Fail-fast on invalid retry policy configuration.
@@ -129,12 +142,12 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
 
     async function fetchResponse(url: string, options: FetchJsonRequestOptions): Promise<HttpResponse | null> {
         const operation = new FetchOperation(endpointManager, url, options, wallClock.now);
-        const retry = buildRetry(operation, options, sleep, random);
+        const retry = buildRetry(operation, options, sleep, random, monotonicClock.now);
 
         logger.debug(
             {
                 url: sanitizeHttpUrl(url),
-                method: 'GET',
+                method: HTTP_METHOD_GET,
                 allow404: options.allow404 ?? false,
                 timeoutMs: options.timeoutMs ?? FETCH_TIMEOUT_MS,
                 maxRetries: options.maxRetries ?? MAX_RETRIES,
@@ -142,7 +155,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
             'HTTP request started',
         );
 
-        const requestStartedAt = Date.now();
+        const requestStartedAt = monotonicClock.now();
 
         try {
             const response = await retry.perform();
@@ -150,9 +163,9 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
             logger.debug(
                 {
                     url: sanitizeHttpUrl(url),
-                    method: 'GET',
+                    method: HTTP_METHOD_GET,
                     status: response.status,
-                    durationMs: Date.now() - requestStartedAt,
+                    durationMs: monotonicClock.now() - requestStartedAt,
                 },
                 'HTTP request completed',
             );
@@ -162,7 +175,10 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
             const trialError = TrialError.normalize(error);
 
             if (trialError instanceof CallerAbortedError) {
-                if (trialError.message === 'The operation was aborted.' || !trialError.message.includes(sanitizeHttpUrl(url))) {
+                if (
+                    trialError.message === 'The operation was aborted.' ||
+                    !trialError.message.includes(sanitizeHttpUrl(url))
+                ) {
                     throw new CallerAbortedError(`Request cancelled by caller: ${sanitizeHttpUrl(url)}`, {
                         cause: trialError,
                     });
@@ -253,6 +269,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
         options: FetchJsonRequestOptions,
         sleep: Sleeper['sleep'],
         random: () => number,
+        monotonicNow: MonotonicClock['now'],
     ): Retry<HttpResponse> {
         const effectiveConfig = {
             retryOnTimeout: options.retryPolicy?.retryOnTimeout ?? retryConfig.retryOnTimeout,
@@ -287,6 +304,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
             },
             sleep,
             options.signal,
+            monotonicNow,
         );
     }
 }

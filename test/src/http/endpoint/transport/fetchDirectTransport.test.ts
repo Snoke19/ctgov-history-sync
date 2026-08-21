@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { HTTP_METHOD_GET } from '../../../../../src/http/http.js';
 import { FetchDirectTransport } from '../../../../../src/http/transport/impl/fetchDirectTransport.js';
 
 function createMockResponse(overrides: Partial<Response> = {}): Response {
@@ -43,14 +44,14 @@ describe('FetchDirectTransport', () => {
 
             await transport.request({
                 url: 'https://example.com/api',
-                method: 'GET',
+                method: HTTP_METHOD_GET,
                 headers: { 'X-Custom': 'value' },
                 signal: controller.signal,
             });
 
             expect(fetchMock).toHaveBeenCalledTimes(1);
             expect(fetchMock).toHaveBeenCalledWith('https://example.com/api', {
-                method: 'GET',
+                method: HTTP_METHOD_GET,
                 headers: { 'X-Custom': 'value' },
                 signal: controller.signal,
             });
@@ -64,7 +65,7 @@ describe('FetchDirectTransport', () => {
 
             await transport.request({
                 url: 'https://example.com/api',
-                method: 'GET',
+                method: HTTP_METHOD_GET,
                 headers: {},
                 signal: controller.signal,
             });
@@ -83,7 +84,7 @@ describe('FetchDirectTransport', () => {
 
             await transport.request({
                 url: 'https://example.com/api',
-                method: 'GET',
+                method: HTTP_METHOD_GET,
                 headers: {},
                 signal: controller.signal,
             });
@@ -103,7 +104,7 @@ describe('FetchDirectTransport', () => {
             await expect(
                 transport.request({
                     url: 'https://example.com/api',
-                    method: 'GET',
+                    method: HTTP_METHOD_GET,
                     headers: {},
                     signal: controller.signal,
                 }),

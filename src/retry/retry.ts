@@ -1,7 +1,7 @@
 import { createLogger } from '../config/logging.js';
 import { CallerAbortedError, HttpException, TrialError, UnexpectedError } from '../error/errors.js';
-import { defaultSleeper } from '../http/clock.js';
-import type { Sleeper } from '../http/clock.js';
+import { defaultMonotonicClock, defaultSleeper } from '../http/clock.js';
+import type { MonotonicClock, Sleeper } from '../http/clock.js';
 import { BusinessOperation } from './businessOperation.js';
 
 const logger = createLogger(import.meta.url);
@@ -15,6 +15,7 @@ export class Retry<T> implements BusinessOperation<T> {
     private readonly delayMs: DelayMs;
     private readonly sleep: Sleeper['sleep'];
     private readonly signal: AbortSignal | undefined;
+    private readonly clock: MonotonicClock['now'];
 
     /**
      * @param operation   The operation to execute, retried on failure.
@@ -27,6 +28,7 @@ export class Retry<T> implements BusinessOperation<T> {
      * @param signal      Caller-controlled cancellation. Checked before the first attempt
      *                    and before each backoff sleep, so an abort always stops execution
      *                    before the next unit of work begins.
+     * @param clock        Monotonic clock used for elapsed-duration logging.
      */
     constructor(
         operation: BusinessOperation<T>,
@@ -35,6 +37,7 @@ export class Retry<T> implements BusinessOperation<T> {
         delayMs: DelayMs,
         sleep: Sleeper['sleep'] = defaultSleeper.sleep,
         signal?: AbortSignal,
+        clock: MonotonicClock['now'] = defaultMonotonicClock.now,
     ) {
         if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
             throw new TypeError(`maxAttempts must be a positive integer. value is ${maxAttempts}`);
@@ -46,6 +49,7 @@ export class Retry<T> implements BusinessOperation<T> {
         this.delayMs = delayMs;
         this.sleep = sleep;
         this.signal = signal;
+        this.clock = clock;
     }
 
     async perform(): Promise<T> {
@@ -53,7 +57,7 @@ export class Retry<T> implements BusinessOperation<T> {
             throw new CallerAbortedError();
         }
 
-        const startedAt = Date.now();
+        const startedAt = this.clock();
 
         for (let attempt = 1; ; attempt++) {
             try {
@@ -130,7 +134,7 @@ export class Retry<T> implements BusinessOperation<T> {
             {
                 attempts: attempt,
                 retries,
-                durationMs: Date.now() - startedAt,
+                durationMs: this.clock() - startedAt,
             },
             'Operation recovered after retry',
         );
@@ -153,7 +157,7 @@ export class Retry<T> implements BusinessOperation<T> {
                 maxAttempts: this.maxAttempts,
                 err: error,
                 errorType: error.name,
-                durationMs: Date.now() - startedAt,
+                durationMs: this.clock() - startedAt,
             },
             'Operation failed; maximum attempts reached',
         );

@@ -1,5 +1,6 @@
 import { createServer as createHttpServer, Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import { HTTP_METHOD_GET } from '../../../../../src/http/http.js';
 import { FetchDirectTransport } from '../../../../../src/http/transport/impl/fetchDirectTransport.js';
 
 describe('FetchDirectTransport integration (undici via global fetch)', () => {
@@ -43,7 +44,12 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
     it('performs a real GET and maps status, headers and JSON body', async () => {
         const signal = new AbortController().signal;
 
-        const response = await transport.request({ url: `${baseUrl}/json`, method: 'GET', headers: {}, signal });
+        const response = await transport.request({
+            url: `${baseUrl}/json`,
+            method: HTTP_METHOD_GET,
+            headers: {},
+            signal,
+        });
 
         expect(response.status).toBe(200);
         expect(response.ok).toBe(true);
@@ -56,7 +62,7 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
 
         const response = await transport.request({
             url: `${baseUrl}/echo`,
-            method: 'GET',
+            method: HTTP_METHOD_GET,
             headers: {},
             signal,
         });
@@ -71,7 +77,12 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
     it('maps a real 404 response', async () => {
         const signal = new AbortController().signal;
 
-        const response = await transport.request({ url: `${baseUrl}/missing`, method: 'GET', headers: {}, signal });
+        const response = await transport.request({
+            url: `${baseUrl}/missing`,
+            method: HTTP_METHOD_GET,
+            headers: {},
+            signal,
+        });
 
         expect(response.status).toBe(404);
         expect(response.ok).toBe(false);
@@ -81,7 +92,12 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
     it('reads the raw text body', async () => {
         const signal = new AbortController().signal;
 
-        const response = await transport.request({ url: `${baseUrl}/json`, method: 'GET', headers: {}, signal });
+        const response = await transport.request({
+            url: `${baseUrl}/json`,
+            method: HTTP_METHOD_GET,
+            headers: {},
+            signal,
+        });
 
         expect(await response.text()).toBe(JSON.stringify({ path: '/json', ok: true }));
     });
