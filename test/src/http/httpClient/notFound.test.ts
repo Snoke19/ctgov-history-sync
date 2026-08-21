@@ -100,7 +100,7 @@ describe('HttpClient 404 & null handling', () => {
                     client.fetchJson(`${API_URL}/invariant`, {
                         retryPolicy: { retryableStatusCodes: new Set([404]) },
                     }),
-                ).rejects.toThrow('404 must not be in retryableStatusCodes');
+                ).rejects.toThrow('retryPolicy.retryableStatusCodes must not contain 404');
             });
         });
     });
