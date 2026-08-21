@@ -126,7 +126,6 @@ describe('Retry', () => {
                     attempt: 2,
                     maxAttempts: 2,
                     delayMs: 1,
-                    reason: 'HttpException',
                     statusCode: 500,
                     err: expect.any(HttpException),
                     errorType: 'HttpException',

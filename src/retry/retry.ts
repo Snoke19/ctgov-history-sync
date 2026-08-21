@@ -165,7 +165,6 @@ export class Retry<T> implements BusinessOperation<T> {
                 attempt: nextAttempt,
                 maxAttempts: this.maxAttempts,
                 delayMs,
-                reason: error.name,
                 statusCode: error instanceof HttpException ? error.status : undefined,
                 err: error,
                 errorType: error.name,
