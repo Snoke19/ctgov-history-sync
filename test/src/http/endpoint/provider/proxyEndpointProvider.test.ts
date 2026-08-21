@@ -7,14 +7,6 @@ import {
     ProxyTransportFactory,
 } from '../../../../../src/http/transport/factory/proxyTransportFactory.js';
 import { HttpTransport } from '../../../../../src/http/transport/httpTransport.js';
-import * as validation from '../../../../../src/utils/validation.js';
-
-const assertPositiveInt = jest.fn();
-
-jest.unstable_mockModule('../../../../../src/utils/validation.js', () => ({
-    ...validation,
-    assertPositiveInt,
-}));
 
 const { ProxyEndpointProvider } =
     await import('../../../../../src/http/endpoint/provider/impl/proxyEndpointProvider.js');
@@ -39,7 +31,6 @@ describe('ProxyEndpointProvider', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        assertPositiveInt.mockImplementation(() => {});
 
         transportFactory = { create: jest.fn() } as unknown as jest.Mocked<ProxyTransportFactory>;
         urlParser = { parse: jest.fn() } as unknown as jest.Mocked<ProxyUrlParser>;
@@ -121,12 +112,16 @@ describe('ProxyEndpointProvider', () => {
     });
 
     describe('validation & configuration errors', () => {
-        it('delegates concurrency validation to assertPositiveInt', () => {
+        it('accepts a positive concurrency value', () => {
             urlParser.parse.mockReturnValue(['http://p:1']);
 
-            makeProvider(makeOptions({ concurrency: 7 })).build();
+            expect(() => makeProvider(makeOptions({ concurrency: 7 })).build()).not.toThrow();
+        });
 
-            expect(assertPositiveInt).toHaveBeenCalledWith(7, 'concurrency');
+        it('throws ConfigurationError when concurrency is not positive', () => {
+            expect(() => makeProvider(makeOptions({ concurrency: 0 })).build()).toThrow(
+                'concurrency must be a positive integer',
+            );
         });
 
         it('throws ConfigurationError when urlParser returns an empty array', () => {
@@ -137,28 +132,9 @@ describe('ProxyEndpointProvider', () => {
             );
         });
 
-        it('throws when assertPositiveInt throws', () => {
-            assertPositiveInt.mockImplementation(() => {
-                throw new Error('concurrency must be a positive integer');
-            });
-
-            expect(() => makeProvider(makeOptions({ concurrency: 0 })).build()).toThrow(
-                'concurrency must be a positive integer',
-            );
-        });
-
-        it('does not call urlParser.parse if assertPositiveInt throws', () => {
-            assertPositiveInt.mockImplementation(() => {
-                throw new Error('bad concurrency');
-            });
-
-            expect(() => makeProvider(makeOptions({ concurrency: -1 })).build()).toThrow();
-
-            expect(urlParser.parse).not.toHaveBeenCalled();
-        });
-
         it('propagates error when urlParser.parse throws', () => {
             const err = new Error('malformed proxy URL');
+
             urlParser.parse.mockImplementation(() => {
                 throw err;
             });

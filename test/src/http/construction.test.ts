@@ -1,7 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { Dispatcher, ProxyAgent } from 'undici';
 import { ProxyPoolConfig } from '../../../src/config/config.js';
-import { ConfigurationError } from '../../../src/error/errors.js';
+import { ConfigurationError, EndpointAssemblyError } from '../../../src/error/errors.js';
 import { EndpointFactory } from '../../../src/http/endpoint/endpointFactory.js';
 import { DefaultEndpointManagerFactory } from '../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { EndpointManager } from '../../../src/http/endpoint/manager/endpointManager.js';
@@ -113,7 +113,7 @@ describe('Proxy + Undici construction chain', () => {
                 limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
                 endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 0 }),
             }),
-        ).rejects.toBeInstanceOf(ConfigurationError);
+        ).rejects.toBeInstanceOf(EndpointAssemblyError);
 
         expect(transport.close).toHaveBeenCalledTimes(1);
     });

@@ -1,6 +1,6 @@
 import { createLogger } from '../../../config/logging.js';
 import { TokenBucketTimeoutError } from '../../../error/errors.js';
-import { assertPositiveInt } from '../../../utils/validation.js';
+import { makeAssertions } from '../../../utils/assertions.js';
 import { defaultMonotonicClock, defaultSleeper, MonotonicClock, Sleeper } from '../../clock.js';
 import { Limiter } from '../limiter.js';
 
@@ -59,14 +59,22 @@ export class TokenBucket extends Limiter {
      * Defaults to the shared monotonic HTTP-layer clock.
      * Intended primarily for deterministic testing.
      * @param options.sleep - Async delay. Defaults to the shared HTTP-layer sleeper.
-     * @throws {TypeError} If `capacity` is not a positive integer, or
-     *   `windowMs` is not a positive finite number.
+     * @throws {TypeError} If `capacity` or `windowMs` is not a positive integer.
      */
     constructor(options: TokenBucketOptions) {
         super();
 
-        assertPositiveInt(options.capacity, 'capacity');
-        assertPositiveInt(options.windowMs, 'windowMs');
+        const tokenBucketAssert = makeAssertions(TypeError);
+
+        tokenBucketAssert.assertInteger(options.capacity, 'capacity', {
+            min: 1,
+            label: 'a positive integer',
+        });
+
+        tokenBucketAssert.assertInteger(options.windowMs, 'windowMs', {
+            min: 1,
+            label: 'a positive integer',
+        });
 
         this.capacity = options.capacity;
         this.windowMs = options.windowMs;

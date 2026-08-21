@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import {
     CallerAbortedError,
-    ConfigurationError,
     EndpointAcquisitionTimeoutError,
+    EndpointAssemblyError,
 } from '../../../../../src/error/errors.js';
 import { Endpoint, EndpointHandle } from '../../../../../src/http/endpoint/endpoint.js';
 import { EndpointManager } from '../../../../../src/http/endpoint/manager/endpointManager.js';
@@ -71,7 +71,7 @@ describe('EndpointManager', () => {
 
         test('throws ConfigurationError for an empty endpoint list', () => {
             expect(() => new EndpointManager([], { acquireTimeout: 1000, clock, sleep: instantSleep })).toThrow(
-                ConfigurationError,
+                EndpointAssemblyError,
             );
         });
 

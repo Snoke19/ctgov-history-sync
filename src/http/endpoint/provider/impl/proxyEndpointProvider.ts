@@ -1,11 +1,12 @@
 import { createLogger } from '../../../../config/logging.js';
 import { ConfigurationError } from '../../../../error/errors.js';
-import { assertPositiveInt } from '../../../../utils/validation.js';
+import { makeAssertions } from '../../../../utils/assertions.js';
 import { ProxyTransportContext, ProxyTransportFactory } from '../../../transport/factory/proxyTransportFactory.js';
 import { ProxyUrlParser } from '../../proxy/httpProxyUrlParser.js';
 import { EndpointDefinition, EndpointProvider } from '../endpointProvider.js';
 
 const logger = createLogger(import.meta.url);
+const proxyProviderAssert = makeAssertions(ConfigurationError);
 
 export interface ProxyEndpointProviderOptions {
     readonly proxyUrls: string;
@@ -20,7 +21,10 @@ export class ProxyEndpointProvider implements EndpointProvider {
     ) {}
 
     build(): EndpointDefinition[] {
-        assertPositiveInt(this.options.concurrency, 'concurrency');
+        proxyProviderAssert.assertInteger(this.options.concurrency, 'concurrency', {
+            min: 1,
+            label: 'a positive integer',
+        });
 
         const urls = this.urlParser.parse(this.options.proxyUrls);
 

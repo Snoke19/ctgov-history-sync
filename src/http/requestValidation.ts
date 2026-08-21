@@ -1,14 +1,21 @@
 import { TrialValidationError } from '../error/errors.js';
-import { assertTrialNonNegativeInt, assertTrialPositiveInt } from '../utils/validation.js';
+import { makeAssertions } from '../utils/assertions.js';
 import type { FetchJsonRequestOptions } from './http.js';
+
+const requestAssert = makeAssertions(TrialValidationError);
 
 export function validateFetchJsonRequestOptions(options: FetchJsonRequestOptions): void {
     if (options.timeoutMs !== undefined) {
-        assertTrialPositiveInt(options.timeoutMs, 'timeoutMs');
+        requestAssert.assertInteger(options.timeoutMs, 'timeoutMs', {
+            min: 1,
+            label: 'a positive integer',
+        });
     }
 
     if (options.maxRetries !== undefined) {
-        assertTrialNonNegativeInt(options.maxRetries, 'maxRetries');
+        requestAssert.assertInteger(options.maxRetries, 'maxRetries', {
+            min: 0,
+        });
     }
 
     const policy = options.retryPolicy;
@@ -26,11 +33,17 @@ export function validateFetchJsonRequestOptions(options: FetchJsonRequestOptions
     }
 
     if (policy.baseDelayMs !== undefined) {
-        assertTrialPositiveInt(policy.baseDelayMs, 'retryPolicy.baseDelayMs');
+        requestAssert.assertInteger(policy.baseDelayMs, 'retryPolicy.baseDelayMs', {
+            min: 1,
+            label: 'a positive integer',
+        });
     }
 
     if (policy.backoffCapMs !== undefined) {
-        assertTrialPositiveInt(policy.backoffCapMs, 'retryPolicy.backoffCapMs');
+        requestAssert.assertInteger(policy.backoffCapMs, 'retryPolicy.backoffCapMs', {
+            min: 1,
+            label: 'a positive integer',
+        });
     }
 
     if (policy.retryableStatusCodes !== undefined) {

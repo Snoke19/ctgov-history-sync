@@ -1,15 +1,16 @@
 import { createLogger } from '../../../config/logging.js';
 import {
     CallerAbortedError,
-    ConfigurationError,
     EndpointAcquisitionTimeoutError,
+    EndpointAssemblyError,
     TrialError,
 } from '../../../error/errors.js';
-import { assertPositiveInt } from '../../../utils/validation.js';
+import { makeAssertions } from '../../../utils/assertions.js';
 import { defaultMonotonicClock, defaultSleeper, MonotonicClock, Sleeper } from '../../clock.js';
 import { Endpoint, EndpointHandle } from '../endpoint.js';
 
 const logger = createLogger(import.meta.url);
+const endpointManagerAssert = makeAssertions(EndpointAssemblyError);
 
 type EndpointManagerErrorLogContext = {
     err: unknown;
@@ -38,9 +39,13 @@ export class EndpointManager {
 
     constructor(endpoints: readonly Endpoint[], options: EndpointManagerOptions) {
         if (endpoints.length === 0) {
-            throw new ConfigurationError('EndpointManager requires at least one endpoint.');
+            throw new EndpointAssemblyError('EndpointManager requires at least one endpoint.');
         }
-        assertPositiveInt(options.acquireTimeout, 'acquireTimeout');
+
+        endpointManagerAssert.assertInteger(options.acquireTimeout, 'acquireTimeout', {
+            min: 1,
+            label: 'a positive integer',
+        });
 
         this.endpoints = endpoints;
         this.acquireTimeout = options.acquireTimeout;

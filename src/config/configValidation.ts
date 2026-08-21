@@ -1,7 +1,8 @@
 import { ConfigurationError } from '../error/errors.js';
-import { assertNonNegativeInt, assertPositiveInt } from '../utils/validation.js';
+import { makeAssertions } from '../utils/assertions.js';
 
 const isInteger = (n: number): boolean => Number.isFinite(n) && Number.isInteger(n);
+const configAssert = makeAssertions(ConfigurationError);
 
 const parseStrictInt = (raw: string, key: string): number => {
     const trimmed = raw.trim();
@@ -24,8 +25,8 @@ const getEnv = (key: string): string | undefined => {
     return value === undefined || value === '' ? undefined : value;
 };
 
-function throwConfigError(message: string, _context: Record<string, unknown>): never {
-    throw new ConfigurationError(message);
+function throwConfigError(message: string, context: Record<string, unknown>): never {
+    throw new ConfigurationError(message, { context });
 }
 
 export const env = {
@@ -45,11 +46,16 @@ export const env = {
         const value = raw === undefined ? fallback : parseStrictInt(raw, key);
 
         if (opts.positive) {
-            assertPositiveInt(value, key);
+            configAssert.assertInteger(value, key, {
+                min: 1,
+                label: 'a positive integer',
+            });
         }
 
         if (opts.nonNegative) {
-            assertNonNegativeInt(value, key);
+            configAssert.assertInteger(value, key, {
+                min: 0,
+            });
         }
 
         return value;

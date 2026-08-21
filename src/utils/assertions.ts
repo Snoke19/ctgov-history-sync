@@ -1,5 +1,3 @@
-import { ConfigurationError, TrialValidationError } from '../error/errors.js';
-
 type ErrorCtor = new (message: string) => Error;
 
 export type Assertions = {
@@ -40,39 +38,4 @@ export function makeAssertions(ErrorType: ErrorCtor): Assertions {
             fail(`${name} must be ${description}`);
         },
     };
-}
-
-const configAssert: Assertions = makeAssertions(ConfigurationError);
-const trialAssert: Assertions = makeAssertions(TrialValidationError);
-
-export function assertPositiveInt(value: number, name: string): void {
-    configAssert.assertInteger(value, name, { min: 1, label: 'a positive integer' });
-}
-
-export function assertNonNegativeInt(value: number, name: string): void {
-    configAssert.assertInteger(value, name, { min: 0 });
-}
-
-export function assertTrialPositiveInt(value: number, name: string): void {
-    trialAssert.assertInteger(value, name, { min: 1, label: 'a positive integer' });
-}
-
-export function assertTrialNonNegativeInt(value: number, name: string): void {
-    trialAssert.assertInteger(value, name, { min: 0 });
-}
-
-const NCT_ID_PATTERN = /^NCT\d{8}$/;
-
-export function validateNctId(value: string): string {
-    trialAssert.assertNonEmptyString(value, 'nctId');
-
-    const normalized = value.trim().toUpperCase();
-
-    trialAssert.assertPattern(
-        normalized,
-        NCT_ID_PATTERN,
-        `Invalid nctId format. Expected: NCT followed by 8 digits. Got: "${value}"`,
-    );
-
-    return normalized;
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { ConfigurationError, TokenBucketTimeoutError } from '../../../../src/error/errors.js';
+import { TokenBucketTimeoutError } from '../../../../src/error/errors.js';
 import { TokenBucket } from '../../../../src/http/limiter/impl/tokenBucket.js';
 
 function makeClock(start = 0) {
@@ -24,11 +24,11 @@ describe('TokenBucket', () => {
         });
 
         it.each([0, -1, 1.5, NaN, Infinity])('rejects a non-positive-integer capacity: %p', (capacity) => {
-            expect(() => new TokenBucket({ capacity, windowMs: 1000 })).toThrow(ConfigurationError);
+            expect(() => new TokenBucket({ capacity, windowMs: 1000 })).toThrow(TypeError);
         });
 
         it.each([0, -1, NaN, Infinity])('rejects a non-positive-finite windowMs: %p', (windowMs) => {
-            expect(() => new TokenBucket({ capacity: 5, windowMs })).toThrow(ConfigurationError);
+            expect(() => new TokenBucket({ capacity: 5, windowMs })).toThrow(TypeError);
         });
 
         it('accepts capacity = 1 (minimum valid value)', () => {

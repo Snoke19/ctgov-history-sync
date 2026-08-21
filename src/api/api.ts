@@ -17,7 +17,7 @@ import { createHttpClient } from '../http/httpClient.js';
 import { DefaultLimiterFactory } from '../http/limiter/factory/defaultLimiterFactory.js';
 import { UndiciTransportFactory } from '../http/transport/impl/undiciProxyTransport.js';
 import { UrlBuilder } from '../http/urlPrepare.js';
-import { validateNctId } from '../utils/validation.js';
+import { validateNctId } from './trialValidation.js';
 import { FetchStudiesPageParams, FetchTrialDetailParams, StudiesPageResponse, Study } from './types.js';
 
 const logger = createLogger(import.meta.url);

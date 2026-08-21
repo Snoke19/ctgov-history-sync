@@ -13,9 +13,11 @@ import {
     TimeoutException,
     TrialError,
 } from '../error/errors.js';
-import { assertPositiveInt } from '../utils/validation.js';
 import { defaultRandom } from '../http/clock.js';
 import { HttpResponse } from '../http/transport/httpTransport.js';
+import { makeAssertions } from '../utils/assertions.js';
+
+const retryPolicyAssert = makeAssertions(ConfigurationError);
 
 const JITTER_FACTOR = 0.5;
 
@@ -183,11 +185,17 @@ export function validateRetryPolicyConfig(config: RetryPolicyConfig): void {
     }
 
     if (config.baseDelayMs !== undefined) {
-        assertPositiveInt(config.baseDelayMs, 'baseDelayMs');
+        retryPolicyAssert.assertInteger(config.baseDelayMs, 'baseDelayMs', {
+            min: 1,
+            label: 'a positive integer',
+        });
     }
 
     if (config.backoffCapMs !== undefined) {
-        assertPositiveInt(config.backoffCapMs, 'backoffCapMs');
+        retryPolicyAssert.assertInteger(config.backoffCapMs, 'backoffCapMs', {
+            min: 1,
+            label: 'a positive integer',
+        });
     }
 }
 
