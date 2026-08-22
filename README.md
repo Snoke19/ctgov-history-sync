@@ -1,12 +1,31 @@
 # ClinicalTrials.gov History Sync
 
-A TypeScript data-acquisition service for retrieving clinical study records from the [ClinicalTrials.gov API v2](https://clinicaltrials.gov/data-api/api).
+A TypeScript data-acquisition service for retrieving clinical study records and historical study information from the [ClinicalTrials.gov API v2](https://clinicaltrials.gov/data-api/api).
 
-The project is designed around one central problem: **reliably collecting large numbers of clinical-trial records from a remote API under pagination, concurrency, rate-limit, proxy, timeout, and transient-failure constraints.**
+The project is designed around a broader engineering problem than simply scraping an API: **how to build a reliable, testable, observable acquisition pipeline that can collect large numbers of clinical-trial records while remaining resilient to pagination, concurrency, rate limits, endpoint failures, timeouts, transient HTTP errors, and changing execution strategies.**
 
-At the application level, the scraper selects a study set, walks the API's cursor-based pagination, extracts NCT identifiers, and fetches detailed records concurrently. The HTTP subsystem underneath it provides endpoint management, optional proxy routing, per-endpoint rate limiting, connection pooling, retry policies, timeout handling, and structured error classification.
+The current application selects a study set, walks cursor-based pagination, extracts NCT identifiers, and fetches detailed records concurrently. Underneath it is a deliberately separated HTTP/resilience subsystem responsible for endpoint selection, rate limiting, proxy routing, connection pooling, retry decisions, timeout/cancellation handling, and error classification.
 
-> **Current scope:** the repository is primarily a data acquisition/scraping pipeline. The current application flow fetches and validates data but does not contain a database or file-storage layer.
+> **Current scope:** this repository is primarily a data-acquisition and synchronization pipeline. It currently fetches and validates study data; it does not contain a database or durable output-storage layer.
+
+## Why this project exists
+
+At first glance, this project could be described as a ClinicalTrials.gov scraper. That description is technically correct but incomplete.
+
+The interesting part of the system is the **acquisition infrastructure around the API**. A production-quality scraper cannot treat HTTP as a single `fetch()` call when it has to process many records reliably. It needs explicit answers to questions such as:
+
+- Which endpoint should handle the next request?
+- Is that endpoint currently allowed to make another request?
+- Should the request go directly to the API or through a proxy?
+- What happens when a request times out?
+- Which HTTP statuses are transient and worth retrying?
+- How should retry delays be calculated?
+- What happens when the caller cancels an operation?
+- How can transport-specific failures be translated into application-level errors?
+- Can each of these behaviors be tested independently?
+- Can the execution mechanism evolve without rewriting the application logic?
+
+The repository therefore treats **reliability, separation of concerns, and testability as first-class design goals** rather than incidental implementation details.
 
 ## What the application does
 
@@ -25,24 +44,25 @@ ClinicalTrials.gov API
         │
         │  fetchTrialDetail(..., { history: true })
         ▼
-  HTTP resilience layer
+  HTTP acquisition layer
         │
         ├── endpoint selection
         ├── proxy transport
         ├── rate limiting
         ├── connection pooling
         ├── timeout / cancellation
+        ├── error classification
         └── retry + backoff
         │
         ▼
-  trial records returned
+  validated trial records
 ```
 
-The current executable entry point (`src/index.ts`) also tracks page/checkpoint state in memory and records per-page and overall success/failure metrics in structured logs.
+The current executable entry point (`src/index.ts`) also maintains page/checkpoint state in memory and records per-page and overall success/failure information through structured logging.
 
 ## Main capabilities
 
-### Data acquisition
+### ClinicalTrials.gov acquisition
 
 - Query ClinicalTrials.gov studies using API search parameters.
 - Process cursor-based pagination with `nextPageToken`.
@@ -50,28 +70,49 @@ The current executable entry point (`src/index.ts`) also tracks page/checkpoint 
 - Fetch individual study details.
 - Request historical study information through the API's `history=true` option.
 - Process multiple study-detail requests concurrently.
+- Validate API responses before returning them to higher layers.
 
 ### HTTP resilience
 
-The HTTP layer is intentionally separated into small components so that request execution is not coupled directly to proxy handling or rate limiting.
+The HTTP subsystem is intentionally decomposed into ports and implementations instead of putting all behavior into one HTTP client.
 
-- **Endpoint providers** — direct or proxy-backed endpoint strategies.
+- **Endpoint providers** — define how endpoints are created and supplied.
 - **Endpoint manager** — selects available endpoints and waits for capacity when necessary.
 - **Token-bucket rate limiting** — controls request frequency per endpoint.
 - **HTTP transport abstraction** — isolates the actual network implementation.
 - **Undici transport** — provides pooled HTTP connections for the proxy-based production path.
+- **Direct transport** — provides a native-fetch implementation useful for alternative execution and integration scenarios.
 - **Timeout handling** — aborts requests that exceed configured limits.
-- **Retry policy** — retries selected HTTP, timeout, and network failures.
-- **Exponential backoff with jitter** — avoids immediate repeated retries and reduces synchronized retry bursts.
-- **`Retry-After` handling** — supports server-provided retry timing for HTTP failures.
-- **Cancellation propagation** — caller aborts are treated separately from retryable failures.
+- **Retry policy** — independently decides whether HTTP, timeout, and network failures are retryable.
+- **Retry engine** — executes a retryable business operation without embedding retry mechanics inside that operation.
+- **Exponential backoff with jitter** — avoids immediate repeated retries and synchronized retry bursts.
+- **`Retry-After` handling** — respects server-provided retry timing where applicable.
+- **Cancellation propagation** — caller aborts are treated differently from transient infrastructure failures.
 
-### Error model
+### Explicit error contract
 
-The project uses a domain-specific error taxonomy instead of exposing arbitrary transport exceptions throughout the application.
+The project uses a domain-specific error taxonomy instead of allowing arbitrary transport exceptions to leak through the application.
+
+The central contract is:
+
+```text
+Known failure
+    │
+    ▼
+Specific TrialError subclass
+
+Unknown failure
+    │
+    ▼
+TrialError.normalize(error)
+    │
+    ▼
+UnexpectedError
+```
 
 Examples include:
 
+- configuration errors
 - validation errors
 - API response validation errors
 - trial-not-found errors
@@ -80,13 +121,16 @@ Examples include:
 - timeout errors
 - caller-aborted operations
 - endpoint acquisition failures
+- token-bucket acquisition failures
 - unexpected errors
 
-Unknown errors can be normalized into the project's `TrialError` hierarchy so that application boundaries have a predictable error contract.
+This keeps error handling at application boundaries predictable while preserving useful failure categories for retry and logging decisions.
 
 ### Observability
 
-Logging is implemented with **Pino** and includes structured fields such as:
+Logging is implemented with **Pino** and uses structured context rather than relying only on formatted messages.
+
+Important fields include:
 
 - correlation ID
 - operation name
@@ -98,11 +142,11 @@ Logging is implemented with **Pino** and includes structured fields such as:
 - request duration
 - retry/error information
 
-Sensitive URL components are sanitized before they are written to logs.
+Sensitive URL components are sanitized before being written to logs. Correlation/request identifiers are intended to make a single acquisition traceable across retries and endpoint changes.
 
 ## Architecture
 
-The repository is organized around ports and concrete implementations rather than putting all HTTP behavior into one client class.
+The repository is organized around explicit boundaries between application behavior, API adaptation, HTTP orchestration, endpoint management, transport, and resilience.
 
 ```text
 Application
@@ -123,17 +167,17 @@ API Adapter
 HTTP Client
 └── src/http/httpClient.ts
     ├── request validation
-    ├── response parsing
+    ├── response parsing / validation
     ├── FetchOperation
     └── Retry
             │
-            ├───────────────┐
-            ▼               ▼
-Endpoint Domain       Resilience
-├── Endpoint           ├── RetryPolicy
-├── EndpointProvider   ├── TokenBucket
-├── EndpointManager    └── timeouts / cancellation
-└── EndpointFactory
+            ├───────────────────┐
+            ▼                   ▼
+Endpoint Domain          Resilience
+├── Endpoint             ├── RetryPolicy
+├── EndpointProvider     ├── Retry
+├── EndpointManager      ├── TokenBucket
+└── EndpointFactory      └── timeout / cancellation
             │
             ▼
 HTTP Transport
@@ -146,19 +190,37 @@ HTTP Transport
       ClinicalTrials.gov
 ```
 
-### Important design boundaries
+### Core design boundaries
 
-**`ApiClient`** exposes domain-level operations such as fetching a studies page or a trial detail. Callers do not need to know how endpoints, proxies, transports, or rate limiters are constructed.
+**`ApiClient`** exposes domain-facing API operations such as fetching a study page or a trial detail. Callers do not need to know how endpoints, proxies, transports, or limiters are constructed.
 
-**`HttpTransport`** abstracts the actual HTTP request mechanism. This allows the endpoint layer to select different transport implementations without changing higher-level request logic.
+**`HttpClient`** coordinates HTTP request construction, endpoint acquisition, execution, response handling, and retry composition. It is an orchestration boundary rather than the implementation of every infrastructure concern.
 
-**`EndpointProvider`** creates endpoint definitions. The current application composes a proxy-backed provider, while a direct provider also exists for other execution and testing scenarios.
+**`HttpTransport`** abstracts the actual HTTP request mechanism. Transport implementations are responsible for performing the request and classifying transport-level failures; higher layers do not depend directly on Undici or native `fetch`.
 
-**`EndpointManager`** owns endpoint selection and acquisition. It coordinates round-robin selection with limiter availability and an acquisition timeout.
+**`EndpointProvider`** creates endpoint definitions. The current application composes a proxy-backed provider, while a direct provider also exists for alternative execution and testing scenarios.
 
-**`Limiter`** is a separate port with a token-bucket implementation and an unlimited implementation.
+**`EndpointManager`** owns endpoint selection and acquisition. It coordinates endpoint availability, round-robin selection, limiter capacity, acquisition timeouts, and cancellation.
 
-**`Retry` / `RetryPolicy`** keep retry mechanics separate from the operation being retried. This makes retry behavior independently testable and configurable.
+**`Limiter`** is a separate port with token-bucket and unlimited implementations. Rate limiting therefore remains independent from transport implementation.
+
+**`Retry` / `RetryPolicy`** separate the retry mechanism from the operation being retried. The retry engine owns attempts and backoff, while policy decides whether a particular failure should be retried.
+
+**Error taxonomy** provides a stable application-level contract above transport-specific exceptions.
+
+## Architectural direction
+
+One of the project's central architectural questions is how far the execution mechanism should be abstracted.
+
+The current design already separates **HTTP transport** from endpoint management and application behavior. This makes direct and proxy-backed HTTP execution possible without changing the higher-level API operations.
+
+The architecture review identified a potential future boundary above `HttpTransport`: an **acquisition strategy** abstraction that could eventually allow fundamentally different mechanisms such as browser automation, raw sockets, or fallback strategies. This is intentionally treated as an architectural direction rather than a requirement to introduce another abstraction prematurely.
+
+The important principle is:
+
+> **Application logic should describe what data needs to be acquired; infrastructure should determine how that acquisition is executed.**
+
+The current implementation solves this principle well within the HTTP domain. Extending it beyond HTTP should happen when a concrete execution strategy requires it, rather than adding speculative abstractions.
 
 ## Repository structure
 
@@ -196,15 +258,15 @@ HTTP Transport
 │   │   ├── httpClient.ts            # HTTP client orchestration
 │   │   ├── requestValidation.ts     # Request validation
 │   │   ├── responseBody.ts          # Response parsing
-│   │   └── urlPrepare.ts            # URL construction
+│   │   └── urlPrepare.ts             # URL construction
 │   │
 │   ├── retry/
 │   │   ├── businessOperation.ts     # Retryable operation contract
 │   │   ├── retry.ts                 # Retry engine
-│   │   └── retryPolicy.ts           # Retry decisions and backoff
+│   │   └── retryPolicy.ts            # Retry decisions and backoff
 │   │
 │   ├── utils/
-│   │   └── assertions.ts            # Reusable assertions
+│   │   └── assertions.ts             # Reusable assertions
 │   │
 │   └── index.ts                     # Application entry point
 │
@@ -227,7 +289,7 @@ GET /api/v2/studies
 GET /api/v2/studies/{nctId}
 ```
 
-The studies endpoint is used for search/pagination. The detail endpoint is used to retrieve an individual study record, optionally including history.
+The studies endpoint is used for search and pagination. The detail endpoint retrieves an individual study record, optionally including history.
 
 The API's cursor-based pagination is represented by `pageToken` / `nextPageToken` in the application layer.
 
@@ -249,7 +311,7 @@ Important groups include:
 | Retry switches | `RETRY_ON_TIMEOUT`, `RETRY_ON_NETWORK_ERROR` | Retry failure categories |
 | Logging | `LOG_LEVEL`, `LOG_TO_FILE` | Structured logging behavior |
 
-See `.env.example` for the complete set of currently supported variables and their example values.
+See `.env.example` for the complete set of currently supported variables and example values.
 
 ## Getting started
 
@@ -312,12 +374,12 @@ npm run format:check
 
 ## Testing strategy
 
-The repository contains a broad test suite covering both isolated components and integration behavior.
+Testing follows the architecture: important infrastructure boundaries have focused unit tests, while integration tests verify that the boundaries work correctly together.
 
-Tests are organized around the same architectural boundaries as the implementation:
+Coverage areas include:
 
 - configuration validation and defaults
-- error taxonomy and normalization
+- error taxonomy and error normalization
 - API client behavior and response validation
 - endpoint creation and management
 - direct and proxy endpoint providers
@@ -326,13 +388,15 @@ Tests are organized around the same architectural boundaries as the implementati
 - transport error classification
 - token-bucket and unlimited limiters
 - HTTP client happy paths and lifecycle behavior
-- network failures and 404 handling
+- network failures and 404 behavior
 - retry policy and retry execution
-- request/response validation
+- request and response validation
 - URL construction
 - logging and correlation context
 
-Integration tests also exercise real HTTP behavior using local servers where appropriate, which helps verify that the abstractions work together rather than only in mocked unit tests.
+Integration tests use local HTTP servers where appropriate to exercise real TCP/HTTP behavior rather than relying exclusively on mocks.
+
+The testing approach is intentionally focused on **contracts and observable behavior**. For example, retry tests verify attempt counts, retry decisions, cancellation behavior, and backoff behavior rather than coupling tests to private implementation details.
 
 ## Reliability model
 
@@ -367,22 +431,22 @@ Parse / validate response
 Return data or domain error
 ```
 
-A caller cancellation is deliberately distinguished from a retryable timeout or network failure. This prevents an operation that the caller explicitly cancelled from being retried as if it were a transient infrastructure problem.
+A caller cancellation is deliberately distinguished from a retryable timeout or network failure. This prevents an operation explicitly cancelled by its caller from being retried as though it were a transient infrastructure failure.
 
-## Current limitations and direction
+## Current limitations and technical direction
 
-The architecture is intentionally focused on reliable HTTP acquisition, but the repository's architecture review identifies several areas for future evolution:
+The current architecture is intentionally focused on reliable HTTP acquisition. The architecture review identifies several areas where the system can evolve:
 
-- The application layer currently combines scraping orchestration, pagination, concurrency, and checkpoint state in `src/index.ts`.
-- The composition root in `src/api/api.ts` directly wires the production proxy/transport stack.
-- Configuration is still consumed from module-level configuration exports in several layers.
-- There is currently no higher-level acquisition port for swapping HTTP acquisition with browser automation, raw sockets, or fallback acquisition strategies.
-- The current checkpoint is in-memory; there is no durable checkpoint or persistence subsystem.
-- The project currently retrieves data but does not persist the resulting study records to a database or object store.
+- **Application orchestration:** `src/index.ts` currently combines scraping orchestration, pagination, concurrency, and in-memory checkpoint state. A dedicated scraping/use-case boundary would make those responsibilities easier to evolve independently.
+- **Composition root:** `src/api/api.ts` currently wires the concrete production proxy/transport stack directly. This is functional, but stronger dependency injection would reduce infrastructure coupling.
+- **Configuration coupling:** configuration values are still consumed from module-level exports in several layers. Moving toward explicit configuration value objects would make dependencies clearer and improve isolation in tests.
+- **Acquisition strategy:** there is no higher-level abstraction for fundamentally different acquisition mechanisms. A future browser, socket, or fallback strategy could justify such a port; it should be introduced when there is a concrete need.
+- **Checkpoint durability:** the current checkpoint is in memory. There is no durable resume state.
+- **Persistence:** fetched study records are not currently written to a database, object store, or other durable data sink.
 
-These are architectural evolution points rather than requirements for understanding the current data-acquisition pipeline.
+These are **evolution points, not descriptions of missing core functionality**. The existing HTTP acquisition subsystem is already deliberately separated into independently testable components.
 
-See the detailed documents in `docs/` for the current architecture review, UML model, and technical-debt analysis.
+See the detailed documents in `docs/` for the architecture review, UML model, and technical-debt analysis.
 
 ## Documentation
 
@@ -402,6 +466,8 @@ See the detailed documents in `docs/` for the current architecture review, UML m
 
 ## Project status
 
-The project is an actively developed engineering codebase focused on building a robust, testable ClinicalTrials.gov data-acquisition layer.
+The project is an actively developed engineering codebase focused on building a robust, testable ClinicalTrials.gov acquisition and synchronization layer.
 
-The most important part of the project is not the HTTP request itself. It is the infrastructure around the request: **how endpoints are selected, how rate limits are respected, how transient failures are retried, how errors are classified, and how the whole pipeline remains testable and observable.**
+The important engineering problem is not the HTTP request itself. It is the infrastructure around that request: **endpoint selection, rate limiting, connection management, retry semantics, timeout and cancellation contracts, error classification, observability, and the ability to test each responsibility independently.**
+
+The architecture is intentionally being evolved toward a system where the application describes **what data should be acquired**, while infrastructure determines **how that acquisition is executed**.
