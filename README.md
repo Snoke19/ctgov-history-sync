@@ -1,254 +1,407 @@
-# Clinical Trials Scraper
+# ClinicalTrials.gov History Sync
 
-[![Node.js](https://img.shields.io/badge/Node.js-20+-43853D?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg?style=for-the-badge)](https://opensource.org/licenses/ISC)
-[![clinicaltrials.gov](https://img.shields.io/badge/Data_Source-clinicaltrials.gov-0078D4?style=for-the-badge)](https://clinicaltrials.gov/)
-[![API v2](https://img.shields.io/badge/API-v2-0066CC?style=for-the-badge)](https://clinicaltrials.gov/data-api/api)
+A TypeScript data-acquisition service for retrieving clinical study records from the [ClinicalTrials.gov API v2](https://clinicaltrials.gov/data-api/api).
 
-A high-performance, resilient Node.js scraper for fetching clinical trial data from [ClinicalTrials.gov](https://clinicaltrials.gov/). Built with enterprise-grade reliability patterns including proxy rotation, rate limiting, circuit breakers, and automatic retries.
+The project is designed around one central problem: **reliably collecting large numbers of clinical-trial records from a remote API under pagination, concurrency, rate-limit, proxy, timeout, and transient-failure constraints.**
 
-**Status**: Actively fetching real data from ClinicalTrials.gov API v2
+At the application level, the scraper selects a study set, walks the API's cursor-based pagination, extracts NCT identifiers, and fetches detailed records concurrently. The HTTP subsystem underneath it provides endpoint management, optional proxy routing, per-endpoint rate limiting, connection pooling, retry policies, timeout handling, and structured error classification.
 
----
+> **Current scope:** the repository is primarily a data acquisition/scraping pipeline. The current application flow fetches and validates data but does not contain a database or file-storage layer.
 
-## Features
+## What the application does
 
-### Core Capabilities
+At a high level, a run looks like this:
 
-- **Bulk Study Fetching**: Retrieve thousands of clinical trials with cursor-based pagination
-- **Detailed Trial Data**: Fetch full study records including protocols, phases, status, and historical changes
-- **Date-Range Querying**: Filter trials by start date or other criteria
-- **Concurrent Processing**: Parallel fetching with configurable concurrency limits
-
-### Reliability Features
-
-- **Proxy Rotation**: Distribute requests across multiple proxy endpoints to avoid IP blocking
-- **Token Bucket Rate Limiting**: Prevent API rate limit violations with configurable limits
-- **Circuit Breaker Pattern**: Temporarily stop requests to failing proxies with automatic cooldown
-- **Exponential Backoff**: Intelligent retry logic with configurable delays
-- **Automatic Retries**: Handles 429, 5xx errors, timeouts, and network failures
-- **Connection Pooling**: Efficient HTTP connection reuse via undici
-
-### Architecture Highlights
-
-- **Dependency Injection**: Fully testable with mock HTTP clients
-- **Immutable Configurations**: Type-safe environment variable parsing
-- **Comprehensive Logging**: Structured logging with pino
-- **Error Classification**: Custom error types for different failure scenarios
-- **Validation Layers**: Input validation for NCT IDs and query parameters
-
----
-
-## Data Source
-
-This scraper interacts with the **ClinicalTrials.gov API v2**:
-
-- **Studies Endpoint**: `https://clinicaltrials.gov/api/v2/studies`
-- **Study Detail Endpoint**: `https://clinicaltrials.gov/api/v2/studies/{nctId}`
-
-**Verified**: Both endpoints tested and working as of July 2026
-
-The API provides:
-
-- Cursor-based pagination (up to 1000 studies per page)
-- Rich study metadata including protocols, interventions, eligibility criteria
-- Historical data tracking (with `history=true` parameter)
-- Study status, phase, and classification information
-- Results data for completed studies
-- Participant flow and baseline characteristics
-
----
-
-## Live API Examples
-
-### Fetch Recent Studies
-
-```bash
-# Get 3 studies (verified working)
-curl -A "ClinicalTrialsScraper/1.0" \
-  "https://clinicaltrials.gov/api/v2/studies?pageSize=3&countTotal=false"
+```text
+ClinicalTrials.gov API
+        │
+        │  paginated study search
+        ▼
+  fetchStudiesPage()
+        │
+        │  extract NCT IDs
+        ▼
+   concurrent detail fetches
+        │
+        │  fetchTrialDetail(..., { history: true })
+        ▼
+  HTTP resilience layer
+        │
+        ├── endpoint selection
+        ├── proxy transport
+        ├── rate limiting
+        ├── connection pooling
+        ├── timeout / cancellation
+        └── retry + backoff
+        │
+        ▼
+  trial records returned
 ```
 
-### Fetch Specific Study Details
+The current executable entry point (`src/index.ts`) also tracks page/checkpoint state in memory and records per-page and overall success/failure metrics in structured logs.
 
-```bash
-# Get full details for a specific trial (verified working)
-curl -A "ClinicalTrialsScraper/1.0" \
-  "https://clinicaltrials.gov/api/v2/studies/NCT01968135"
+## Main capabilities
+
+### Data acquisition
+
+- Query ClinicalTrials.gov studies using API search parameters.
+- Process cursor-based pagination with `nextPageToken`.
+- Extract NCT identifiers from returned study records.
+- Fetch individual study details.
+- Request historical study information through the API's `history=true` option.
+- Process multiple study-detail requests concurrently.
+
+### HTTP resilience
+
+The HTTP layer is intentionally separated into small components so that request execution is not coupled directly to proxy handling or rate limiting.
+
+- **Endpoint providers** — direct or proxy-backed endpoint strategies.
+- **Endpoint manager** — selects available endpoints and waits for capacity when necessary.
+- **Token-bucket rate limiting** — controls request frequency per endpoint.
+- **HTTP transport abstraction** — isolates the actual network implementation.
+- **Undici transport** — provides pooled HTTP connections for the proxy-based production path.
+- **Timeout handling** — aborts requests that exceed configured limits.
+- **Retry policy** — retries selected HTTP, timeout, and network failures.
+- **Exponential backoff with jitter** — avoids immediate repeated retries and reduces synchronized retry bursts.
+- **`Retry-After` handling** — supports server-provided retry timing for HTTP failures.
+- **Cancellation propagation** — caller aborts are treated separately from retryable failures.
+
+### Error model
+
+The project uses a domain-specific error taxonomy instead of exposing arbitrary transport exceptions throughout the application.
+
+Examples include:
+
+- validation errors
+- API response validation errors
+- trial-not-found errors
+- HTTP errors
+- network errors
+- timeout errors
+- caller-aborted operations
+- endpoint acquisition failures
+- unexpected errors
+
+Unknown errors can be normalized into the project's `TrialError` hierarchy so that application boundaries have a predictable error contract.
+
+### Observability
+
+Logging is implemented with **Pino** and includes structured fields such as:
+
+- correlation ID
+- operation name
+- NCT ID
+- HTTP status
+- page number
+- study counts
+- success/failure counts
+- request duration
+- retry/error information
+
+Sensitive URL components are sanitized before they are written to logs.
+
+## Architecture
+
+The repository is organized around ports and concrete implementations rather than putting all HTTP behavior into one client class.
+
+```text
+Application
+└── src/index.ts
+    ├── pagination
+    ├── concurrency
+    ├── checkpoint state
+    └── application-level error handling
+            │
+            ▼
+API Adapter
+└── src/api/
+    ├── createApiClient()
+    ├── fetchStudiesPage()
+    └── fetchTrialDetail()
+            │
+            ▼
+HTTP Client
+└── src/http/httpClient.ts
+    ├── request validation
+    ├── response parsing
+    ├── FetchOperation
+    └── Retry
+            │
+            ├───────────────┐
+            ▼               ▼
+Endpoint Domain       Resilience
+├── Endpoint           ├── RetryPolicy
+├── EndpointProvider   ├── TokenBucket
+├── EndpointManager    └── timeouts / cancellation
+└── EndpointFactory
+            │
+            ▼
+HTTP Transport
+└── src/http/transport/
+    ├── HttpTransport interface
+    ├── direct fetch transport
+    └── Undici proxy transport
+            │
+            ▼
+      ClinicalTrials.gov
 ```
 
-### Search with Date Range
+### Important design boundaries
 
-```bash
-# Studies started between specific dates
-curl -A "ClinicalTrialsScraper/1.0" \
-  "https://clinicaltrials.gov/api/v2/studies?pageSize=10&query.term=AREA[StartDate]RANGE[2026-01-01,2026-07-30]"
+**`ApiClient`** exposes domain-level operations such as fetching a studies page or a trial detail. Callers do not need to know how endpoints, proxies, transports, or rate limiters are constructed.
+
+**`HttpTransport`** abstracts the actual HTTP request mechanism. This allows the endpoint layer to select different transport implementations without changing higher-level request logic.
+
+**`EndpointProvider`** creates endpoint definitions. The current application composes a proxy-backed provider, while a direct provider also exists for other execution and testing scenarios.
+
+**`EndpointManager`** owns endpoint selection and acquisition. It coordinates round-robin selection with limiter availability and an acquisition timeout.
+
+**`Limiter`** is a separate port with a token-bucket implementation and an unlimited implementation.
+
+**`Retry` / `RetryPolicy`** keep retry mechanics separate from the operation being retried. This makes retry behavior independently testable and configurable.
+
+## Repository structure
+
+```text
+.
+├── docs/
+│   ├── ARCHITECTURE_REVIEW.md
+│   ├── ARCHITECTURE_UML.md
+│   ├── TECH_DEBT.md
+│   └── mermaid-diagram-*.png
+│
+├── examples/
+│   └── tockenBucket.html
+│
+├── src/
+│   ├── api/
+│   │   ├── api.ts                 # ClinicalTrials.gov API adapter
+│   │   └── types.ts               # API-facing types
+│   │
+│   ├── config/
+│   │   ├── config.ts              # Environment configuration
+│   │   ├── configValidation.ts     # Configuration validation
+│   │   ├── defaults.ts             # Default values
+│   │   ├── logContext.ts            # Async logging context
+│   │   └── logging.ts               # Pino logging setup
+│   │
+│   ├── error/
+│   │   └── errors.ts               # Domain error taxonomy
+│   │
+│   ├── http/
+│   │   ├── endpoint/               # Endpoint, provider and manager
+│   │   ├── limiter/                # Rate limiting
+│   │   ├── transport/              # HTTP transport implementations
+│   │   ├── fetchOperation.ts        # One HTTP operation
+│   │   ├── httpClient.ts            # HTTP client orchestration
+│   │   ├── requestValidation.ts     # Request validation
+│   │   ├── responseBody.ts          # Response parsing
+│   │   └── urlPrepare.ts            # URL construction
+│   │
+│   ├── retry/
+│   │   ├── businessOperation.ts     # Retryable operation contract
+│   │   ├── retry.ts                 # Retry engine
+│   │   └── retryPolicy.ts           # Retry decisions and backoff
+│   │
+│   ├── utils/
+│   │   └── assertions.ts            # Reusable assertions
+│   │
+│   └── index.ts                     # Application entry point
+│
+├── test/                            # Unit and integration tests
+├── .env.example                     # Environment configuration template
+├── jest.config.mjs                  # Jest configuration
+├── eslint.config.js                 # ESLint configuration
+├── tsconfig.json                    # TypeScript configuration
+└── package.json
 ```
 
----
+## Data source
 
-## Installation
+The project targets the **ClinicalTrials.gov API v2**.
 
-### Prerequisites
+Primary operations are based on:
 
-- [Node.js](https://nodejs.org/) 20+ (ESM required)
-- [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
-
-### Quick Start
-
-```bash
-# Clone the repository
-git clone https://github.com/your-org/clinical-trials-scraper.git
-cd clinical-trials-scraper
-
-# Install dependencies
-npm install
-
-# Copy environment file and configure
-cp .env.example .env
-# Edit .env with your proxy URLs and settings
-nano .env  # or use your preferred editor
-
-# Run the scraper
-npm start
-
-# Or run with custom date range (modify src/index.ts)
-nano src/index.ts  # Edit DATE_RANGE variable
-npm start
+```text
+GET /api/v2/studies
+GET /api/v2/studies/{nctId}
 ```
 
----
+The studies endpoint is used for search/pagination. The detail endpoint is used to retrieve an individual study record, optionally including history.
+
+The API's cursor-based pagination is represented by `pageToken` / `nextPageToken` in the application layer.
 
 ## Configuration
 
-The scraper is configured entirely through environment variables. See `.env` and `.env.example` for all available options.
+Configuration is supplied through environment variables. Start from `.env.example` and create a local `.env` file.
 
-### Essential Settings
+Important groups include:
 
-```env
-# API Endpoints
-API_BASE_URL='https://clinicaltrials.gov/api/v2/studies'
-API_DETAIL_URL='https://clinicaltrials.gov/api/v2/studies'
+| Area | Examples | Purpose |
+| --- | --- | --- |
+| API | `API_BASE_URL`, `API_DETAIL_URL` | ClinicalTrials.gov endpoints |
+| Performance | `PAGE_SIZE`, `CONCURRENCY` | Pagination and parallel detail requests |
+| Timeouts | `FETCH_TIMEOUT_MS`, `ACQUIRE_TIMEOUT` | Request and endpoint acquisition limits |
+| Proxy | `PROXY_URLS`, `PROXY_POOL_*` | Proxy endpoints and connection pools |
+| Rate limiting | `RATE_LIMIT_CAPACITY`, `RATE_LIMIT_WINDOW` | Token-bucket request control |
+| Retry | `MAX_RETRIES`, `RETRYABLE_STATUS_CODES` | Retry behavior |
+| Backoff | `RETRY_BASE_DELAY_MS`, `BACKOFF_CAP_MS` | Retry delay calculation |
+| Retry switches | `RETRY_ON_TIMEOUT`, `RETRY_ON_NETWORK_ERROR` | Retry failure categories |
+| Logging | `LOG_LEVEL`, `LOG_TO_FILE` | Structured logging behavior |
 
-# Performance
-PAGE_SIZE=1000                    # Studies per page (max: 1000)
-CONCURRENCY=40                    # Concurrent detail requests
+See `.env.example` for the complete set of currently supported variables and their example values.
 
-# Proxy Configuration (comma-separated URLs)
-PROXY_URLS="http://user:pass@host:port,http://user2:pass2@host2:port"
+## Getting started
 
-# Rate Limiting
-PROXY_RATE_LIMIT_CAPACITY=10     # Requests per proxy per window
-PROXY_RATE_LIMIT_WINDOW_MS=60000 # 60 seconds
+### Requirements
 
-# Retry Logic
-MAX_RETRIES=3
-RETRYABLE_STATUS_CODES=408,429,500,502,503,504
-RETRY_BASE_DELAY_MS=500
-BACKOFF_CAP_MS=15000
+- Node.js 20+
+- npm
 
-# Timeouts
-FETCH_TIMEOUT_MS=10000
-PROXY_ACQUIRE_TIMEOUT_MS=30000
-```
-
-### Full Configuration Reference
-
-| Category            | Variable                            | Default                 | Description                        |
-| ------------------- | ----------------------------------- | ----------------------- | ---------------------------------- |
-| **API**             | `API_BASE_URL`                      | -                       | Base URL for studies endpoint      |
-| **API**             | `API_DETAIL_URL`                    | -                       | Base URL for study detail endpoint |
-| **API**             | `PAGE_SIZE`                         | 10                      | Studies per page (max: 1000)       |
-| **Performance**     | `CONCURRENCY`                       | 10                      | Concurrent detail requests         |
-| **Performance**     | `FETCH_TIMEOUT_MS`                  | 15000                   | Request timeout in ms              |
-| **Proxy**           | `PROXY_URLS`                        | -                       | Comma-separated proxy URLs         |
-| **Proxy**           | `PROXY_POOL_CONNECTIONS`            | 10                      | Max connections per proxy          |
-| **Rate Limit**      | `PROXY_RATE_LIMIT_CAPACITY`         | 40                      | Requests per window                |
-| **Rate Limit**      | `PROXY_RATE_LIMIT_WINDOW_MS`        | 60000                   | Window size in ms                  |
-| **Retry**           | `MAX_RETRIES`                       | 3                       | Maximum retry attempts             |
-| **Retry**           | `RETRYABLE_STATUS_CODES`            | 408,429,500,502,503,504 | Status codes to retry              |
-| **Retry**           | `RETRY_BASE_DELAY_MS`               | 1000                    | Base backoff delay                 |
-| **Retry**           | `BACKOFF_CAP_MS`                    | 30000                   | Maximum backoff delay              |
-| **Circuit Breaker** | `CIRCUIT_BREAKER_FAILURE_THRESHOLD` | 3                       | Failures before opening            |
-| **Circuit Breaker** | `CIRCUIT_BREAKER_COOLDOWN_MS`       | 30000                   | Cooldown period in ms              |
-
----
-
-## Usage
-
-### Running the Scraper
+### Install
 
 ```bash
-# Start scraping with default date range
+npm install
+```
+
+### Configure
+
+```bash
+cp .env.example .env
+```
+
+Then configure the API, concurrency, proxy, rate-limit, retry, and logging settings appropriate for the environment.
+
+### Run
+
+```bash
+npm start
+```
+
+The application entry point is `src/index.ts`.
+
+The current date-range query is defined in that entry point. Change it there when running a different scrape window.
+
+## Development commands
+
+```bash
+# Run the application
 npm start
 
-# With custom date range (modify in src/index.ts)
-# DATE_RANGE='AREA[StartDate]RANGE[2026-01-01,2026-12-31]'
+# Run the test suite
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Type-check without emitting JavaScript
+npm run typecheck
+
+# Lint source and tests
+npm run lint
+
+# Automatically fix lint issues where possible
+npm run lint:fix
+
+# Format the repository
+npm run format
+
+# Verify formatting
+npm run format:check
 ```
 
-### Programmatic Usage
+## Testing strategy
 
-```javascript
-import { createApiClient } from './api.ts';
-import { createHttpClient } from './httpClient.ts';
+The repository contains a broad test suite covering both isolated components and integration behavior.
 
-// Wire up your HTTP infrastructure, e.g. via createApiClient() in src/api/api.ts
-const httpClient = await createHttpClient({
-    provider, // EndpointProvider
-    limiterFactory, // LimiterFactory
-    endpointManagerFactory, // EndpointManagerFactory
-    retryConfig, // RetryPolicyConfig, optional (defaults to module config)
-    // Optional test overrides: sleep, random, wallClock
-});
+Tests are organized around the same architectural boundaries as the implementation:
 
-const api = createApiClient();
+- configuration validation and defaults
+- error taxonomy and normalization
+- API client behavior and response validation
+- endpoint creation and management
+- direct and proxy endpoint providers
+- proxy URL parsing
+- HTTP transport implementations
+- transport error classification
+- token-bucket and unlimited limiters
+- HTTP client happy paths and lifecycle behavior
+- network failures and 404 handling
+- retry policy and retry execution
+- request/response validation
+- URL construction
+- logging and correlation context
 
-// Fetch a page of studies
-const studies = await api.fetchStudiesPage({
-    pageSize: 100,
-    'query.term': 'AREA[StartDate]RANGE[2026-01-01,2026-07-30]',
-});
+Integration tests also exercise real HTTP behavior using local servers where appropriate, which helps verify that the abstractions work together rather than only in mocked unit tests.
 
-// Fetch a single trial's details
-const trial = await api.fetchTrialDetail('NCT12345678', { history: true });
+## Reliability model
+
+The main reliability path can be summarized as:
+
+```text
+Request
+  │
+  ▼
+Validate request
+  │
+  ▼
+Retry operation
+  │
+  ├── acquire an endpoint
+  │       │
+  │       ├── select endpoint
+  │       └── wait for limiter capacity
+  │
+  ├── execute HTTP request
+  │
+  ├── classify transport / HTTP failure
+  │
+  └── retry when policy allows
+          │
+          └── exponential backoff + jitter
+  │
+  ▼
+Parse / validate response
+  │
+  ▼
+Return data or domain error
 ```
 
----
+A caller cancellation is deliberately distinguished from a retryable timeout or network failure. This prevents an operation that the caller explicitly cancelled from being retried as if it were a transient infrastructure problem.
 
-## API Methods
+## Current limitations and direction
 
-### `fetchStudiesPage(params)`
+The architecture is intentionally focused on reliable HTTP acquisition, but the repository's architecture review identifies several areas for future evolution:
 
-Fetch a paginated list of clinical studies.
+- The application layer currently combines scraping orchestration, pagination, concurrency, and checkpoint state in `src/index.ts`.
+- The composition root in `src/api/api.ts` directly wires the production proxy/transport stack.
+- Configuration is still consumed from module-level configuration exports in several layers.
+- There is currently no higher-level acquisition port for swapping HTTP acquisition with browser automation, raw sockets, or fallback acquisition strategies.
+- The current checkpoint is in-memory; there is no durable checkpoint or persistence subsystem.
+- The project currently retrieves data but does not persist the resulting study records to a database or object store.
 
-**Parameters:**
+These are architectural evolution points rather than requirements for understanding the current data-acquisition pipeline.
 
-- `params.pageSize` (number): Number of studies per page (default: configured PAGE_SIZE)
-- `params.pageToken` (string): Cursor token for pagination
-- `params.countTotal` (boolean): Include total count in response
-- `params['query.term']` (string): Search query (e.g., date range filter)
+See the detailed documents in `docs/` for the current architecture review, UML model, and technical-debt analysis.
 
-**Returns:** Promise<{ studies: Array, nextPageToken: string, totalCount: number }>
+## Documentation
 
-**Example:**
+- [`docs/ARCHITECTURE_REVIEW.md`](docs/ARCHITECTURE_REVIEW.md) — architectural assessment, current call graph, strengths, risks, and proposed evolution.
+- [`docs/ARCHITECTURE_UML.md`](docs/ARCHITECTURE_UML.md) — UML/architecture model of the current system.
+- [`docs/TECH_DEBT.md`](docs/TECH_DEBT.md) — tracked technical debt and follow-up work.
 
-```javascript
-const result = await api.fetchStudiesPage({
-    pageSize: 100,
-    countTotal: true,
-    'query.term': 'AREA[StartDate]RANGE[2026-01-01,2026-07-30]',
-});
-```
+## Technology stack
 
-### `fetchTrialDetail(nctId, params)`
+- **TypeScript** — application language
+- **Node.js / ESM** — runtime and module system
+- **Undici** — pooled HTTP/proxy transport
+- **Pino** — structured logging
+- **Jest** — testing
+- **ESLint** — static analysis
+- **Prettier** — formatting
 
-Fetch full details for a single clinical trial.
+## Project status
 
-**Parameters:**
+The project is an actively developed engineering codebase focused on building a robust, testable ClinicalTrials.gov data-acquisition layer.
 
-- `nctId` (string): Required. NCT identifier (e.g., "NCT12345678")
-- `params.history` (boolean): Include historical changes (optional)
-
-**Returns:** Promise<Object> - Full study record
-
-**Throw
+The most important part of the project is not the HTTP request itself. It is the infrastructure around the request: **how endpoints are selected, how rate limits are respected, how transient failures are retried, how errors are classified, and how the whole pipeline remains testable and observable.**
