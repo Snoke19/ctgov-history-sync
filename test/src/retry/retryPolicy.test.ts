@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
+import { defaultRetryPolicyConfig } from '../../../src/api/api.js';
 import {
     CallerAbortedError,
     ConfigurationError,
@@ -10,34 +11,17 @@ import {
 import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
 import {
     calculateBackoff,
-    defaultRetryPolicyConfig,
     parseRetryAfterHeader,
     RetryPolicyConfig,
     shouldRetry,
     validateRetryPolicyConfig,
 } from '../../../src/retry/retryPolicy.js';
 
-describe('defaultRetryPolicyConfig', () => {
-    it('contains the configured retry defaults', () => {
-        expect(defaultRetryPolicyConfig.retryOnTimeout).toBe(true);
-        expect(defaultRetryPolicyConfig.retryOnNetworkError).toBe(true);
-        expect(defaultRetryPolicyConfig.retryableStatusCodes).toEqual(new Set([408, 429, 500, 502, 503, 504]));
-        expect(defaultRetryPolicyConfig.baseDelayMs).toBeGreaterThan(0);
-        expect(defaultRetryPolicyConfig.backoffCapMs).toBeGreaterThan(0);
-    });
-});
-
 describe('validateRetryPolicyConfig', () => {
-    const baseConfig: RetryPolicyConfig = {
-        retryOnTimeout: true,
-        retryOnNetworkError: true,
-        retryableStatusCodes: new Set([408, 429, 500, 502, 503, 504]),
-    };
-
     it('accepts valid boundary values', () => {
         expect(() =>
             validateRetryPolicyConfig({
-                ...baseConfig,
+                ...defaultRetryPolicyConfig,
                 retryableStatusCodes: new Set([100, 599]),
                 baseDelayMs: 1,
                 backoffCapMs: 1,
@@ -48,7 +32,7 @@ describe('validateRetryPolicyConfig', () => {
     it('rejects 404 as retryable', () => {
         expect(() =>
             validateRetryPolicyConfig({
-                ...baseConfig,
+                ...defaultRetryPolicyConfig,
                 retryableStatusCodes: new Set([404]),
             }),
         ).toThrow(ConfigurationError);
@@ -57,7 +41,7 @@ describe('validateRetryPolicyConfig', () => {
     it('rejects status codes below 100', () => {
         expect(() =>
             validateRetryPolicyConfig({
-                ...baseConfig,
+                ...defaultRetryPolicyConfig,
                 retryableStatusCodes: new Set([99]),
             }),
         ).toThrow(ConfigurationError);
@@ -66,7 +50,7 @@ describe('validateRetryPolicyConfig', () => {
     it('rejects status codes above 599', () => {
         expect(() =>
             validateRetryPolicyConfig({
-                ...baseConfig,
+                ...defaultRetryPolicyConfig,
                 retryableStatusCodes: new Set([600]),
             }),
         ).toThrow(ConfigurationError);
@@ -75,7 +59,7 @@ describe('validateRetryPolicyConfig', () => {
     it('rejects non-integer status codes', () => {
         expect(() =>
             validateRetryPolicyConfig({
-                ...baseConfig,
+                ...defaultRetryPolicyConfig,
                 retryableStatusCodes: new Set([500.5]),
             }),
         ).toThrow(ConfigurationError);
@@ -84,7 +68,7 @@ describe('validateRetryPolicyConfig', () => {
     it('rejects non-positive base delay', () => {
         expect(() =>
             validateRetryPolicyConfig({
-                ...baseConfig,
+                ...defaultRetryPolicyConfig,
                 baseDelayMs: 0,
             }),
         ).toThrow(ConfigurationError);
@@ -93,7 +77,7 @@ describe('validateRetryPolicyConfig', () => {
     it('rejects non-positive backoff cap', () => {
         expect(() =>
             validateRetryPolicyConfig({
-                ...baseConfig,
+                ...defaultRetryPolicyConfig,
                 backoffCapMs: -1,
             }),
         ).toThrow(ConfigurationError);
@@ -101,26 +85,20 @@ describe('validateRetryPolicyConfig', () => {
 });
 
 describe('shouldRetry', () => {
-    const baseConfig: RetryPolicyConfig = {
-        retryOnTimeout: true,
-        retryOnNetworkError: true,
-        retryableStatusCodes: new Set([408, 429, 500, 502, 503, 504]),
-    };
-
     describe('CallerAbortedError', () => {
         it('never retries even when retryable errors are enabled', () => {
-            expect(shouldRetry(new CallerAbortedError('aborted'), baseConfig)).toBe(false);
+            expect(shouldRetry(new CallerAbortedError('aborted'), defaultRetryPolicyConfig)).toBe(false);
         });
     });
 
     describe('TimeoutException', () => {
         it('returns true when retryOnTimeout is enabled', () => {
-            expect(shouldRetry(new TimeoutException('timeout'), baseConfig)).toBe(true);
+            expect(shouldRetry(new TimeoutException('timeout'), defaultRetryPolicyConfig)).toBe(true);
         });
 
         it('returns false when retryOnTimeout is disabled', () => {
             const config: RetryPolicyConfig = {
-                ...baseConfig,
+                ...defaultRetryPolicyConfig,
                 retryOnTimeout: false,
             };
 
@@ -130,12 +108,12 @@ describe('shouldRetry', () => {
 
     describe('NetworkException', () => {
         it('returns true when retryOnNetworkError is enabled', () => {
-            expect(shouldRetry(new NetworkException('econnreset'), baseConfig)).toBe(true);
+            expect(shouldRetry(new NetworkException('econnreset'), defaultRetryPolicyConfig)).toBe(true);
         });
 
         it('returns false when retryOnNetworkError is disabled', () => {
             const config: RetryPolicyConfig = {
-                ...baseConfig,
+                ...defaultRetryPolicyConfig,
                 retryOnNetworkError: false,
             };
 
@@ -146,7 +124,7 @@ describe('shouldRetry', () => {
     describe('HttpException', () => {
         it('returns true for a custom configured retryable status', () => {
             const config: RetryPolicyConfig = {
-                ...baseConfig,
+                ...defaultRetryPolicyConfig,
                 retryableStatusCodes: new Set([418]),
             };
 
@@ -154,11 +132,11 @@ describe('shouldRetry', () => {
         });
 
         it.each([408, 429, 500, 502, 503, 504])('returns true for retryable status %s', (status) => {
-            expect(shouldRetry(new HttpException('retryable error', status), baseConfig)).toBe(true);
+            expect(shouldRetry(new HttpException('retryable error', status), defaultRetryPolicyConfig)).toBe(true);
         });
 
         it.each([400, 401, 403, 404])('returns false for non-retryable status %s', (status) => {
-            expect(shouldRetry(new HttpException('non-retryable error', status), baseConfig)).toBe(false);
+            expect(shouldRetry(new HttpException('non-retryable error', status), defaultRetryPolicyConfig)).toBe(false);
         });
     });
 
@@ -166,7 +144,7 @@ describe('shouldRetry', () => {
         it('never retries', () => {
             const error = new TrialError('something weird');
 
-            expect(shouldRetry(error, baseConfig)).toBe(false);
+            expect(shouldRetry(error, defaultRetryPolicyConfig)).toBe(false);
         });
     });
 });

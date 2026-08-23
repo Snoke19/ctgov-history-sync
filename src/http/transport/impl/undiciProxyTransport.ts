@@ -1,7 +1,7 @@
 import { fetch, Pool, ProxyAgent } from 'undici';
 import type { Dispatcher } from 'undici';
-import { ProxyPoolConfig } from '../../../config/config.js';
 import { createLogger } from '../../../config/logging.js';
+import type { ProxyPoolConfig } from '../../../config/types.js';
 import { resolveConnections } from '../../endpoint/proxy/resolveConnections.js';
 import { adaptHttpResponse } from '../adaptHttpResponse.js';
 import { classifyTransportError, TransportErrorPredicates } from '../classifyTransportError.js';

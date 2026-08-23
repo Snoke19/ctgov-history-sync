@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { ApiResponseValidationError } from '../../../../src/error/errors.js';
 import type { HttpResponse } from '../../../../src/http/transport/httpTransport.js';
 import { FetchDirectTransport } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
-import { API_URL, jsonResponse, withClient } from './helpers.js';
+import { API_URL } from '../../fixtures/constants.js';
+import { withClient } from '../../fixtures/lifecycle.fixture.js';
+import { jsonResponse } from '../../fixtures/response.fixture.js';
 
 describe('HttpClient happy path & request construction', () => {
     afterEach(() => {

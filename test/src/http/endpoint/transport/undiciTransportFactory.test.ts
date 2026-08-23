@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Dispatcher, ProxyAgent } from 'undici';
-import { ProxyPoolConfig } from '../../../../../src/config/config.js';
+import { ProxyPoolConfig } from '../../../../../src/config/types.js';
+import { EndpointFactory } from '../../../../../src/http/endpoint/endpointFactory.js';
+import { ProxyEndpointProvider } from '../../../../../src/http/endpoint/provider/impl/proxyEndpointProvider.js';
+import { HttpProxyUrlParser } from '../../../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
+import { DefaultLimiterFactory } from '../../../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import { ProxyTransportContext } from '../../../../../src/http/transport/factory/proxyTransportFactory.js';
 import type {
     AgentCreatorFn,
@@ -73,6 +77,36 @@ describe('UndiciTransportFactory', () => {
     function getClientFactory(callIndex = 0): PoolClientFactory {
         return mockAgentCreator.mock.calls[callIndex]![1] as PoolClientFactory;
     }
+
+    it('forwards pool configuration to the transport factory, not HttpClientOptions', async () => {
+        const fakePoolClientFactory = jest.fn<PoolClientFactory>().mockReturnValue({} as unknown as Dispatcher);
+        const fakePoolCreator = jest.fn<PoolCreatorFn>().mockReturnValue(fakePoolClientFactory);
+        const fakeAgent = {
+            close: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        } as unknown as ProxyAgent;
+        const fakeAgentCreator = jest.fn<AgentCreatorFn>().mockReturnValue(fakeAgent);
+
+        const transportFactory = new UndiciTransportFactory({
+            poolConfig: POOL_CONFIG,
+            poolCreator: fakePoolCreator,
+            agentCreator: fakeAgentCreator,
+        });
+
+        const provider = new ProxyEndpointProvider(transportFactory, new HttpProxyUrlParser(), {
+            proxyUrls: 'http://proxy:8080',
+            concurrency: 5,
+        });
+        const factory = new EndpointFactory(
+            provider,
+            new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+        );
+
+        const endpoints = await factory.build();
+
+        expect(fakePoolCreator).toHaveBeenCalledWith(POOL_CONFIG);
+
+        await Promise.all(endpoints.map((endpoint) => endpoint.close()));
+    });
 
     describe('create()', () => {
         describe('factory wiring', () => {

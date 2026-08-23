@@ -1,118 +1,28 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { Dispatcher, ProxyAgent } from 'undici';
-import { ProxyPoolConfig } from '../../../src/config/config.js';
+import { defaultHttpClientDefaults, defaultRetryPolicyConfig } from '../../../src/api/api.js';
 import { ConfigurationError, EndpointAssemblyError } from '../../../src/error/errors.js';
-import { EndpointFactory } from '../../../src/http/endpoint/endpointFactory.js';
 import { DefaultEndpointManagerFactory } from '../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
-import { EndpointManager } from '../../../src/http/endpoint/manager/endpointManager.js';
-import { EndpointDefinition, EndpointProvider } from '../../../src/http/endpoint/provider/endpointProvider.js';
-import { ProxyEndpointProvider } from '../../../src/http/endpoint/provider/impl/proxyEndpointProvider.js';
-import { HttpProxyUrlParser } from '../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
 import { createHttpClient } from '../../../src/http/httpClient.js';
 import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
-import { LimiterFactory } from '../../../src/http/limiter/factory/limiterFactory.js';
-import { HttpTransport } from '../../../src/http/transport/httpTransport.js';
-import {
-    AgentCreatorFn,
-    PoolClientFactory,
-    PoolCreatorFn,
-    UndiciTransportFactory,
-} from '../../../src/http/transport/impl/undiciProxyTransport.js';
-import { createDefaultOptions, TestClientOptions } from './httpClient/helpers.js';
-
-const FAKE_POOL_CONFIG: ProxyPoolConfig = {
-    connections: 10,
-    maxConnections: 100,
-    pipelining: 1,
-    keepAliveTimeout: 4000,
-    headersTimeout: 30000,
-    bodyTimeout: 30000,
-    connectTimeout: 10000,
-};
-
-/**
- * Builds an UndiciTransportFactory that never opens real sockets.
- * We inject fake creators so ProxyAgent is never instantiated with
- * real network parameters, yet the factory still behaves exactly like
- * the production one from the perspective of ProxyEndpointProvider.
- */
-function createSafeTransportFactory(): UndiciTransportFactory {
-    const fakePoolClientFactory = jest.fn<PoolClientFactory>().mockReturnValue({} as unknown as Dispatcher);
-
-    const fakePoolCreator = jest.fn<PoolCreatorFn>().mockReturnValue(fakePoolClientFactory);
-    const fakeAgent = {
-        close: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-    } as unknown as ProxyAgent;
-    const fakeAgentCreator = jest.fn<AgentCreatorFn>().mockReturnValue(fakeAgent);
-
-    return new UndiciTransportFactory({
-        poolConfig: FAKE_POOL_CONFIG,
-        poolCreator: fakePoolCreator,
-        agentCreator: fakeAgentCreator,
-    });
-}
-
-const DEFAULT_PROXY_URLS = 'http://user:pass@proxy1:8080,http://proxy2:9090';
-
-function createValidOptions(overrides: Partial<TestClientOptions> = {}): TestClientOptions {
-    return {
-        ...createDefaultOptions(),
-        concurrency: 5,
-        acquireTimeout: 30000,
-        ...overrides,
-    };
-}
-
-async function createManager(
-    options: TestClientOptions = createValidOptions(),
-    proxyUrls: string = DEFAULT_PROXY_URLS,
-    limiterFactory: LimiterFactory = new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-): Promise<EndpointManager> {
-    const provider = new ProxyEndpointProvider(createSafeTransportFactory(), new HttpProxyUrlParser(), {
-        proxyUrls,
-        concurrency: options.concurrency,
-    });
-    const factory = new EndpointFactory(provider, limiterFactory);
-
-    const endpoints = await factory.build();
-
-    return new EndpointManager(endpoints, {
-        acquireTimeout: options.acquireTimeout,
-        clock: options.monotonicClock?.now,
-        sleep: options.sleep,
-    });
-}
+import { createProxyOptions } from '../fixtures/clientOptions.fixture.js';
+import { DEFAULT_PROXY_URLS } from '../fixtures/constants.js';
+import { createEndpointProvider, createProxyEndpointManager } from '../fixtures/endpoint.fixture.js';
+import { buildHttpClientOptions } from '../fixtures/httpClient.fixture.js';
+import { createMockTransport } from '../fixtures/transport.fixture.js';
 
 describe('Proxy + Undici construction chain', () => {
-    it('closes created endpoints when EndpointManager construction fails', async () => {
-        const transport: jest.Mocked<HttpTransport> = {
-            request: jest.fn(),
-            classifyError: jest.fn(),
-            close: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-        };
-
-        const definition: EndpointDefinition = {
-            id: 'test-endpoint',
-            createTransport: () => transport,
-        };
-
-        const provider: EndpointProvider = {
-            build: () => [definition],
-        };
-
-        const options = createValidOptions({
-            acquireTimeout: 0,
-        });
+    it('cleans up created transports when endpoint manager assembly fails', async () => {
+        const transport = createMockTransport();
+        const provider = createEndpointProvider(transport);
 
         await expect(
-            createHttpClient({
-                sleep: options.sleep,
-                random: options.random,
-                wallClock: options.wallClock,
-                provider,
-                limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 0 }),
-            }),
+            createHttpClient(
+                buildHttpClientOptions(provider, {
+                    endpointManagerFactory: new DefaultEndpointManagerFactory({
+                        acquireTimeout: 0,
+                    }),
+                }),
+            ),
         ).rejects.toBeInstanceOf(EndpointAssemblyError);
 
         expect(transport.close).toHaveBeenCalledTimes(1);
@@ -121,34 +31,17 @@ describe('Proxy + Undici construction chain', () => {
     it('returns EndpointAssemblyError when EndpointManager construction fails and cleanup fails', async () => {
         const cleanupError = new Error('endpoint cleanup failed');
 
-        const transport: jest.Mocked<HttpTransport> = {
-            request: jest.fn(),
-            classifyError: jest.fn(),
-            close: jest.fn<() => Promise<void>>().mockRejectedValue(cleanupError),
-        };
-
-        const definition: EndpointDefinition = {
-            id: 'test-endpoint',
-            createTransport: () => transport,
-        };
-
-        const provider: EndpointProvider = {
-            build: () => [definition],
-        };
-
-        const options = createValidOptions({
-            acquireTimeout: 0,
-        });
+        const transport = createMockTransport(jest.fn<() => Promise<void>>().mockRejectedValue(cleanupError));
+        const provider = createEndpointProvider(transport);
 
         await expect(
-            createHttpClient({
-                sleep: options.sleep,
-                random: options.random,
-                wallClock: options.wallClock,
-                provider,
-                limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 0 }),
-            }),
+            createHttpClient(
+                buildHttpClientOptions(provider, {
+                    endpointManagerFactory: new DefaultEndpointManagerFactory({
+                        acquireTimeout: 0,
+                    }),
+                }),
+            ),
         ).rejects.toEqual(
             expect.objectContaining({
                 name: 'EndpointAssemblyError',
@@ -160,73 +53,69 @@ describe('Proxy + Undici construction chain', () => {
     });
 
     it('rejects construction when retryConfig includes 404 in retryableStatusCodes', async () => {
-        const provider: EndpointProvider = {
-            build: () => [],
-        };
-
         await expect(
-            createHttpClient({
-                provider,
-                limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 30000 }),
-                retryConfig: {
-                    retryOnTimeout: true,
-                    retryOnNetworkError: true,
-                    retryableStatusCodes: new Set([404]),
-                },
-            }),
+            createHttpClient(
+                buildHttpClientOptions(createEndpointProvider(createMockTransport()), {
+                    defaults: {
+                        ...defaultHttpClientDefaults,
+                        retryPolicy: {
+                            ...defaultRetryPolicyConfig,
+                            retryableStatusCodes: new Set([404]),
+                        },
+                    },
+                }),
+            ),
         ).rejects.toThrow('404 must not be in retryableStatusCodes');
     });
 
     it('rejects construction when retryConfig contains an invalid status code', async () => {
-        const provider: EndpointProvider = {
-            build: () => [],
-        };
-
         await expect(
-            createHttpClient({
-                provider,
-                limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 30000 }),
-                retryConfig: {
-                    retryOnTimeout: true,
-                    retryOnNetworkError: true,
-                    retryableStatusCodes: new Set([600]),
-                },
-            }),
+            createHttpClient(
+                buildHttpClientOptions(createEndpointProvider(createMockTransport()), {
+                    defaults: {
+                        ...defaultHttpClientDefaults,
+                        retryPolicy: {
+                            ...defaultRetryPolicyConfig,
+                            retryableStatusCodes: new Set([600]),
+                        },
+                    },
+                }),
+            ),
         ).rejects.toThrow('retryableStatusCodes contains invalid status: 600');
     });
 
     it('rejects construction when retryConfig.baseDelayMs is not a positive integer', async () => {
-        const provider: EndpointProvider = {
-            build: () => [],
-        };
-
         await expect(
-            createHttpClient({
-                provider,
-                limiterFactory: new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
-                endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 30000 }),
-                retryConfig: {
-                    retryOnTimeout: true,
-                    retryOnNetworkError: true,
-                    retryableStatusCodes: new Set([500]),
-                    baseDelayMs: 0,
-                },
-            }),
+            createHttpClient(
+                buildHttpClientOptions(createEndpointProvider(createMockTransport()), {
+                    defaults: {
+                        ...defaultHttpClientDefaults,
+                        retryPolicy: {
+                            retryOnTimeout: true,
+                            retryOnNetworkError: true,
+                            retryableStatusCodes: new Set([500]),
+                            baseDelayMs: 0,
+                            backoffCapMs: 1,
+                        },
+                    },
+                }),
+            ),
         ).rejects.toThrow('baseDelayMs must be a positive integer');
     });
 
     it('builds successfully with rate limiting disabled', async () => {
-        const manager = await createManager(createValidOptions());
+        const manager = await createProxyEndpointManager(createProxyOptions());
 
-        expect(manager).toBeDefined();
-        expect(manager.endpointCount).toBe(2);
+        try {
+            expect(manager.endpointCount).toBe(2);
+        } finally {
+            await manager.close();
+        }
     });
 
     it('builds successfully with rate limiting enabled', async () => {
-        const manager = await createManager(
-            createValidOptions(),
+        const manager = await createProxyEndpointManager(
+            createProxyOptions(),
             DEFAULT_PROXY_URLS,
             new DefaultLimiterFactory({
                 enabled: true,
@@ -235,75 +124,56 @@ describe('Proxy + Undici construction chain', () => {
             }),
         );
 
-        expect(manager).toBeDefined();
-        expect(manager.endpointCount).toBe(2);
+        try {
+            expect(manager.endpointCount).toBe(2);
+        } finally {
+            await manager.close();
+        }
     });
 
     it('creates exactly one endpoint per valid proxy URL', async () => {
-        const manager = await createManager(createValidOptions(), 'http://p1:8080,http://p2:8080,http://p3:8080');
-
-        expect(manager.endpointCount).toBe(3);
-    });
-
-    it('forwards pool configuration to the transport factory, not HttpClientOptions', async () => {
-        const fakePoolClientFactory = jest.fn<PoolClientFactory>().mockReturnValue({} as unknown as Dispatcher);
-        const fakePoolCreator = jest.fn<PoolCreatorFn>().mockReturnValue(fakePoolClientFactory);
-        const fakeAgent = {
-            close: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-        } as unknown as ProxyAgent;
-        const fakeAgentCreator = jest.fn<AgentCreatorFn>().mockReturnValue(fakeAgent);
-
-        const transportFactory = new UndiciTransportFactory({
-            poolConfig: FAKE_POOL_CONFIG,
-            poolCreator: fakePoolCreator,
-            agentCreator: fakeAgentCreator,
-        });
-
-        const provider = new ProxyEndpointProvider(transportFactory, new HttpProxyUrlParser(), {
-            proxyUrls: 'http://proxy:8080',
-            concurrency: 5,
-        });
-        const factory = new EndpointFactory(
-            provider,
-            new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 }),
+        const manager = await createProxyEndpointManager(
+            createProxyOptions(),
+            'http://p1:8080,http://p2:8080,http://p3:8080',
         );
 
-        const endpoints = await factory.build();
-
-        expect(fakePoolCreator).toHaveBeenCalledWith(FAKE_POOL_CONFIG);
-
-        await Promise.all(endpoints.map((endpoint) => endpoint.close()));
+        try {
+            expect(manager.endpointCount).toBe(3);
+        } finally {
+            await manager.close();
+        }
     });
 
     it('throws ConfigurationError when proxyUrls is empty', async () => {
-        const result = createManager(createValidOptions(), '');
+        await expect(createProxyEndpointManager(createProxyOptions(), '')).rejects.toBeInstanceOf(ConfigurationError);
 
-        await expect(result).rejects.toBeInstanceOf(ConfigurationError);
-        await expect(result).rejects.toThrow('No valid proxy URLs');
+        await expect(createProxyEndpointManager(createProxyOptions(), '')).rejects.toThrow('No valid proxy URLs');
     });
 
     it('throws ConfigurationError when every proxyUrl is invalid', async () => {
-        await expect(createManager(createValidOptions(), 'not-a-url,also-bad://missing-port')).rejects.toBeInstanceOf(
-            ConfigurationError,
-        );
+        await expect(
+            createProxyEndpointManager(createProxyOptions(), 'not-a-url,also-bad://missing-port'),
+        ).rejects.toBeInstanceOf(ConfigurationError);
     });
 
     it('throws when acquireTimeout is missing', async () => {
-        const options = createValidOptions();
+        const options = createProxyOptions();
+
         delete (options as unknown as Record<string, unknown>).acquireTimeout;
 
-        await expect(createManager(options)).rejects.toThrow();
+        await expect(createProxyEndpointManager(options)).rejects.toBeInstanceOf(EndpointAssemblyError);
     });
 
     it('throws when concurrency is missing', async () => {
-        const options = createValidOptions();
+        const options = createProxyOptions();
+
         delete (options as unknown as Record<string, unknown>).concurrency;
 
-        await expect(createManager(options)).rejects.toThrow();
+        await expect(createProxyEndpointManager(options)).rejects.toBeInstanceOf(ConfigurationError);
     });
 
     it('produces a manager whose endpoints can be closed cleanly', async () => {
-        const manager = await createManager(createValidOptions());
+        const manager = await createProxyEndpointManager(createProxyOptions());
 
         await expect(manager.close()).resolves.toBeUndefined();
     });

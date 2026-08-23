@@ -1,5 +1,6 @@
 import { env, parseStatusCodes, validateConfig } from './configValidation.js';
 import { defaults } from './defaults.js';
+import type { ProxyPoolConfig } from './types.js';
 
 export const LOG_LEVEL = env.str('LOG_LEVEL', defaults.LOG_LEVEL);
 export const LOG_TO_FILE = env.str('LOG_TO_FILE', defaults.LOG_TO_FILE);
@@ -70,16 +71,6 @@ export const PROXY_POOL_CONFIG: ProxyPoolConfig = Object.freeze({
     bodyTimeout: PROXY_POOL_BODY_TIMEOUT,
     connectTimeout: PROXY_POOL_CONNECT_TIMEOUT,
 });
-
-export interface ProxyPoolConfig {
-    readonly connections: number;
-    readonly maxConnections: number;
-    readonly connectTimeout: number;
-    readonly pipelining: number;
-    readonly keepAliveTimeout: number;
-    readonly headersTimeout: number;
-    readonly bodyTimeout: number;
-}
 
 // ---------------------------------------------------------------------------
 // rateLimit

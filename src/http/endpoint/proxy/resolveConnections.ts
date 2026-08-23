@@ -1,4 +1,4 @@
-import { ProxyPoolConfig } from '../../../config/config.js';
+import type { ProxyPoolConfig } from '../../../config/types.js';
 
 export function resolveConnections(proxyCount: number, concurrency: number, poolConfig: ProxyPoolConfig): number {
     if (!concurrency || !proxyCount) {

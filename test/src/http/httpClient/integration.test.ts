@@ -2,13 +2,9 @@ import { createServer as createHttpServer, type Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
 import { DEFAULT_USER_AGENT } from '../../../../src/config/config.js';
 import { CallerAbortedError, TimeoutException } from '../../../../src/error/errors.js';
-import { DefaultEndpointManagerFactory } from '../../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
-import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { HTTP_METHOD_GET } from '../../../../src/http/http.js';
-import { createHttpClient } from '../../../../src/http/httpClient.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
-import { DefaultLimiterFactory } from '../../../../src/http/limiter/factory/defaultLimiterFactory.js';
-import { FetchDirectTransportFactory } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
+import { createTestClient } from '../../fixtures/httpClient.fixture.js';
 
 /**
  * Full createHttpClient stack against a real TCP server with the real
@@ -81,15 +77,7 @@ describe('HttpClient full-stack integration', () => {
 
         baseUrl = `http://127.0.0.1:${address.port}`;
 
-        client = await createHttpClient({
-            provider: new DirectEndpointProvider(new FetchDirectTransportFactory()),
-            limiterFactory: new DefaultLimiterFactory({
-                enabled: false,
-                capacity: 10,
-                windowMs: 1000,
-            }),
-            endpointManagerFactory: new DefaultEndpointManagerFactory({ acquireTimeout: 5000 }),
-        });
+        client = await createTestClient();
     });
 
     beforeEach(() => {
@@ -222,7 +210,6 @@ describe('HttpClient full-stack integration', () => {
         if (flakyHits === 1) {
             res.writeHead(503, {
                 'content-type': 'application/json',
-                'Retry-After': '1',
             });
             res.end(JSON.stringify({ error: 'temporarily unavailable' }));
             return;

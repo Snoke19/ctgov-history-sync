@@ -1,60 +1,24 @@
 import { getEventListeners } from 'node:events';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { CallerAbortedError, NetworkException, TimeoutException } from '../../../../src/error/errors.js';
-import { HttpClient } from '../../../../src/http/httpClient.js';
 import { DefaultLimiterFactory } from '../../../../src/http/limiter/factory/defaultLimiterFactory.js';
-import { API_URL, createFakes, jsonResponse, makeClient } from './helpers.js';
+import {
+    createAbortableFetchMock,
+    createAbortableRequestMock,
+    createAbortError,
+} from '../../fixtures/abort.fixture.js';
+import { expectRejected } from '../../fixtures/assertion.fixture.js';
+import { createClockFixture } from '../../fixtures/clock.fixture.js';
+import { API_URL } from '../../fixtures/constants.js';
+import { createTestClient } from '../../fixtures/httpClient.fixture.js';
+import { withClosedClient } from '../../fixtures/lifecycle.fixture.js';
+import { jsonResponse } from '../../fixtures/response.fixture.js';
 
-async function expectRejected<T extends Error>(
-    promise: Promise<unknown>,
-    errorClass: new (...args: never[]) => T,
-): Promise<T> {
-    const error = await promise.catch((error: unknown) => error);
-    expect(error).toBeInstanceOf(errorClass);
-    return error as T;
-}
-
-function createAbortError(): DOMException {
-    return new DOMException('The operation was aborted.', 'AbortError');
-}
-
-export function createAbortableFetchMock(): jest.SpiedFunction<typeof fetch> {
-    return jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
-        return new Promise((_, reject) => {
-            const signal = init?.signal as AbortSignal | undefined;
-
-            if (!signal) {
-                return;
-            }
-
-            const onAbort = (): void => {
-                reject(createAbortError());
-            };
-
-            if (signal.aborted) {
-                onAbort();
-                return;
-            }
-
-            signal.addEventListener('abort', onAbort, { once: true });
-        });
-    });
-}
-
-export async function withClosedClient(client: HttpClient, callback: () => Promise<void>): Promise<void> {
-    try {
-        await callback();
-    } finally {
-        await client.close();
-    }
-}
-
-export function createAbortableSleepMock(): {
+function createAbortableSleepMock(): {
     sleep: jest.MockedFunction<(ms: number, signal?: AbortSignal) => Promise<void>>;
     started: Promise<void>;
 } {
     let resolveStarted!: () => void;
-
     const started = new Promise<void>((resolve) => {
         resolveStarted = resolve;
     });
@@ -66,38 +30,12 @@ export function createAbortableSleepMock(): {
                     reject(createAbortError());
                     return;
                 }
-
                 resolveStarted();
-
                 signal.addEventListener('abort', () => reject(createAbortError()), { once: true });
             }),
     );
 
     return { sleep, started };
-}
-
-export function createAbortableRequestMock(onRequestStarted: () => void): jest.SpiedFunction<typeof fetch> {
-    return jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
-        return new Promise((_, reject) => {
-            const signal = init?.signal as AbortSignal | undefined;
-
-            if (!signal) {
-                throw new Error('Expected fetch signal');
-            }
-
-            const onAbort = (): void => {
-                reject(createAbortError());
-            };
-
-            if (signal.aborted) {
-                onAbort();
-                return;
-            }
-
-            signal.addEventListener('abort', onAbort, { once: true });
-            onRequestStarted();
-        });
-    });
 }
 
 describe('HttpClient network & timeout failures', () => {
@@ -118,7 +56,7 @@ describe('HttpClient network & timeout failures', () => {
             .mockRejectedValueOnce(fetchError)
             .mockResolvedValueOnce(jsonResponse({ ok: true }));
 
-        const client = await makeClient();
+        const client = await createTestClient();
 
         try {
             const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/tls-failure`, {
@@ -142,7 +80,7 @@ describe('HttpClient network & timeout failures', () => {
             )
             .mockResolvedValueOnce(jsonResponse({ ok: true }));
 
-        const client = await makeClient();
+        const client = await createTestClient();
 
         try {
             const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/conn-reset`, { maxRetries: 2 });
@@ -161,7 +99,7 @@ describe('HttpClient network & timeout failures', () => {
             }),
         );
 
-        const client = await makeClient();
+        const client = await createTestClient();
 
         try {
             const error = await expectRejected(
@@ -183,7 +121,7 @@ describe('HttpClient network & timeout failures', () => {
     it('throws CallerAbortedError without making a request when caller AbortSignal is already aborted', async () => {
         const fetchMock = jest.spyOn(globalThis, 'fetch');
 
-        const client = await makeClient();
+        const client = await createTestClient();
 
         const controller = new AbortController();
         controller.abort();
@@ -201,7 +139,7 @@ describe('HttpClient network & timeout failures', () => {
 
     it('throws TimeoutException when HTTP request exceeds timeoutMs', async () => {
         const fetchMock = createAbortableFetchMock();
-        const client = await makeClient();
+        const client = await createTestClient();
 
         await withClosedClient(client, async () => {
             const error = await expectRejected(
@@ -219,7 +157,7 @@ describe('HttpClient network & timeout failures', () => {
 
     it('does NOT retry a timeout when retryPolicy.retryOnTimeout is false', async () => {
         const fetchMock = createAbortableFetchMock();
-        const client = await makeClient();
+        const client = await createTestClient();
 
         await withClosedClient(client, async () => {
             const error = await expectRejected(
@@ -249,7 +187,7 @@ describe('HttpClient network & timeout failures', () => {
 
         const { sleep: sleepMock, started } = createAbortableSleepMock();
 
-        const client = await makeClient({ sleep: sleepMock });
+        const client = await createTestClient({ sleep: sleepMock });
 
         await withClosedClient(client, async () => {
             const pending = client.fetchJson(`${API_URL}/abort-during-backoff`, {
@@ -280,7 +218,7 @@ describe('HttpClient network & timeout failures', () => {
             });
         });
 
-        const client = await makeClient();
+        const client = await createTestClient();
 
         await withClosedClient(client, async () => {
             const pending = client.fetchJson(`${API_URL}/slow`, {
@@ -302,7 +240,7 @@ describe('HttpClient network & timeout failures', () => {
         jest.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(jsonResponse({ ok: true })));
 
         const controller = new AbortController();
-        const client = await makeClient();
+        const client = await createTestClient();
 
         await withClosedClient(client, async () => {
             for (let i = 0; i < 3; i++) {
@@ -321,9 +259,9 @@ describe('HttpClient network & timeout failures', () => {
             .spyOn(globalThis, 'fetch')
             .mockImplementation(() => Promise.resolve(jsonResponse({ ok: true })));
 
-        const fakes = createFakes();
+        const fakes = createClockFixture();
 
-        const client = await makeClient(
+        const client = await createTestClient(
             {
                 sleep: fakes.sleep,
                 random: fakes.random,
@@ -341,10 +279,8 @@ describe('HttpClient network & timeout failures', () => {
 
         await withClosedClient(client, async () => {
             const timeBefore = fakes.monotonicClock.now();
-
             await client.fetchJson(`${API_URL}/a`);
             await client.fetchJson(`${API_URL}/b`);
-
             const timeAfter = fakes.monotonicClock.now();
 
             expect(timeAfter - timeBefore).toBe(100);

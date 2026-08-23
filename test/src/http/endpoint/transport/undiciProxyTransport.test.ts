@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import type { ProxyAgent, Response } from 'undici';
+import { ProxyAgent } from 'undici';
 import { HTTP_METHOD_GET } from '../../../../../src/http/http.js';
 import type { HttpRequest } from '../../../../../src/http/transport/httpTransport.js';
 
@@ -17,17 +17,6 @@ jest.unstable_mockModule('../../../../../src/http/endpoint/proxy/resolveConnecti
 
 const { UndiciHttpTransport } = await import('../../../../../src/http/transport/impl/undiciProxyTransport.js');
 
-function makeRequest(overrides: Partial<HttpRequest> = {}): HttpRequest {
-    return {
-        url: 'https://api.example.com/resource',
-        method: HTTP_METHOD_GET,
-        headers: { Authorization: 'Bearer test-token' },
-        signal: new AbortController().signal,
-        ...overrides,
-    };
-}
-
-// Record<string, unknown> lets us override body with fake streams without `as any`
 function makeFakeResponse(overrides: Record<string, unknown> = {}): Response {
     return {
         status: 200,
@@ -103,6 +92,16 @@ describe('UndiciHttpTransport', () => {
     });
 
     describe('request()', () => {
+        function makeRequest(overrides: Partial<HttpRequest> = {}): HttpRequest {
+            return {
+                url: 'https://api.example.com/resource',
+                method: HTTP_METHOD_GET,
+                headers: { Authorization: 'Bearer test-token' },
+                signal: new AbortController().signal,
+                ...overrides,
+            };
+        }
+
         it('passes signal to fetch', async () => {
             const { signal } = new AbortController();
 
@@ -135,13 +134,6 @@ describe('UndiciHttpTransport', () => {
                 expect.any(String),
                 expect.objectContaining({ dispatcher: fakeAgent }),
             );
-        });
-
-        it('includes signal when provided', async () => {
-            const { signal } = new AbortController();
-            await transport.request(makeRequest({ signal }));
-
-            expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ signal }));
         });
 
         it('propagates fetch errors', async () => {

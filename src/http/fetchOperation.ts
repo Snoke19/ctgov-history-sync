@@ -1,5 +1,4 @@
-﻿import { DEFAULT_USER_AGENT, FETCH_TIMEOUT_MS } from '../config/config.js';
-import { createLogger } from '../config/logging.js';
+﻿import { createLogger } from '../config/logging.js';
 import {
     CallerAbortedError,
     EndpointAcquisitionTimeoutError,
@@ -23,21 +22,22 @@ const logger = createLogger(import.meta.url);
 
 type AbortKind = 'caller' | 'timeout';
 
-const DEFAULT_REQUEST_HEADERS: Record<string, string> = {
-    Accept: 'application/json',
-    'User-Agent': DEFAULT_USER_AGENT,
-};
-
 const CANONICAL_HEADER_NAMES = new Map<string, string>([
     ['accept', 'Accept'],
     ['user-agent', 'User-Agent'],
 ]);
+
+export interface FetchOperationDefaults {
+    readonly timeoutMs: number;
+    readonly userAgent: string;
+}
 
 export class FetchOperation implements BusinessOperation<HttpResponse> {
     constructor(
         private readonly endpointManager: EndpointManager,
         private readonly url: string,
         private readonly options: FetchJsonRequestOptions,
+        private readonly defaults: FetchOperationDefaults,
         private readonly now: WallClock['now'] = defaultWallClock.now,
     ) {}
 
@@ -64,7 +64,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             // Endpoint-pool wait time is governed separately by EndpointManager.
             timeoutId = setTimeout(() => {
                 controller.abort('timeout');
-            }, this.options.timeoutMs ?? FETCH_TIMEOUT_MS);
+            }, this.options.timeoutMs ?? this.defaults.timeoutMs);
 
             return await this.executeRequest(endpoint, controller.signal);
         } catch (error: unknown) {
@@ -172,7 +172,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             case 'timeout':
                 return new TimeoutException(
                     `Request timed out after ${
-                        this.options.timeoutMs ?? FETCH_TIMEOUT_MS
+                        this.options.timeoutMs ?? this.defaults.timeoutMs
                     }ms: ${this.sanitizedUrl()} — cause: ${describeError(cause)}`,
                     { cause },
                 );
@@ -227,13 +227,13 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
      * Both perform() and the cancelled branch of classifyTransportError()
      * use this method so the mapping is defined in one place.
      */
-    private buildAbortError(kind: AbortKind | unknown, cause: unknown): CallerAbortedError | TimeoutException {
+    private buildAbortError(kind: AbortKind, cause: unknown): CallerAbortedError | TimeoutException {
         const causeDescription = describeError(cause);
 
         if (kind === 'timeout') {
             return new TimeoutException(
                 `Request timed out after ${
-                    this.options.timeoutMs ?? FETCH_TIMEOUT_MS
+                    this.options.timeoutMs ?? this.defaults.timeoutMs
                 }ms: ${this.sanitizedUrl()} — cause: ${causeDescription}`,
                 { cause },
             );
@@ -246,7 +246,10 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     }
 
     private buildHeaders(): Record<string, string> {
-        const headers = { ...DEFAULT_REQUEST_HEADERS };
+        const headers: Record<string, string> = {
+            Accept: 'application/json',
+            'User-Agent': this.defaults.userAgent,
+        };
 
         for (const [key, value] of Object.entries(this.options.headers ?? {})) {
             const canonical = CANONICAL_HEADER_NAMES.get(key.toLowerCase());
@@ -270,7 +273,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
             return `${url.protocol}//${url.host}${url.pathname}`;
         } catch {
-            return '[invalid URL]';
+            return '<invalid URL>';
         }
     }
 }

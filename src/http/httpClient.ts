@@ -1,16 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { BACKOFF_CAP_MS, FETCH_TIMEOUT_MS, MAX_RETRIES, RETRY_BASE_DELAY_MS } from '../config/config.js';
 import { getLogContext, LogContext, withLogContext } from '../config/logContext.js';
 import { createLogger } from '../config/logging.js';
 import { CallerAbortedError, EndpointAssemblyError, HttpException, TrialError } from '../error/errors.js';
 import { Retry } from '../retry/retry.js';
-import {
-    calculateBackoff,
-    defaultRetryPolicyConfig,
-    RetryPolicyConfig,
-    shouldRetry,
-    validateRetryPolicyConfig,
-} from '../retry/retryPolicy.js';
+import { calculateBackoff, RetryPolicyConfig, shouldRetry, validateRetryPolicyConfig } from '../retry/retryPolicy.js';
 import {
     defaultMonotonicClock,
     defaultRandom,
@@ -25,7 +18,7 @@ import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManager } from './endpoint/manager/endpointManager.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
-import { FetchOperation } from './fetchOperation.js';
+import { FetchOperation, FetchOperationDefaults } from './fetchOperation.js';
 import { HTTP_METHOD_GET, type FetchJsonRequestOptions } from './http.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { validateFetchJsonRequestOptions } from './requestValidation.js';
@@ -64,8 +57,30 @@ export interface HttpClient {
     close(): Promise<void>;
 }
 
+export interface HttpClientDefaults {
+    /**
+     * Maximum duration of a single HTTP attempt in milliseconds.
+     */
+    readonly timeoutMs: number;
+
+    /**
+     * Maximum number of retries after the initial attempt.
+     */
+    readonly maxRetries: number;
+
+    /**
+     * Default retry policy used when a request does not provide an override.
+     */
+    readonly retryPolicy: RetryPolicyConfig;
+}
+
 export interface CreateHttpClientOptions {
-    /** Override real sleep (e.g. fake timers in tests). Defaults to setTimeout. */
+    /** Defaults applied to requests when not overridden per request. */
+    defaults: HttpClientDefaults;
+
+    fetchDefaults: FetchOperationDefaults;
+
+    /** Override real sleep (e.g. fake timers in tests). */
     sleep?: Sleeper['sleep'];
 
     /** Override Math.random (e.g. deterministic backoff in tests). */
@@ -83,19 +98,17 @@ export interface CreateHttpClientOptions {
     /** Creates the endpoint manager that owns endpoint pools. */
     endpointManagerFactory: EndpointManagerFactory;
 
-    /** Retry policy. Defaults to the module-level default policy. */
-    retryConfig?: RetryPolicyConfig;
-
     /** Monotonic source used for elapsed-duration measurements. */
     monotonicClock?: MonotonicClock;
 }
 
 export async function createHttpClient(options: CreateHttpClientOptions): Promise<HttpClient> {
     const {
+        defaults,
+        fetchDefaults,
         provider,
         limiterFactory,
         endpointManagerFactory,
-        retryConfig = defaultRetryPolicyConfig,
         sleep = defaultSleeper.sleep,
         random = defaultRandom.random,
         wallClock = defaultWallClock,
@@ -103,7 +116,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
     } = options;
 
     // Fail-fast on invalid retry policy configuration.
-    validateRetryPolicyConfig(retryConfig);
+    validateRetryPolicyConfig(defaults.retryPolicy);
 
     const endpointFactory = new EndpointFactory(provider, limiterFactory);
     const endpoints = await endpointFactory.build();
@@ -141,7 +154,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
     );
 
     async function fetchResponse(url: string, options: FetchJsonRequestOptions): Promise<HttpResponse | null> {
-        const operation = new FetchOperation(endpointManager, url, options, wallClock.now);
+        const operation = new FetchOperation(endpointManager, url, options, fetchDefaults, wallClock.now);
         const retry = buildRetry(operation, options, sleep, random, monotonicClock.now);
 
         logger.debug(
@@ -149,8 +162,8 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
                 url: sanitizeHttpUrl(url),
                 method: HTTP_METHOD_GET,
                 allow404: options.allow404 ?? false,
-                timeoutMs: options.timeoutMs ?? FETCH_TIMEOUT_MS,
-                maxRetries: options.maxRetries ?? MAX_RETRIES,
+                timeoutMs: options.timeoutMs ?? defaults.timeoutMs,
+                maxRetries: options.maxRetries ?? defaults.maxRetries,
             },
             'HTTP request started',
         );
@@ -271,17 +284,18 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
         random: () => number,
         monotonicNow: MonotonicClock['now'],
     ): Retry<HttpResponse> {
-        const effectiveConfig = {
-            retryOnTimeout: options.retryPolicy?.retryOnTimeout ?? retryConfig.retryOnTimeout,
-            retryOnNetworkError: options.retryPolicy?.retryOnNetworkError ?? retryConfig.retryOnNetworkError,
-            retryableStatusCodes: options.retryPolicy?.retryableStatusCodes ?? retryConfig.retryableStatusCodes,
-            baseDelayMs: options.retryPolicy?.baseDelayMs ?? retryConfig.baseDelayMs ?? RETRY_BASE_DELAY_MS,
-            backoffCapMs: options.retryPolicy?.backoffCapMs ?? retryConfig.backoffCapMs ?? BACKOFF_CAP_MS,
+        const effectiveConfig: RetryPolicyConfig = {
+            retryOnTimeout: options.retryPolicy?.retryOnTimeout ?? defaults.retryPolicy.retryOnTimeout,
+            retryOnNetworkError: options.retryPolicy?.retryOnNetworkError ?? defaults.retryPolicy.retryOnNetworkError,
+            retryableStatusCodes:
+                options.retryPolicy?.retryableStatusCodes ?? defaults.retryPolicy.retryableStatusCodes,
+            baseDelayMs: options.retryPolicy?.baseDelayMs ?? defaults.retryPolicy.baseDelayMs,
+            backoffCapMs: options.retryPolicy?.backoffCapMs ?? defaults.retryPolicy.backoffCapMs,
         };
 
         validateRetryPolicyConfig(effectiveConfig);
 
-        const maxRetries = options.maxRetries ?? MAX_RETRIES;
+        const maxRetries = options.maxRetries ?? defaults.maxRetries;
         const maxAttempts = maxRetries + 1;
 
         return new Retry<HttpResponse>(

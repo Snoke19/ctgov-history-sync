@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { defaultFetchOperationDefaults, defaultHttpClientDefaults } from '../../../../src/api/api.js';
 import { DefaultEndpointManagerFactory } from '../../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
-import { DefaultLimiterFactory } from '../../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import {
     FetchDirectTransport,
     FetchDirectTransportFactory,
 } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
-import { API_URL, createDefaultOptions, jsonResponse, makeClient } from './helpers.js';
-
-const defaultLimiterFactory = new DefaultLimiterFactory({ enabled: false, capacity: 1, windowMs: 1000 });
-const defaultEndpointManagerFactory = new DefaultEndpointManagerFactory({ acquireTimeout: 5000 });
+import { API_URL } from '../../fixtures/constants.js';
+import { withClient } from '../../fixtures/lifecycle.fixture.js';
+import { createDisabledLimiterFactory } from '../../fixtures/limiter.fixture.js';
+import { jsonResponse } from '../../fixtures/response.fixture.js';
 
 describe('HttpClient endpoint lifecycle & resource management', () => {
     afterEach(() => {
@@ -23,13 +23,13 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
             .mockResolvedValueOnce(jsonResponse({ ep: 1 }))
             .mockResolvedValueOnce(jsonResponse({ ep: 2 }));
 
-        const client = await makeClient();
+        await withClient(async (client) => {
+            const first = await client.fetchJson<{ ep: number }>(`${API_URL}/req1`);
+            const second = await client.fetchJson<{ ep: number }>(`${API_URL}/req2`);
 
-        const first = await client.fetchJson<{ ep: number }>(`${API_URL}/req1`);
-        const second = await client.fetchJson<{ ep: number }>(`${API_URL}/req2`);
-
-        expect(first).toEqual({ ep: 1 });
-        expect(second).toEqual({ ep: 2 });
+            expect(first).toEqual({ ep: 1 });
+            expect(second).toEqual({ ep: 2 });
+        });
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
@@ -42,14 +42,14 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
         jest.spyOn(transportFactory, 'create').mockReturnValue(transport);
 
         const provider = new DirectEndpointProvider(transportFactory);
-        const clientOptions = createDefaultOptions();
         const client = await createHttpClient({
-            sleep: clientOptions.sleep,
-            random: clientOptions.random,
-            wallClock: clientOptions.wallClock,
+            defaults: defaultHttpClientDefaults,
+            fetchDefaults: defaultFetchOperationDefaults,
             provider,
-            limiterFactory: defaultLimiterFactory,
-            endpointManagerFactory: defaultEndpointManagerFactory,
+            limiterFactory: createDisabledLimiterFactory(),
+            endpointManagerFactory: new DefaultEndpointManagerFactory({
+                acquireTimeout: 5000,
+            }),
         });
 
         await client.close();
@@ -65,14 +65,14 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
         jest.spyOn(transportFactory, 'create').mockReturnValue(transport);
 
         const provider = new DirectEndpointProvider(transportFactory);
-        const clientOptions = createDefaultOptions();
         const client = await createHttpClient({
-            sleep: clientOptions.sleep,
-            random: clientOptions.random,
-            wallClock: clientOptions.wallClock,
+            defaults: defaultHttpClientDefaults,
+            fetchDefaults: defaultFetchOperationDefaults,
             provider,
-            limiterFactory: defaultLimiterFactory,
-            endpointManagerFactory: defaultEndpointManagerFactory,
+            limiterFactory: createDisabledLimiterFactory(),
+            endpointManagerFactory: new DefaultEndpointManagerFactory({
+                acquireTimeout: 5000,
+            }),
         });
 
         await client.close();

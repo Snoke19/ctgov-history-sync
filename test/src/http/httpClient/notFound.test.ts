@@ -1,17 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { API_URL, jsonResponse, withClient } from './helpers.js';
-
-function mockResponse(status: number, body: unknown, statusText: string): jest.SpiedFunction<typeof fetch> {
-    return jest.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(body, status, {}, statusText));
-}
-
-function mock404Response(body: unknown): jest.SpiedFunction<typeof fetch> {
-    return mockResponse(404, body, 'Not Found');
-}
-
-function mock204Response(): jest.SpiedFunction<typeof fetch> {
-    return mockResponse(204, null, 'No Content');
-}
+import { API_URL } from '../../fixtures/constants.js';
+import { withClient } from '../../fixtures/lifecycle.fixture.js';
+import { jsonResponse, mock204Response, mock404Response, mockFetchResponse } from '../../fixtures/response.fixture.js';
 
 describe('HttpClient 404 & null handling', () => {
     afterEach(() => {
@@ -45,7 +35,7 @@ describe('HttpClient 404 & null handling', () => {
         });
 
         it('does NOT catch non-404 HTTP errors even when allow404 is true', async () => {
-            const fetchMock = mockResponse(500, 'Server Error', 'Internal Server Error');
+            const fetchMock = mockFetchResponse(500, 'Server Error', 'Internal Server Error');
 
             await withClient(async (client) => {
                 await expect(

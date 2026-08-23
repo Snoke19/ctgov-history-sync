@@ -7,16 +7,26 @@ import {
     PROXY_URLS,
     RATE_LIMIT_CAPACITY,
     RATE_LIMIT_WINDOW,
+    RETRY_ON_TIMEOUT,
+    RETRY_ON_NETWORK_ERROR,
+    RETRYABLE_STATUS_CODES,
+    RETRY_BASE_DELAY_MS,
+    BACKOFF_CAP_MS,
+    FETCH_TIMEOUT_MS,
+    MAX_RETRIES,
+    DEFAULT_USER_AGENT,
 } from '../config/config.js';
 import { createLogger } from '../config/logging.js';
 import { ApiResponseValidationError, TrialError, TrialNotFoundError, TrialValidationError } from '../error/errors.js';
 import { DefaultEndpointManagerFactory } from '../http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { ProxyEndpointProvider } from '../http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../http/endpoint/proxy/httpProxyUrlParser.js';
-import { createHttpClient } from '../http/httpClient.js';
+import { FetchOperationDefaults } from '../http/fetchOperation.js';
+import { createHttpClient, HttpClientDefaults } from '../http/httpClient.js';
 import { DefaultLimiterFactory } from '../http/limiter/factory/defaultLimiterFactory.js';
 import { UndiciTransportFactory } from '../http/transport/impl/undiciProxyTransport.js';
 import { UrlBuilder } from '../http/urlPrepare.js';
+import { RetryPolicyConfig } from '../retry/retryPolicy.js';
 import { Assertions, makeAssertions } from '../utils/assertions.js';
 import { FetchStudiesPageParams, FetchTrialDetailParams, StudiesPageResponse, Study } from './types.js';
 
@@ -36,6 +46,25 @@ export interface ApiClient {
 
     close(): Promise<void>;
 }
+
+export const defaultRetryPolicyConfig: RetryPolicyConfig = {
+    retryOnTimeout: RETRY_ON_TIMEOUT,
+    retryOnNetworkError: RETRY_ON_NETWORK_ERROR,
+    retryableStatusCodes: RETRYABLE_STATUS_CODES,
+    baseDelayMs: RETRY_BASE_DELAY_MS,
+    backoffCapMs: BACKOFF_CAP_MS,
+};
+
+export const defaultHttpClientDefaults: HttpClientDefaults = {
+    timeoutMs: FETCH_TIMEOUT_MS,
+    maxRetries: MAX_RETRIES,
+    retryPolicy: defaultRetryPolicyConfig,
+};
+
+export const defaultFetchOperationDefaults: FetchOperationDefaults = {
+    timeoutMs: FETCH_TIMEOUT_MS,
+    userAgent: DEFAULT_USER_AGENT,
+};
 
 /**
  * Creates a production-ready API client with the application's configured
@@ -65,6 +94,8 @@ export async function createApiClient(): Promise<ApiClient> {
 
     try {
         httpClient = await createHttpClient({
+            defaults: defaultHttpClientDefaults,
+            fetchDefaults: defaultFetchOperationDefaults,
             provider: new ProxyEndpointProvider(
                 new UndiciTransportFactory({ poolConfig: PROXY_POOL_CONFIG }),
                 new HttpProxyUrlParser(),

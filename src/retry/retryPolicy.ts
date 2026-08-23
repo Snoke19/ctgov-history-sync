@@ -1,11 +1,4 @@
 import {
-    BACKOFF_CAP_MS,
-    RETRY_BASE_DELAY_MS,
-    RETRY_ON_NETWORK_ERROR,
-    RETRY_ON_TIMEOUT,
-    RETRYABLE_STATUS_CODES,
-} from '../config/config.js';
-import {
     CallerAbortedError,
     ConfigurationError,
     HttpException,
@@ -13,7 +6,6 @@ import {
     TimeoutException,
     TrialError,
 } from '../error/errors.js';
-import { defaultRandom } from '../http/clock.js';
 import { HttpResponse } from '../http/transport/httpTransport.js';
 import { makeAssertions } from '../utils/assertions.js';
 
@@ -31,46 +23,31 @@ export interface RetryPolicyConfig {
     readonly retryableStatusCodes: ReadonlySet<number>;
 
     /**
-     * Base delay (ms) seeded into the first exponential-backoff retry.
-     * When omitted the configured RETRY_BASE_DELAY_MS value is used.
+     * Base delay in milliseconds for the first exponential-backoff retry.
      */
-    readonly baseDelayMs?: number;
+    readonly baseDelayMs: number;
 
     /**
-     * Upper bound (ms) applied to any single retry delay, including
-     * Retry-After. When omitted the configured BACKOFF_CAP_MS value is used.
+     * Maximum delay in milliseconds for any single retry.
      */
-    readonly backoffCapMs?: number;
+    readonly backoffCapMs: number;
 }
 
 /**
- * Default policy derived from environment / module-level config.
- * Used when the caller does not provide an explicit policy.
- */
-export const defaultRetryPolicyConfig: RetryPolicyConfig = {
-    retryOnTimeout: RETRY_ON_TIMEOUT,
-    retryOnNetworkError: RETRY_ON_NETWORK_ERROR,
-    retryableStatusCodes: RETRYABLE_STATUS_CODES,
-    baseDelayMs: RETRY_BASE_DELAY_MS,
-    backoffCapMs: BACKOFF_CAP_MS,
-};
-
-/**
- * Delay parameters for {@link calculateBackoff}.
+ * Parameters used by {@link calculateBackoff}.
  *
- * Each field is optional and defaults to the configured value, so callers
- * that only care about the default behavior can pass `{}` (or nothing) while
- * tests inject explicit numbers to stay decoupled from module-level config.
+ * All values are supplied explicitly by the caller so the retry calculation
+ * remains independent of application-level configuration.
  */
 export interface BackoffOptions {
-    /** Jitter source returning a value in [0, 1)]. Defaults to the shared HTTP-layer source. */
-    readonly random?: () => number;
+    /** Jitter source returning a value in [0, 1). */
+    readonly random: () => number;
 
-    /** Base delay (ms) for the first retry. Defaults to RETRY_BASE_DELAY_MS. */
-    readonly baseDelayMs?: number;
+    /** Base delay in milliseconds for the first retry. */
+    readonly baseDelayMs: number;
 
-    /** Maximum delay (ms). Defaults to BACKOFF_CAP_MS. */
-    readonly backoffCapMs?: number;
+    /** Maximum retry delay in milliseconds. */
+    readonly backoffCapMs: number;
 }
 
 /**
@@ -86,10 +63,10 @@ export interface BackoffOptions {
  *
  * @param attempt      - Zero-indexed retry number (0 = first retry).
  * @param retryAfterMs - Parsed Retry-After header value in ms, or null.
- * @param options      - Optional base/cap/jitter overrides.
+ * @param options - Backoff parameters used for this calculation.
  */
-export function calculateBackoff(attempt: number, retryAfterMs: number | null, options: BackoffOptions = {}): number {
-    const { random = defaultRandom.random, baseDelayMs = RETRY_BASE_DELAY_MS, backoffCapMs = BACKOFF_CAP_MS } = options;
+export function calculateBackoff(attempt: number, retryAfterMs: number | null, options: BackoffOptions): number {
+    const { random, baseDelayMs, backoffCapMs } = options;
 
     if (retryAfterMs !== null && retryAfterMs >= 0) {
         return Math.min(retryAfterMs, backoffCapMs);
@@ -165,7 +142,8 @@ export function parseRetryAfterHeader(response: HttpResponse, now: number = Date
  *   non-retryable so that retry.perform() throws an HttpException instead of
  *   looping.
  * - Retryable status codes must be valid HTTP status codes (100-599).
- * - baseDelayMs and backoffCapMs, when provided, must be positive integers.
+ * - /**
+ * - baseDelayMs and backoffCapMs must be positive integers.
  *
  * Throws ConfigurationError on the first violation.
  */
@@ -178,25 +156,25 @@ export function validateRetryPolicyConfig(config: RetryPolicyConfig): void {
         );
     }
 
+    if (config.backoffCapMs < config.baseDelayMs) {
+        throw new ConfigurationError('backoffCapMs must be >= baseDelayMs');
+    }
+
     for (const status of config.retryableStatusCodes) {
         if (!Number.isInteger(status) || status < 100 || status > 599) {
             throw new ConfigurationError(`retryableStatusCodes contains invalid status: ${status}`);
         }
     }
 
-    if (config.baseDelayMs !== undefined) {
-        retryPolicyAssert.assertInteger(config.baseDelayMs, 'baseDelayMs', {
-            min: 1,
-            label: 'a positive integer',
-        });
-    }
+    retryPolicyAssert.assertInteger(config.baseDelayMs, 'baseDelayMs', {
+        min: 1,
+        label: 'a positive integer',
+    });
 
-    if (config.backoffCapMs !== undefined) {
-        retryPolicyAssert.assertInteger(config.backoffCapMs, 'backoffCapMs', {
-            min: 1,
-            label: 'a positive integer',
-        });
-    }
+    retryPolicyAssert.assertInteger(config.backoffCapMs, 'backoffCapMs', {
+        min: 1,
+        label: 'a positive integer',
+    });
 }
 
 /**
