@@ -85,18 +85,18 @@ flowchart TB
 
 ### Responsibilities
 
-| Component | Responsibility |
-| --- | --- |
-| `src/index.ts` | Application orchestration, pagination, concurrency and checkpoint state |
-| `ApiClient` | Domain-facing ClinicalTrials.gov operations |
-| `HttpClient` | HTTP request orchestration and response handling |
-| `FetchOperation` | One logical HTTP attempt: acquire endpoint, timeout, transport call |
-| `Retry` | Retry attempts, retry decisions, backoff and cancellation during backoff |
-| `EndpointManager` | Endpoint selection, admission waiting and acquisition timeout |
-| `EndpointProvider` | Creates endpoint definitions and their transports/limiters |
-| `Limiter` | Per-endpoint request admission/rate control |
-| `HttpTransport` | Abstract network execution and transport-level classification |
-| `TrialError` hierarchy | Stable application/infrastructure error contract |
+| Component              | Responsibility                                                           |
+| ---------------------- | ------------------------------------------------------------------------ |
+| `src/index.ts`         | Application orchestration, pagination, concurrency and checkpoint state  |
+| `ApiClient`            | Domain-facing ClinicalTrials.gov operations                              |
+| `HttpClient`           | HTTP request orchestration and response handling                         |
+| `FetchOperation`       | One logical HTTP attempt: acquire endpoint, timeout, transport call      |
+| `Retry`                | Retry attempts, retry decisions, backoff and cancellation during backoff |
+| `EndpointManager`      | Endpoint selection, admission waiting and acquisition timeout            |
+| `EndpointProvider`     | Creates endpoint definitions and their transports/limiters               |
+| `Limiter`              | Per-endpoint request admission/rate control                              |
+| `HttpTransport`        | Abstract network execution and transport-level classification            |
+| `TrialError` hierarchy | Stable application/infrastructure error contract                         |
 
 ## Request lifecycle
 
@@ -174,13 +174,13 @@ flowchart LR
     TM[timeoutMs] --> HTTP
 ```
 
-| Control | Owner | Scope |
-| --- | --- | --- |
-| `signal` | Caller | Whole logical operation |
-| `AbortController` | `FetchOperation` | Current attempt and propagation |
-| `acquireTimeout` | `EndpointManager` | Waiting for endpoint capacity |
-| `timeoutMs` | `FetchOperation` | One HTTP attempt |
-| Retry backoff | `Retry` | Time between attempts |
+| Control           | Owner             | Scope                           |
+| ----------------- | ----------------- | ------------------------------- |
+| `signal`          | Caller            | Whole logical operation         |
+| `AbortController` | `FetchOperation`  | Current attempt and propagation |
+| `acquireTimeout`  | `EndpointManager` | Waiting for endpoint capacity   |
+| `timeoutMs`       | `FetchOperation`  | One HTTP attempt                |
+| Retry backoff     | `Retry`           | Time between attempts           |
 
 Therefore:
 
@@ -414,16 +414,16 @@ The studies endpoint provides search and cursor-based pagination. The detail end
 
 Configuration is supplied through environment variables. Start with `.env.example`.
 
-| Area | Examples | Purpose |
-| --- | --- | --- |
-| API | `API_BASE_URL`, `API_DETAIL_URL` | Upstream endpoints |
-| Performance | `PAGE_SIZE`, `CONCURRENCY` | Pagination and parallel work |
-| Timeout | `FETCH_TIMEOUT_MS`, `ACQUIRE_TIMEOUT` | Attempt and endpoint-admission limits |
-| Proxy | `PROXY_URLS`, `PROXY_POOL_*` | Proxy endpoints and connection pools |
-| Rate limit | `RATE_LIMIT_CAPACITY`, `RATE_LIMIT_WINDOW` | Token-bucket admission |
-| Retry | `MAX_RETRIES`, `RETRYABLE_STATUS_CODES` | Retry policy |
-| Backoff | `RETRY_BASE_DELAY_MS`, `BACKOFF_CAP_MS` | Retry delay calculation |
-| Logging | `LOG_LEVEL`, `LOG_TO_FILE` | Structured logging |
+| Area        | Examples                                   | Purpose                               |
+| ----------- | ------------------------------------------ | ------------------------------------- |
+| API         | `API_BASE_URL`, `API_DETAIL_URL`           | Upstream endpoints                    |
+| Performance | `PAGE_SIZE`, `CONCURRENCY`                 | Pagination and parallel work          |
+| Timeout     | `FETCH_TIMEOUT_MS`, `ACQUIRE_TIMEOUT`      | Attempt and endpoint-admission limits |
+| Proxy       | `PROXY_URLS`, `PROXY_POOL_*`               | Proxy endpoints and connection pools  |
+| Rate limit  | `RATE_LIMIT_CAPACITY`, `RATE_LIMIT_WINDOW` | Token-bucket admission                |
+| Retry       | `MAX_RETRIES`, `RETRYABLE_STATUS_CODES`    | Retry policy                          |
+| Backoff     | `RETRY_BASE_DELAY_MS`, `BACKOFF_CAP_MS`    | Retry delay calculation               |
+| Logging     | `LOG_LEVEL`, `LOG_TO_FILE`                 | Structured logging                    |
 
 ## Getting started
 

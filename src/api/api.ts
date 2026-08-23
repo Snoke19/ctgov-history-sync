@@ -21,11 +21,11 @@ import { ApiResponseValidationError, TrialError, TrialNotFoundError, TrialValida
 import { DefaultEndpointManagerFactory } from '../http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { ProxyEndpointProvider } from '../http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../http/endpoint/proxy/httpProxyUrlParser.js';
-import { FetchOperationDefaults } from '../http/fetchOperation.js';
 import { createHttpClient, HttpClientDefaults } from '../http/httpClient.js';
 import { DefaultLimiterFactory } from '../http/limiter/factory/defaultLimiterFactory.js';
 import { UndiciTransportFactory } from '../http/transport/impl/undiciProxyTransport.js';
 import { UrlBuilder } from '../http/urlPrepare.js';
+import { FetchOperationDefaults } from '../retry/fetchOperation.js';
 import { RetryPolicyConfig } from '../retry/retryPolicy.js';
 import { Assertions, makeAssertions } from '../utils/assertions.js';
 import { FetchStudiesPageParams, FetchTrialDetailParams, StudiesPageResponse, Study } from './types.js';

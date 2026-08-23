@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getLogContext, LogContext, withLogContext } from '../config/logContext.js';
 import { createLogger } from '../config/logging.js';
 import { CallerAbortedError, EndpointAssemblyError, HttpException, TrialError } from '../error/errors.js';
+import { FetchOperation, FetchOperationDefaults } from '../retry/fetchOperation.js';
 import { Retry } from '../retry/retry.js';
 import { calculateBackoff, RetryPolicyConfig, shouldRetry, validateRetryPolicyConfig } from '../retry/retryPolicy.js';
 import {
@@ -18,7 +19,6 @@ import { EndpointFactory } from './endpoint/endpointFactory.js';
 import { EndpointManager } from './endpoint/manager/endpointManager.js';
 import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
-import { FetchOperation, FetchOperationDefaults } from './fetchOperation.js';
 import { HTTP_METHOD_GET, type FetchJsonRequestOptions } from './http.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
 import { validateFetchJsonRequestOptions } from './requestValidation.js';

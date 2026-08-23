@@ -8,15 +8,14 @@ import {
     TrialError,
     UnexpectedError,
 } from '../error/errors.js';
+import { defaultWallClock, WallClock } from '../http/clock.js';
+import { EndpointHandle } from '../http/endpoint/endpoint.js';
+import { EndpointManager } from '../http/endpoint/manager/endpointManager.js';
+import { FetchJsonRequestOptions, HTTP_METHOD_GET } from '../http/http.js';
+import { drainBody } from '../http/responseBody.js';
+import { HttpResponse, HttpTransport } from '../http/transport/httpTransport.js';
 import type { BusinessOperation } from '../retry/businessOperation.js';
 import { parseRetryAfterHeader } from '../retry/retryPolicy.js';
-import { defaultWallClock } from './clock.js';
-import type { WallClock } from './clock.js';
-import type { EndpointHandle } from './endpoint/endpoint.js';
-import type { EndpointManager } from './endpoint/manager/endpointManager.js';
-import { HTTP_METHOD_GET, type FetchJsonRequestOptions } from './http.js';
-import { drainBody } from './responseBody.js';
-import type { HttpResponse, HttpTransport } from './transport/httpTransport.js';
 
 const logger = createLogger(import.meta.url);
 
