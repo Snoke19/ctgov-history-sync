@@ -29,11 +29,13 @@ describe('Retry', () => {
     });
 
     describe('configuration', () => {
-        it('accepts maxAttempts: 1', async () => {
+        it('accepts maxAttempts: 1 and 500 http error', async () => {
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-            await expect(new Retry(operation, 1, () => true, 1, sleep).perform()).rejects.toBeInstanceOf(HttpException);
+            const retry = new Retry(operation, 1, () => true, 1, sleep).perform();
+
+            await expect(retry).rejects.toBeInstanceOf(HttpException);
 
             expect(operation.perform).toHaveBeenCalledTimes(1);
             expect(sleep).not.toHaveBeenCalled();
@@ -412,13 +414,15 @@ describe('Retry', () => {
         it('throws CallerAbortedError without running the operation when the signal is already aborted', async () => {
             const controller = new AbortController();
             controller.abort();
+
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-            const promise = new Retry(operation, 2, () => true, 1, sleep, controller.signal).perform();
+            const promiseRetry = new Retry(operation, 2, () => true, 1, sleep, controller.signal).perform();
+            const error = await promiseRetry.catch((e) => e);
 
-            await expect(promise).rejects.toBeInstanceOf(CallerAbortedError);
-            // Pre-flight check fires before the first attempt
+            expect(error).toBeInstanceOf(CallerAbortedError);
+            expect(error.message).toBe('Caller aborted before first attempt.');
             expect(operation.perform).not.toHaveBeenCalled();
             expect(sleep).not.toHaveBeenCalled();
         });
@@ -434,10 +438,12 @@ describe('Retry', () => {
                 });
 
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
-            const promise = new Retry(operation, 2, () => true, 1, sleep, controller.signal).perform();
+            const promiseRetry = new Retry(operation, 2, () => true, 1, sleep, controller.signal).perform();
+            const error = await promiseRetry.catch((e) => e);
 
-            await expect(promise).rejects.toBeInstanceOf(CallerAbortedError);
-            await expect(promise).rejects.toMatchObject({ cause: sleepError });
+            expect(error).toBeInstanceOf(CallerAbortedError);
+            expect(error.message).toBe('The retry backoff was aborted by the caller.');
+            await expect(promiseRetry).rejects.toMatchObject({ cause: sleepError });
 
             expect(operation.perform).toHaveBeenCalledTimes(1);
             expect(sleep).toHaveBeenCalledTimes(1);
@@ -447,17 +453,17 @@ describe('Retry', () => {
             const controller = new AbortController();
 
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
-
             const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockImplementation(() => {
                 controller.abort();
                 return 1;
             });
-
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-            const promise = new Retry(operation, 2, () => true, delay, sleep, controller.signal).perform();
+            const promiseRetry = new Retry(operation, 2, () => true, delay, sleep, controller.signal).perform();
+            const error = await promiseRetry.catch((e) => e);
 
-            await expect(promise).rejects.toBeInstanceOf(CallerAbortedError);
+            expect(error).toBeInstanceOf(CallerAbortedError);
+            expect(error.message).toBe('Caller aborted before retry backoff.');
 
             expect(operation.perform).toHaveBeenCalledTimes(1);
             expect(delay).toHaveBeenCalledTimes(1);
@@ -465,11 +471,10 @@ describe('Retry', () => {
         });
 
         it('throws CallerAbortedError when a custom sleeper resolves despite an aborted signal', async () => {
-            const error = retryableError();
-            const perform = jest.fn<() => Promise<string>>().mockRejectedValueOnce(error);
+            const retryError = retryableError();
+            const perform = jest.fn<() => Promise<string>>().mockRejectedValueOnce(retryError);
 
             const controller = new AbortController();
-
             // Non-conforming sleeper: aborts the signal but resolves anyway
             const sleep = jest
                 .fn<(ms: number, signal?: AbortSignal) => Promise<void>>()
@@ -480,9 +485,19 @@ describe('Retry', () => {
 
             const clock = jest.fn<() => number>().mockReturnValue(0);
 
-            const retry = new Retry(makeOperation(perform), 2, () => true, 0, sleep, controller.signal, clock);
+            const promiseRetry = new Retry(
+                makeOperation(perform),
+                2,
+                () => true,
+                0,
+                sleep,
+                controller.signal,
+                clock,
+            ).perform();
+            const error = await promiseRetry.catch((e) => e);
 
-            await expect(retry.perform()).rejects.toBeInstanceOf(CallerAbortedError);
+            expect(error).toBeInstanceOf(CallerAbortedError);
+            expect(error.message).toBe('Caller aborted after retry backoff.');
 
             expect(perform).toHaveBeenCalledTimes(1);
             expect(sleep).toHaveBeenCalledTimes(1);

@@ -69,7 +69,7 @@ export class Retry<T> implements BusinessOperation<T> {
             await this.delayWithAbortCheck(directive.delayMs);
         }
 
-        throw new Error('Retry loop completed without resolution');
+        throw new Error('Invariant violated: retry loop exited without returning or throwing.');
     }
 
     private async tryOnce(): Promise<AttemptResult<T>> {
@@ -127,7 +127,7 @@ export class Retry<T> implements BusinessOperation<T> {
 
     private ensureNotAborted(): void {
         if (this.signal?.aborted) {
-            throw new CallerAbortedError();
+            throw new CallerAbortedError('Caller aborted before first attempt.');
         }
     }
 
@@ -138,7 +138,7 @@ export class Retry<T> implements BusinessOperation<T> {
 
     private async delayWithAbortCheck(ms: number): Promise<void> {
         if (this.signal?.aborted) {
-            throw new CallerAbortedError();
+            throw new CallerAbortedError('Caller aborted before retry backoff.');
         }
 
         try {
@@ -155,7 +155,7 @@ export class Retry<T> implements BusinessOperation<T> {
         // the delay. Re-check after resolution so Retry still honors cancellation
         // if a custom Sleeper resolves despite an abort (for example, a test double).
         if (this.signal?.aborted) {
-            throw new CallerAbortedError();
+            throw new CallerAbortedError('Caller aborted after retry backoff.');
         }
     }
 
