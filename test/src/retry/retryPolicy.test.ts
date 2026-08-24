@@ -1,4 +1,4 @@
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import { defaultRetryPolicyConfig } from '../../../src/api/api.js';
 import {
     CallerAbortedError,
@@ -17,324 +17,340 @@ import {
     validateRetryPolicyConfig,
 } from '../../../src/retry/retryPolicy.js';
 
-describe('validateRetryPolicyConfig', () => {
-    it('accepts valid boundary values', () => {
-        expect(() =>
-            validateRetryPolicyConfig({
-                ...defaultRetryPolicyConfig,
-                retryableStatusCodes: new Set([100, 599]),
-                baseDelayMs: 1,
-                backoffCapMs: 1,
-            }),
-        ).not.toThrow();
-    });
+describe('retryPolicy', () => {
+    describe('validateRetryPolicyConfig', () => {
+        it('accepts valid boundary values', () => {
+            expect(() =>
+                validateRetryPolicyConfig({
+                    ...defaultRetryPolicyConfig,
+                    retryableStatusCodes: new Set([100, 599]),
+                    baseDelayMs: 1,
+                    backoffCapMs: 1,
+                }),
+            ).not.toThrow();
+        });
 
-    it('rejects 404 as retryable', () => {
-        expect(() =>
-            validateRetryPolicyConfig({
-                ...defaultRetryPolicyConfig,
-                retryableStatusCodes: new Set([404]),
-            }),
-        ).toThrow(ConfigurationError);
-    });
+        it('rejects 404 as retryable', () => {
+            expect(() =>
+                validateRetryPolicyConfig({
+                    ...defaultRetryPolicyConfig,
+                    retryableStatusCodes: new Set([404]),
+                }),
+            ).toThrow(ConfigurationError);
+        });
 
-    it('rejects status codes below 100', () => {
-        expect(() =>
-            validateRetryPolicyConfig({
-                ...defaultRetryPolicyConfig,
-                retryableStatusCodes: new Set([99]),
-            }),
-        ).toThrow(ConfigurationError);
-    });
+        it('rejects status codes below 100', () => {
+            expect(() =>
+                validateRetryPolicyConfig({
+                    ...defaultRetryPolicyConfig,
+                    retryableStatusCodes: new Set([99]),
+                }),
+            ).toThrow(ConfigurationError);
+        });
 
-    it('rejects status codes above 599', () => {
-        expect(() =>
-            validateRetryPolicyConfig({
-                ...defaultRetryPolicyConfig,
-                retryableStatusCodes: new Set([600]),
-            }),
-        ).toThrow(ConfigurationError);
-    });
+        it('rejects status codes above 599', () => {
+            expect(() =>
+                validateRetryPolicyConfig({
+                    ...defaultRetryPolicyConfig,
+                    retryableStatusCodes: new Set([600]),
+                }),
+            ).toThrow(ConfigurationError);
+        });
 
-    it('rejects non-integer status codes', () => {
-        expect(() =>
-            validateRetryPolicyConfig({
-                ...defaultRetryPolicyConfig,
-                retryableStatusCodes: new Set([500.5]),
-            }),
-        ).toThrow(ConfigurationError);
-    });
+        it('rejects non-integer status codes', () => {
+            expect(() =>
+                validateRetryPolicyConfig({
+                    ...defaultRetryPolicyConfig,
+                    retryableStatusCodes: new Set([500.5]),
+                }),
+            ).toThrow(ConfigurationError);
+        });
 
-    it('rejects non-positive base delay', () => {
-        expect(() =>
-            validateRetryPolicyConfig({
-                ...defaultRetryPolicyConfig,
-                baseDelayMs: 0,
-            }),
-        ).toThrow(ConfigurationError);
-    });
+        it('rejects non-positive base delay', () => {
+            expect(() =>
+                validateRetryPolicyConfig({
+                    ...defaultRetryPolicyConfig,
+                    baseDelayMs: 0,
+                }),
+            ).toThrow(ConfigurationError);
+        });
 
-    it('rejects non-positive backoff cap', () => {
-        expect(() =>
-            validateRetryPolicyConfig({
-                ...defaultRetryPolicyConfig,
-                backoffCapMs: -1,
-            }),
-        ).toThrow(ConfigurationError);
-    });
-});
-
-describe('shouldRetry', () => {
-    describe('CallerAbortedError', () => {
-        it('never retries even when retryable errors are enabled', () => {
-            expect(shouldRetry(new CallerAbortedError('aborted'), defaultRetryPolicyConfig)).toBe(false);
+        it('rejects non-positive backoff cap', () => {
+            expect(() =>
+                validateRetryPolicyConfig({
+                    ...defaultRetryPolicyConfig,
+                    backoffCapMs: -1,
+                }),
+            ).toThrow(ConfigurationError);
         });
     });
 
-    describe('TimeoutException', () => {
-        it('returns true when retryOnTimeout is enabled', () => {
-            expect(shouldRetry(new TimeoutException('timeout'), defaultRetryPolicyConfig)).toBe(true);
+    describe('shouldRetry', () => {
+        describe('CallerAbortedError', () => {
+            it('never retries even when retryable errors are enabled', () => {
+                expect(shouldRetry(new CallerAbortedError('aborted'), defaultRetryPolicyConfig)).toBe(false);
+            });
         });
 
-        it('returns false when retryOnTimeout is disabled', () => {
-            const config: RetryPolicyConfig = {
-                ...defaultRetryPolicyConfig,
-                retryOnTimeout: false,
-            };
-
-            expect(shouldRetry(new TimeoutException('timeout'), config)).toBe(false);
-        });
-    });
-
-    describe('NetworkException', () => {
-        it('returns true when retryOnNetworkError is enabled', () => {
-            expect(shouldRetry(new NetworkException('econnreset'), defaultRetryPolicyConfig)).toBe(true);
-        });
-
-        it('returns false when retryOnNetworkError is disabled', () => {
-            const config: RetryPolicyConfig = {
-                ...defaultRetryPolicyConfig,
-                retryOnNetworkError: false,
-            };
-
-            expect(shouldRetry(new NetworkException('econnreset'), config)).toBe(false);
-        });
-    });
-
-    describe('HttpException', () => {
-        it('returns true for a custom configured retryable status', () => {
-            const config: RetryPolicyConfig = {
-                ...defaultRetryPolicyConfig,
-                retryableStatusCodes: new Set([418]),
-            };
-
-            expect(shouldRetry(new HttpException('retryable error', 418), config)).toBe(true);
-        });
-
-        it.each([408, 429, 500, 502, 503, 504])('returns true for retryable status %s', (status) => {
-            expect(shouldRetry(new HttpException('retryable error', status), defaultRetryPolicyConfig)).toBe(true);
-        });
-
-        it.each([400, 401, 403, 404])('returns false for non-retryable status %s', (status) => {
-            expect(shouldRetry(new HttpException('non-retryable error', status), defaultRetryPolicyConfig)).toBe(false);
-        });
-    });
-
-    describe('unknown TrialError', () => {
-        it('never retries', () => {
-            const error = new TrialError('something weird');
-
-            expect(shouldRetry(error, defaultRetryPolicyConfig)).toBe(false);
-        });
-    });
-});
-
-describe('calculateBackoff', () => {
-    const BASE = 1000;
-    const CAP = 30000;
-
-    const noJitter = {
-        random: () => 0,
-        baseDelayMs: BASE,
-        backoffCapMs: CAP,
-    };
-
-    describe('overflow protection', () => {
-        it('caps the delay at backoffCapMs for very large attempt counts', () => {
-            const result = calculateBackoff(10_000, null, {
-                baseDelayMs: 100,
-                backoffCapMs: 10_000,
-                random: () => 0,
+        describe('TimeoutException', () => {
+            it('returns true when retryOnTimeout is enabled', () => {
+                expect(shouldRetry(new TimeoutException('timeout'), defaultRetryPolicyConfig)).toBe(true);
             });
 
-            expect(result).toBe(10_000);
+            it('returns false when retryOnTimeout is disabled', () => {
+                const config: RetryPolicyConfig = {
+                    ...defaultRetryPolicyConfig,
+                    retryOnTimeout: false,
+                };
+
+                expect(shouldRetry(new TimeoutException('timeout'), config)).toBe(false);
+            });
+        });
+
+        describe('NetworkException', () => {
+            it('returns true when retryOnNetworkError is enabled', () => {
+                expect(shouldRetry(new NetworkException('econnreset'), defaultRetryPolicyConfig)).toBe(true);
+            });
+
+            it('returns false when retryOnNetworkError is disabled', () => {
+                const config: RetryPolicyConfig = {
+                    ...defaultRetryPolicyConfig,
+                    retryOnNetworkError: false,
+                };
+
+                expect(shouldRetry(new NetworkException('econnreset'), config)).toBe(false);
+            });
+        });
+
+        describe('HttpException', () => {
+            it('returns true for a custom configured retryable status', () => {
+                const config: RetryPolicyConfig = {
+                    ...defaultRetryPolicyConfig,
+                    retryableStatusCodes: new Set([418]),
+                };
+
+                expect(shouldRetry(new HttpException('retryable error', 418), config)).toBe(true);
+            });
+
+            it.each([408, 429, 500, 502, 503, 504])('returns true for retryable status %s', (status) => {
+                expect(shouldRetry(new HttpException('retryable error', status), defaultRetryPolicyConfig)).toBe(true);
+            });
+
+            it.each([400, 401, 403, 404])('returns false for non-retryable status %s', (status) => {
+                expect(shouldRetry(new HttpException('non-retryable error', status), defaultRetryPolicyConfig)).toBe(
+                    false,
+                );
+            });
+        });
+
+        describe('unknown TrialError', () => {
+            it('never retries', () => {
+                const error = new TrialError('something weird');
+
+                expect(shouldRetry(error, defaultRetryPolicyConfig)).toBe(false);
+            });
         });
     });
 
-    describe('exponential backoff', () => {
-        it('returns exponential backoff for first retry (attempt 0)', () => {
-            const backoff = calculateBackoff(0, null, noJitter);
+    describe('calculateBackoff', () => {
+        const BASE = 1000;
+        const CAP = 30000;
 
-            expect(backoff).toBe(BASE);
-        });
+        const noJitter = {
+            random: () => 0,
+            baseDelayMs: BASE,
+            backoffCapMs: CAP,
+        };
 
-        it('doubles the base delay for each subsequent retry', () => {
-            const attempt0 = calculateBackoff(0, null, noJitter);
-            const attempt1 = calculateBackoff(1, null, noJitter);
-            const attempt2 = calculateBackoff(2, null, noJitter);
-
-            expect(attempt1).toBe(attempt0 * 2);
-            expect(attempt2).toBe(attempt0 * 4);
-        });
-    });
-
-    describe('jitter', () => {
-        it('uses zero jitter when random returns 0', () => {
-            expect(
-                calculateBackoff(2, null, {
+        describe('overflow protection', () => {
+            it('caps the delay at backoffCapMs for very large attempt counts', () => {
+                const result = calculateBackoff(10_000, null, {
+                    baseDelayMs: 100,
+                    backoffCapMs: 10_000,
                     random: () => 0,
+                });
+
+                expect(result).toBe(10_000);
+            });
+        });
+
+        describe('exponential backoff', () => {
+            it('returns exponential backoff for first retry (attempt 0)', () => {
+                const backoff = calculateBackoff(0, null, noJitter);
+
+                expect(backoff).toBe(BASE);
+            });
+
+            it('doubles the base delay for each subsequent retry', () => {
+                const attempt0 = calculateBackoff(0, null, noJitter);
+                const attempt1 = calculateBackoff(1, null, noJitter);
+                const attempt2 = calculateBackoff(2, null, noJitter);
+
+                expect(attempt1).toBe(attempt0 * 2);
+                expect(attempt2).toBe(attempt0 * 4);
+            });
+        });
+
+        describe('jitter', () => {
+            it('uses zero jitter when random returns 0', () => {
+                expect(
+                    calculateBackoff(2, null, {
+                        random: () => 0,
+                        baseDelayMs: BASE,
+                        backoffCapMs: CAP,
+                    }),
+                ).toBe(BASE * 4);
+            });
+
+            it('adds up to 50% random jitter', () => {
+                const withoutJitter = calculateBackoff(0, null, {
+                    ...noJitter,
+                    random: () => 0,
+                });
+
+                const withMaxJitter = calculateBackoff(0, null, {
+                    ...noJitter,
+                    random: () => 1,
+                });
+
+                expect(withoutJitter).toBe(BASE);
+                expect(withMaxJitter).toBe(BASE + BASE * 0.5);
+            });
+        });
+
+        describe('backoff cap', () => {
+            it('caps backoff at the configured cap', () => {
+                const backoff = calculateBackoff(20, null, noJitter);
+
+                expect(backoff).toBe(CAP);
+            });
+
+            it('never exceeds the backoff cap even with maximum jitter', () => {
+                const backoff = calculateBackoff(10, null, {
+                    random: () => 1,
                     baseDelayMs: BASE,
                     backoffCapMs: CAP,
-                }),
-            ).toBe(BASE * 4);
+                });
+
+                expect(backoff).toBe(CAP);
+            });
         });
 
-        it('adds up to 50% random jitter', () => {
-            const withoutJitter = calculateBackoff(0, null, {
-                ...noJitter,
-                random: () => 0,
+        describe('Retry-After', () => {
+            it('honors Retry-After header value', () => {
+                const backoff = calculateBackoff(0, 2000, noJitter);
+
+                expect(backoff).toBe(2000);
             });
 
-            const withMaxJitter = calculateBackoff(0, null, {
-                ...noJitter,
-                random: () => 1,
+            it('returns Retry-After exactly when it equals the cap', () => {
+                expect(calculateBackoff(0, CAP, noJitter)).toBe(CAP);
             });
 
-            expect(withoutJitter).toBe(BASE);
-            expect(withMaxJitter).toBe(BASE + BASE * 0.5);
-        });
-    });
+            it('caps Retry-After at the configured cap', () => {
+                const hugeRetryAfter = 86_400_000; // 24 hours
+                const backoff = calculateBackoff(0, hugeRetryAfter, noJitter);
 
-    describe('backoff cap', () => {
-        it('caps backoff at the configured cap', () => {
-            const backoff = calculateBackoff(20, null, noJitter);
-
-            expect(backoff).toBe(CAP);
-        });
-
-        it('never exceeds the backoff cap even with maximum jitter', () => {
-            const backoff = calculateBackoff(10, null, {
-                random: () => 1,
-                baseDelayMs: BASE,
-                backoffCapMs: CAP,
+                expect(backoff).toBe(CAP);
             });
 
-            expect(backoff).toBe(CAP);
+            it('falls back to exponential backoff when Retry-After is null', () => {
+                const backoff = calculateBackoff(0, null, noJitter);
+
+                expect(backoff).toBe(BASE);
+            });
+
+            it('uses 0 Retry-After as an immediate retry delay', () => {
+                const backoff = calculateBackoff(0, 0, noJitter);
+
+                expect(backoff).toBe(0);
+            });
+
+            it('falls back to exponential backoff when Retry-After is negative', () => {
+                const backoff = calculateBackoff(0, -1000, noJitter);
+
+                expect(backoff).toBe(BASE);
+            });
         });
     });
 
-    describe('Retry-After', () => {
-        it('honors Retry-After header value', () => {
-            const backoff = calculateBackoff(0, 2000, noJitter);
+    describe('parseRetryAfterHeader', () => {
+        function makeResponse(headers: Record<string, string>) {
+            return {
+                headers: {
+                    get: (name: string) => headers[name] ?? null,
+                },
+            } as unknown as HttpResponse;
+        }
 
-            expect(backoff).toBe(2000);
+        it('returns null when Retry-After header is present but empty after trimming', () => {
+            const getHeader = jest.fn().mockReturnValue('   ');
+            const response = {
+                headers: { get: getHeader },
+            } as unknown as HttpResponse;
+
+            const result = parseRetryAfterHeader(response);
+
+            expect(result).toBeNull();
+            expect(getHeader).toHaveBeenCalledWith('Retry-After');
         });
 
-        it('returns Retry-After exactly when it equals the cap', () => {
-            expect(calculateBackoff(0, CAP, noJitter)).toBe(CAP);
+        describe('header presence / invalid values', () => {
+            it('returns null when milliseconds exceed the safe integer range', () => {
+                expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': '9007199254741' }))).toBeNull();
+            });
+
+            it('returns null when header is absent', () => {
+                expect(parseRetryAfterHeader(makeResponse({}))).toBeNull();
+            });
+
+            it('returns null for unparsable values', () => {
+                expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': 'garbage' }))).toBeNull();
+            });
+
+            it('returns null for invalid numeric Retry-After values', () => {
+                expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': 'Infinity' }))).toBeNull();
+                expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': '-1' }))).toBeNull();
+                expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': '1.5' }))).toBeNull();
+            });
+
+            it('returns null for unsafe numeric Retry-After values', () => {
+                expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': '9007199254740992' }))).toBeNull();
+            });
         });
 
-        it('caps Retry-After at the configured cap', () => {
-            const hugeRetryAfter = 86_400_000; // 24 hours
-            const backoff = calculateBackoff(0, hugeRetryAfter, noJitter);
+        describe('delay-seconds', () => {
+            it('trims surrounding whitespace', () => {
+                expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': ' 5 ' }))).toBe(5000);
+            });
 
-            expect(backoff).toBe(CAP);
+            it('parses delay-seconds format', () => {
+                const result = parseRetryAfterHeader(makeResponse({ 'Retry-After': '5' }));
+                expect(result).toBe(5000);
+            });
         });
 
-        it('falls back to exponential backoff when Retry-After is null', () => {
-            const backoff = calculateBackoff(0, null, noJitter);
+        describe('HTTP-date', () => {
+            it('returns 0 when HTTP-date equals now', () => {
+                const now = Date.parse('2026-08-13T00:00:00Z');
+                const dateStr = new Date(now).toUTCString();
 
-            expect(backoff).toBe(BASE);
-        });
+                expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': dateStr }), now)).toBe(0);
+            });
 
-        it('uses 0 Retry-After as an immediate retry delay', () => {
-            const backoff = calculateBackoff(0, 0, noJitter);
+            it('parses HTTP-date format', () => {
+                const now = Date.parse('2026-08-13T00:00:00Z');
+                const dateStr = new Date(now + 3000).toUTCString();
 
-            expect(backoff).toBe(0);
-        });
+                expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': dateStr }), now)).toBe(3000);
+            });
 
-        it('falls back to exponential backoff when Retry-After is negative', () => {
-            const backoff = calculateBackoff(0, -1000, noJitter);
+            it('returns 0 for a past HTTP-date', () => {
+                const now = Date.parse('2026-08-13T00:00:00Z');
+                const past = new Date(now - 3000).toUTCString();
 
-            expect(backoff).toBe(BASE);
-        });
-    });
-});
-
-describe('parseRetryAfterHeader', () => {
-    function makeResponse(headers: Record<string, string>) {
-        return {
-            headers: {
-                get: (name: string) => headers[name] ?? null,
-            },
-        } as unknown as HttpResponse;
-    }
-
-    describe('header presence / invalid values', () => {
-        it('returns null when milliseconds exceed the safe integer range', () => {
-            expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': '9007199254741' }))).toBeNull();
-        });
-
-        it('returns null when header is absent', () => {
-            expect(parseRetryAfterHeader(makeResponse({}))).toBeNull();
-        });
-
-        it('returns null for unparsable values', () => {
-            expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': 'garbage' }))).toBeNull();
-        });
-
-        it('returns null for invalid numeric Retry-After values', () => {
-            expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': 'Infinity' }))).toBeNull();
-            expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': '-1' }))).toBeNull();
-            expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': '1.5' }))).toBeNull();
-        });
-
-        it('returns null for unsafe numeric Retry-After values', () => {
-            expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': '9007199254740992' }))).toBeNull();
-        });
-    });
-
-    describe('delay-seconds', () => {
-        it('trims surrounding whitespace', () => {
-            expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': ' 5 ' }))).toBe(5000);
-        });
-
-        it('parses delay-seconds format', () => {
-            const result = parseRetryAfterHeader(makeResponse({ 'Retry-After': '5' }));
-            expect(result).toBe(5000);
-        });
-    });
-
-    describe('HTTP-date', () => {
-        it('returns 0 when HTTP-date equals now', () => {
-            const now = Date.parse('2026-08-13T00:00:00Z');
-            const dateStr = new Date(now).toUTCString();
-
-            expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': dateStr }), now)).toBe(0);
-        });
-
-        it('parses HTTP-date format', () => {
-            const now = Date.parse('2026-08-13T00:00:00Z');
-            const dateStr = new Date(now + 3000).toUTCString();
-
-            expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': dateStr }), now)).toBe(3000);
-        });
-
-        it('returns 0 for a past HTTP-date', () => {
-            const now = Date.parse('2026-08-13T00:00:00Z');
-            const past = new Date(now - 3000).toUTCString();
-
-            expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': past }), now)).toBe(0);
+                expect(parseRetryAfterHeader(makeResponse({ 'Retry-After': past }), now)).toBe(0);
+            });
         });
     });
 });

@@ -7,6 +7,10 @@ import { BusinessOperation } from './businessOperation.js';
 const logger = createLogger(import.meta.url);
 
 type DelayMs = number | ((retryAttempt: number, error: TrialError) => number);
+type AttemptResult<T> = { ok: true; value: T } | { ok: false; error: TrialError };
+type RetryDirective =
+    | { action: 'retry'; delayMs: number }
+    | { action: 'halt'; reason: 'unexpected' | 'aborted' | 'not-retryable' | 'exhausted' };
 
 export class Retry<T> implements BusinessOperation<T> {
     private readonly operation: BusinessOperation<T>;
@@ -17,19 +21,6 @@ export class Retry<T> implements BusinessOperation<T> {
     private readonly signal: AbortSignal | undefined;
     private readonly clock: MonotonicClock['now'];
 
-    /**
-     * @param operation   The operation to execute, retried on failure.
-     * @param maxAttempts Maximum number of total attempts, including the initial attempt.
-     * @param shouldRetry Decides whether a failed attempt warrants another try.
-     *                    If it throws, that error propagates immediately.
-     * @param delayMs     Fixed delay in ms between attempts, or a function receiving
-     *                    the zero-indexed retry count and the triggering error.
-     * @param sleep       Async delay implementation. Defaults to the shared HTTP-layer sleeper.
-     * @param signal      Caller-controlled cancellation. Checked before the first attempt
-     *                    and before each backoff sleep, so an abort always stops execution
-     *                    before the next unit of work begins.
-     * @param clock        Monotonic clock used for elapsed-duration logging.
-     */
     constructor(
         operation: BusinessOperation<T>,
         maxAttempts: number,
@@ -53,51 +44,90 @@ export class Retry<T> implements BusinessOperation<T> {
     }
 
     async perform(): Promise<T> {
-        if (this.signal?.aborted) {
-            throw new CallerAbortedError();
-        }
+        this.ensureNotAborted();
 
         const startedAt = this.clock();
 
-        for (let attempt = 1; ; attempt++) {
-            try {
-                const result = await this.operation.perform();
+        for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+            const result = await this.tryOnce();
 
+            if (result.ok) {
                 if (attempt > 1) {
                     this.logRecovery(attempt, attempt - 1, startedAt);
                 }
-
-                return result;
-            } catch (error: unknown) {
-                const trialError = TrialError.normalize(error);
-
-                if (trialError instanceof UnexpectedError) {
-                    throw trialError;
-                }
-
-                // Caller cancellation is a control-flow signal, not a retry-policy decision.
-                // It always takes precedence over shouldRetry().
-                if (trialError instanceof CallerAbortedError) {
-                    throw trialError;
-                }
-
-                if (!this.shouldRetry(trialError)) {
-                    this.logNotRetryable(trialError);
-                    throw trialError;
-                }
-
-                if (attempt >= this.maxAttempts) {
-                    this.logExhausted(attempt, trialError, startedAt);
-                    throw trialError;
-                }
-
-                const retryIndex = attempt - 1;
-                const delayMs = this.resolveDelay(retryIndex, trialError);
-
-                this.logRetrying(attempt + 1, delayMs, trialError);
-
-                await this.sleepWithAbortCheck(delayMs);
+                return result.value;
             }
+
+            const directive = this.determineNextAction(attempt, result.error);
+
+            if (directive.action === 'halt') {
+                this.logHaltReason(directive.reason, attempt, result.error, startedAt);
+                throw result.error;
+            }
+
+            this.logRetrying(attempt + 1, directive.delayMs, result.error);
+            await this.delayWithAbortCheck(directive.delayMs);
+        }
+
+        throw new Error('Retry loop completed without resolution');
+    }
+
+    private async tryOnce(): Promise<AttemptResult<T>> {
+        try {
+            const value = await this.operation.perform();
+            return { ok: true, value };
+        } catch (error: unknown) {
+            return { ok: false, error: TrialError.normalize(error) };
+        }
+    }
+
+    private determineNextAction(currentAttempt: number, error: TrialError): RetryDirective {
+        if (error instanceof UnexpectedError) {
+            return { action: 'halt', reason: 'unexpected' };
+        }
+
+        if (error instanceof CallerAbortedError) {
+            return { action: 'halt', reason: 'aborted' };
+        }
+
+        if (!this.shouldRetry(error)) {
+            return { action: 'halt', reason: 'not-retryable' };
+        }
+
+        if (currentAttempt >= this.maxAttempts) {
+            return { action: 'halt', reason: 'exhausted' };
+        }
+
+        const delayMs = this.resolveDelay(currentAttempt - 1, error);
+
+        return { action: 'retry', delayMs };
+    }
+
+    private logHaltReason(
+        reason: 'unexpected' | 'aborted' | 'not-retryable' | 'exhausted',
+        attempt: number,
+        error: TrialError,
+        startedAt: number,
+    ): void {
+        switch (reason) {
+            case 'not-retryable':
+                this.logNotRetryable(error);
+                break;
+            case 'exhausted':
+                this.logExhausted(attempt, error, startedAt);
+                break;
+            case 'unexpected':
+                this.logUnexpected(attempt, error, startedAt);
+                break;
+            case 'aborted':
+                this.logAborted(attempt, error, startedAt);
+                break;
+        }
+    }
+
+    private ensureNotAborted(): void {
+        if (this.signal?.aborted) {
+            throw new CallerAbortedError();
         }
     }
 
@@ -106,7 +136,7 @@ export class Retry<T> implements BusinessOperation<T> {
         return Math.max(0, raw);
     }
 
-    private async sleepWithAbortCheck(ms: number): Promise<void> {
+    private async delayWithAbortCheck(ms: number): Promise<void> {
         if (this.signal?.aborted) {
             throw new CallerAbortedError();
         }
@@ -174,6 +204,30 @@ export class Retry<T> implements BusinessOperation<T> {
                 errorType: error.name,
             },
             'Operation failed; retrying',
+        );
+    }
+
+    private logUnexpected(attempt: number, error: TrialError, startedAt: number): void {
+        logger.debug(
+            {
+                attempts: attempt,
+                durationMs: this.clock() - startedAt,
+                err: error,
+                errorType: error.name,
+            },
+            'Unexpected error; halting retries immediately',
+        );
+    }
+
+    private logAborted(attempt: number, error: TrialError, startedAt: number): void {
+        logger.debug(
+            {
+                attempts: attempt,
+                durationMs: this.clock() - startedAt,
+                err: error,
+                errorType: error.name,
+            },
+            'Caller aborted; halting retries',
         );
     }
 }

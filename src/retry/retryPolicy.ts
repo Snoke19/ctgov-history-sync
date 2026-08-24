@@ -10,7 +10,6 @@ import { HttpResponse } from '../http/transport/httpTransport.js';
 import { makeAssertions } from '../utils/assertions.js';
 
 const retryPolicyAssert = makeAssertions(ConfigurationError);
-
 const JITTER_FACTOR = 0.5;
 
 /**
@@ -21,15 +20,7 @@ export interface RetryPolicyConfig {
     readonly retryOnTimeout: boolean;
     readonly retryOnNetworkError: boolean;
     readonly retryableStatusCodes: ReadonlySet<number>;
-
-    /**
-     * Base delay in milliseconds for the first exponential-backoff retry.
-     */
     readonly baseDelayMs: number;
-
-    /**
-     * Maximum delay in milliseconds for any single retry.
-     */
     readonly backoffCapMs: number;
 }
 
@@ -40,13 +31,8 @@ export interface RetryPolicyConfig {
  * remains independent of application-level configuration.
  */
 export interface BackoffOptions {
-    /** Jitter source returning a value in [0, 1). */
     readonly random: () => number;
-
-    /** Base delay in milliseconds for the first retry. */
     readonly baseDelayMs: number;
-
-    /** Maximum retry delay in milliseconds. */
     readonly backoffCapMs: number;
 }
 
@@ -63,30 +49,20 @@ export interface BackoffOptions {
  *
  * @param attempt      - Zero-indexed retry number (0 = first retry).
  * @param retryAfterMs - Parsed Retry-After header value in ms, or null.
- * @param options - Backoff parameters used for this calculation.
+ * @param options      - Backoff parameters used for this calculation.
  */
 export function calculateBackoff(attempt: number, retryAfterMs: number | null, options: BackoffOptions): number {
-    const { random, baseDelayMs, backoffCapMs } = options;
-
     if (retryAfterMs !== null && retryAfterMs >= 0) {
-        return Math.min(retryAfterMs, backoffCapMs);
+        return Math.min(retryAfterMs, options.backoffCapMs);
     }
 
-    const exponent = 2 ** attempt;
-
-    if (!Number.isFinite(exponent)) {
-        return backoffCapMs;
+    const baseDelay = calculateExponentialBase(attempt, options.baseDelayMs);
+    if (!Number.isFinite(baseDelay)) {
+        return options.backoffCapMs;
     }
 
-    const base = baseDelayMs * exponent;
-
-    if (!Number.isFinite(base)) {
-        return backoffCapMs;
-    }
-
-    const jitter = random() * base * JITTER_FACTOR;
-
-    return Math.min(base + jitter, backoffCapMs);
+    const jitter = calculateJitter(baseDelay, options.random);
+    return Math.min(baseDelay + jitter, options.backoffCapMs);
 }
 
 /**
@@ -96,58 +72,85 @@ export function calculateBackoff(attempt: number, retryAfterMs: number | null, o
  *   - Delay-seconds:  `Retry-After: 120`
  *   - HTTP-date:      `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT`
  *
- * @returns Milliseconds to wait, or null if the header is absent.
+ * @returns Milliseconds to wait, or null if the header is absent or malformed.
  *          Returns 0 if the parsed date is already in the past.
  */
 export function parseRetryAfterHeader(response: HttpResponse, now: number = Date.now()): number | null {
     const raw = response.headers.get('Retry-After');
-    if (!raw) return null;
+    if (!raw) {
+        return null;
+    }
 
     const value = raw.trim();
 
     if (/^[+-]?\d/.test(value)) {
-        if (!/^\d+$/.test(value)) {
-            return null;
-        }
-
-        const seconds = Number(value);
-
-        if (!Number.isSafeInteger(seconds)) {
-            return null;
-        }
-
-        const milliseconds = seconds * 1000;
-
-        if (!Number.isSafeInteger(milliseconds)) {
-            return null;
-        }
-
-        return milliseconds;
+        return tryParseDelaySeconds(value);
     }
 
-    const dateMs = Date.parse(value);
-
-    if (!Number.isNaN(dateMs)) {
-        return Math.max(0, dateMs - now);
-    }
-
-    return null;
+    return tryParseHttpDate(value, now);
 }
 
 /**
  * Validates a retry policy config before it is used.
  *
- * Restrictions:
- * - 404 must never be retryable: the allow404 option depends on 404 being
- *   non-retryable so that retry.perform() throws an HttpException instead of
- *   looping.
- * - Retryable status codes must be valid HTTP status codes (100-599).
- * - /**
- * - baseDelayMs and backoffCapMs must be positive integers.
- *
  * Throws ConfigurationError on the first violation.
  */
 export function validateRetryPolicyConfig(config: RetryPolicyConfig): void {
+    assert404NotRetryable(config);
+    assertBackoffOrdering(config);
+    assertValidStatusCodes(config);
+    assertPositiveInteger(config.baseDelayMs, 'baseDelayMs');
+    assertPositiveInteger(config.backoffCapMs, 'backoffCapMs');
+}
+
+/**
+ * Decides whether a failed GET request should be retried.
+ *
+ * - Caller-aborted errors are never retried.
+ * - Timeouts        → retried only when config.retryOnTimeout is true.
+ * - Network errors  → retried only when config.retryOnNetworkError is true.
+ * - HTTP errors     → retried only when the status is in config.retryableStatusCodes.
+ */
+export function shouldRetry(error: TrialError, config: RetryPolicyConfig): boolean {
+    if (error instanceof CallerAbortedError) {
+        return false;
+    }
+
+    return isEligibleForRetry(error, config);
+}
+
+function calculateExponentialBase(attempt: number, baseDelayMs: number): number {
+    return baseDelayMs * 2 ** attempt;
+}
+
+function calculateJitter(baseDelay: number, random: () => number): number {
+    return random() * baseDelay * JITTER_FACTOR;
+}
+
+function tryParseDelaySeconds(value: string): number | null {
+    // RFC 9110: delay-seconds is a non-negative decimal integer.
+    if (!/^\d+$/.test(value)) {
+        return null;
+    }
+
+    const seconds = Number(value);
+    if (!Number.isSafeInteger(seconds)) {
+        return null;
+    }
+
+    const milliseconds = seconds * 1000;
+    return Number.isSafeInteger(milliseconds) ? milliseconds : null;
+}
+
+function tryParseHttpDate(value: string, now: number): number | null {
+    const dateMs = Date.parse(value);
+    if (Number.isNaN(dateMs)) {
+        return null;
+    }
+    return Math.max(0, dateMs - now);
+}
+
+function assert404NotRetryable(config: RetryPolicyConfig): void {
     if (config.retryableStatusCodes.has(404)) {
         throw new ConfigurationError(
             '404 must not be in retryableStatusCodes. ' +
@@ -155,43 +158,27 @@ export function validateRetryPolicyConfig(config: RetryPolicyConfig): void {
                 'retry.perform() throws an HttpException instead of looping.',
         );
     }
+}
 
+function assertBackoffOrdering(config: RetryPolicyConfig): void {
     if (config.backoffCapMs < config.baseDelayMs) {
         throw new ConfigurationError('backoffCapMs must be >= baseDelayMs');
     }
+}
 
+function assertValidStatusCodes(config: RetryPolicyConfig): void {
     for (const status of config.retryableStatusCodes) {
         if (!Number.isInteger(status) || status < 100 || status > 599) {
             throw new ConfigurationError(`retryableStatusCodes contains invalid status: ${status}`);
         }
     }
-
-    retryPolicyAssert.assertInteger(config.baseDelayMs, 'baseDelayMs', {
-        min: 1,
-        label: 'a positive integer',
-    });
-
-    retryPolicyAssert.assertInteger(config.backoffCapMs, 'backoffCapMs', {
-        min: 1,
-        label: 'a positive integer',
-    });
 }
 
-/**
- * Decides whether a failed GET request should be retried.
- *
- * - Timeouts        → retried only when config.retryOnTimeout is true.
- * - Network errors  → retried only when config.retryOnNetworkError is true.
- * - HTTP errors     → retried only when the status is in
- *                     config.retryableStatusCodes.
- */
-export function shouldRetry(error: TrialError, config: RetryPolicyConfig): boolean {
-    // Keep the policy safe when evaluated independently of Retry.
-    // CallerAbortedError is never considered retryable.
-    if (error instanceof CallerAbortedError) {
-        return false;
-    }
+function assertPositiveInteger(value: number, name: string): void {
+    retryPolicyAssert.assertInteger(value, name, { min: 1, label: 'a positive integer' });
+}
 
+function isEligibleForRetry(error: TrialError, config: RetryPolicyConfig): boolean {
     if (error instanceof TimeoutException) {
         return config.retryOnTimeout;
     }
