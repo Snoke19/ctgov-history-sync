@@ -837,7 +837,7 @@ describe('Retry', () => {
                 .mockResolvedValueOnce('first')
                 .mockResolvedValueOnce('second');
             const operation = makeOperation(perform);
-            const delay = jest.fn<(attempt: number, error: TrialError) => number>((attempt) => {
+            const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockImplementation((attempt) => {
                 delayAttempts.push(attempt);
                 return 0;
             });
@@ -856,7 +856,7 @@ describe('Retry', () => {
             expect(sleep).toHaveBeenCalledTimes(2);
         });
 
-        it('does not accumulate state across repeated retry cycles (stability smoke test)', async () => {
+        it('does not accumulate execution state across repeated retry cycles', async () => {
             const perform = jest.fn<() => Promise<string>>();
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
@@ -1060,50 +1060,6 @@ describe('Retry', () => {
     });
 
     describe('resource stability', () => {
-        it('handles repeated retry cycles with large error objects without accumulating execution state', async () => {
-            const perform = jest.fn<() => Promise<string>>();
-            const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-            const retry = new Retry(makeOperation(perform), 2, () => true, 0, sleep);
-
-            for (let i = 0; i < 100; i++) {
-                perform
-                    .mockRejectedValueOnce(
-                        new HttpException(`error ${i}`, 500, undefined, {
-                            context: {
-                                payload: 'x'.repeat(10_000),
-                            },
-                        }),
-                    )
-                    .mockResolvedValueOnce('ok');
-
-                await expect(retry.perform()).resolves.toBe('ok');
-            }
-
-            expect(perform).toHaveBeenCalledTimes(200);
-            expect(sleep).toHaveBeenCalledTimes(100);
-        });
-
-        it('does not leak previous execution state after successful recovery', async () => {
-            const largeError = new HttpException('large failure', 500, undefined, {
-                context: {
-                    payload: 'x'.repeat(100_000),
-                },
-            });
-            const nextError = new HttpException('next failure', 500);
-            const perform = jest
-                .fn<() => Promise<string>>()
-                .mockRejectedValueOnce(largeError)
-                .mockResolvedValueOnce('ok')
-                .mockRejectedValueOnce(nextError)
-                .mockRejectedValueOnce(nextError);
-
-            const retry = new Retry(makeOperation(perform), 2, () => true, 0);
-
-            await expect(retry.perform()).resolves.toBe('ok');
-            await expect(retry.perform()).rejects.toBe(nextError);
-            expect(perform).toHaveBeenCalledTimes(4);
-        });
-
         it('starts clean after an exhausted retry cycle', async () => {
             const error = new HttpException('failure', 500);
             const perform = jest.fn<() => Promise<string>>().mockRejectedValue(error);
@@ -1116,29 +1072,6 @@ describe('Retry', () => {
 
             await expect(retry.perform()).resolves.toBe('recovered');
             expect(perform).toHaveBeenCalledTimes(1);
-        });
-
-        it('keeps retry cycles isolated with large errors', async () => {
-            const perform = jest.fn<() => Promise<string>>();
-
-            const retry = new Retry(makeOperation(perform), 2, () => true, 0);
-
-            for (let i = 0; i < 200; i++) {
-                perform
-                    .mockRejectedValueOnce(
-                        new HttpException(`failure-${i}`, 500, undefined, {
-                            context: {
-                                payload: {
-                                    data: 'x'.repeat(50_000),
-                                },
-                            },
-                        }),
-                    )
-                    .mockResolvedValueOnce(`ok-${i}`);
-
-                await expect(retry.perform()).resolves.toBe(`ok-${i}`);
-                expect(perform).toHaveBeenCalledTimes((i + 1) * 2);
-            }
         });
 
         it('does not leak retry counters between concurrent executions', async () => {
