@@ -880,7 +880,7 @@ describe('Retry', () => {
             );
         });
 
-        it('logs not-retryable when final attempt error is not retryable', async () => {
+        it('logs not-retryable when shouldRetry returns false', async () => {
             const error = new HttpException('not found', 404);
             const perform = jest
                 .fn<() => Promise<string>>()
@@ -990,7 +990,7 @@ describe('Retry', () => {
 
             const retry = new Retry(makeOperation(perform), 3, () => true, 1000, sleep, undefined, clock);
 
-            await expect(retry.perform()).rejects.toThrow('database corruption detected');
+            await expect(retry.perform()).rejects.toBe(unexpectedError);
 
             expect(perform).toHaveBeenCalledTimes(1);
             expect(sleep).not.toHaveBeenCalled();
@@ -1055,7 +1055,7 @@ describe('Retry', () => {
     });
 
     describe('resource stability', () => {
-        it('does not hold references to large error payloads after a cycle completes (stability smoke test)', async () => {
+        it('handles repeated retry cycles with large error objects without accumulating execution state', async () => {
             const perform = jest.fn<() => Promise<string>>();
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
             const retry = new Retry(makeOperation(perform), 2, () => true, 0, sleep);
@@ -1075,6 +1075,88 @@ describe('Retry', () => {
             }
 
             expect(perform).toHaveBeenCalledTimes(200);
+            expect(sleep).toHaveBeenCalledTimes(100);
+        });
+
+        it('does not leak previous execution state after successful recovery', async () => {
+            const largeError = new HttpException('large failure', 500, undefined, {
+                context: {
+                    payload: 'x'.repeat(100_000),
+                },
+            });
+            const nextError = new HttpException('next failure', 500);
+            const perform = jest
+                .fn<() => Promise<string>>()
+                .mockRejectedValueOnce(largeError)
+                .mockResolvedValueOnce('ok')
+                .mockRejectedValueOnce(nextError)
+                .mockRejectedValueOnce(nextError);
+
+            const retry = new Retry(makeOperation(perform), 2, () => true, 0);
+
+            await expect(retry.perform()).resolves.toBe('ok');
+            await expect(retry.perform()).rejects.toBe(nextError);
+            expect(perform).toHaveBeenCalledTimes(4);
+        });
+
+        it('starts clean after an exhausted retry cycle', async () => {
+            const error = new HttpException('failure', 500);
+            const perform = jest.fn<() => Promise<string>>().mockRejectedValue(error);
+            const retry = new Retry(makeOperation(perform), 2, () => true, 0);
+
+            await expect(retry.perform()).rejects.toBe(error);
+
+            perform.mockReset();
+            perform.mockResolvedValue('recovered');
+
+            await expect(retry.perform()).resolves.toBe('recovered');
+            expect(perform).toHaveBeenCalledTimes(1);
+        });
+
+        it('keeps retry cycles isolated with large errors', async () => {
+            const perform = jest.fn<() => Promise<string>>();
+
+            const retry = new Retry(makeOperation(perform), 2, () => true, 0);
+
+            for (let i = 0; i < 200; i++) {
+                perform
+                    .mockRejectedValueOnce(
+                        new HttpException(`failure-${i}`, 500, undefined, {
+                            context: {
+                                payload: {
+                                    data: 'x'.repeat(50_000),
+                                },
+                            },
+                        }),
+                    )
+                    .mockResolvedValueOnce(`ok-${i}`);
+
+                await expect(retry.perform()).resolves.toBe(`ok-${i}`);
+                expect(perform).toHaveBeenCalledTimes((i + 1) * 2);
+            }
+        });
+
+        it('does not leak retry counters between concurrent executions', async () => {
+            const perform = jest.fn(async () => {
+                throw new HttpException('failure', 500);
+            });
+            const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
+            const retry = new Retry(makeOperation(perform), 2, () => true, 0, sleep);
+            const results = await Promise.allSettled([retry.perform(), retry.perform()]);
+
+            expect(sleep).toHaveBeenCalledTimes(2);
+            expect(results).toHaveLength(2);
+            expect(results).toEqual([
+                expect.objectContaining({
+                    status: 'rejected',
+                    reason: expect.any(HttpException),
+                }),
+                expect.objectContaining({
+                    status: 'rejected',
+                    reason: expect.any(HttpException),
+                }),
+            ]);
+            expect(perform).toHaveBeenCalledTimes(4);
         });
     });
 });
