@@ -56,6 +56,15 @@ export class Retry<T> implements BusinessOperation<T> {
         this.clock = clock;
     }
 
+    /**
+     * Executes the operation with retries.
+     *
+     * Cancellation semantics:
+     * - An already-aborted signal prevents the first attempt.
+     * - Cancellation during retry backoff stops further attempts.
+     * - If an operation completes successfully, its result wins over a
+     *   concurrent abort that occurs while the operation is in flight.
+     */
     async perform(): Promise<T> {
         this.ensureNotAborted();
 
