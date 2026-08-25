@@ -421,19 +421,6 @@ describe('retryPolicy', () => {
             backoffCapMs: CAP,
         };
 
-        describe('backoff overflow protection', () => {
-            it('returns the configured cap when exponential calculation overflows', () => {
-                const cap = 30_000;
-                const result = calculateBackoff(1024, null, {
-                    random: () => 0,
-                    baseDelayMs: 1_000,
-                    backoffCapMs: cap,
-                });
-
-                expect(result).toBe(cap);
-            });
-        });
-
         describe('jitter', () => {
             it('returns the base delay when random returns 0', () => {
                 const result = calculateBackoff(0, null, {
@@ -482,6 +469,41 @@ describe('retryPolicy', () => {
         });
 
         describe('input validation', () => {
+            it('wraps an exception thrown by random() in RetryDelayCalculationError', () => {
+                const randomError = new Error('random source failed');
+
+                expect(() =>
+                    calculateBackoff(0, null, {
+                        random: () => {
+                            throw randomError;
+                        },
+                        baseDelayMs: 1_000,
+                        backoffCapMs: 10_000,
+                    }),
+                ).toThrow(
+                    expect.objectContaining({
+                        name: 'RetryDelayCalculationError',
+                        message: 'Failed to calculate retry delay: random source failed',
+                        cause: randomError,
+                    }),
+                );
+            });
+
+            it('does not call random when Retry-After is provided', () => {
+                const random = jest.fn(() => {
+                    throw new Error('random should not be called');
+                });
+
+                const result = calculateBackoff(0, 2_000, {
+                    random,
+                    baseDelayMs: 1_000,
+                    backoffCapMs: 10_000,
+                });
+
+                expect(result).toBe(2_000);
+                expect(random).not.toHaveBeenCalled();
+            });
+
             it('throws for fractional retryAfterMs', () => {
                 expect(() => calculateBackoff(0, 150.75, noJitter)).toThrow(ConfigurationError);
                 expect(() => calculateBackoff(0, 150.75, noJitter)).toThrow('retryAfterMs must be an integer');

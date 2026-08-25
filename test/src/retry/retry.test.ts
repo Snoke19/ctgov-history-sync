@@ -1059,7 +1059,7 @@ describe('Retry', () => {
         });
     });
 
-    describe('resource stability', () => {
+    describe('execution state isolation', () => {
         it('starts clean after an exhausted retry cycle', async () => {
             const error = new HttpException('failure', 500);
             const perform = jest.fn<() => Promise<string>>().mockRejectedValue(error);

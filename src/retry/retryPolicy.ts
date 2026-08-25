@@ -3,6 +3,7 @@ import {
     ConfigurationError,
     HttpException,
     NetworkException,
+    RetryDelayCalculationError,
     TimeoutException,
     TrialError,
 } from '../error/errors.js';
@@ -120,6 +121,14 @@ export function validateRetryPolicyConfig(config: RetryPolicyConfig): void {
         throw new ConfigurationError('retryableStatusCodes must be a Set<number>');
     }
 
+    if (typeof config.retryOnTimeout !== 'boolean') {
+        throw new ConfigurationError('retryOnTimeout must be a boolean');
+    }
+
+    if (typeof config.retryOnNetworkError !== 'boolean') {
+        throw new ConfigurationError('retryOnNetworkError must be a boolean');
+    }
+
     assert404NotRetryable(config);
     assertBackoffOrdering(config);
     assertValidStatusCodes(config);
@@ -148,7 +157,13 @@ function calculateExponentialBase(attempt: number, baseDelayMs: number): number 
 }
 
 function calculateJitter(baseDelay: number, random: () => number): number {
-    const value = random();
+    let value: number;
+
+    try {
+        value = random();
+    } catch (cause: unknown) {
+        throw new RetryDelayCalculationError(cause);
+    }
 
     if (!Number.isFinite(value) || value < 0 || value > 1) {
         throw new ConfigurationError('random() must return a finite number between 0 and 1');
