@@ -52,7 +52,23 @@ export interface BackoffOptions {
  * @param options      - Backoff parameters used for this calculation.
  */
 export function calculateBackoff(attempt: number, retryAfterMs: number | null, options: BackoffOptions): number {
-    if (retryAfterMs !== null && retryAfterMs >= 0) {
+    if (!Number.isInteger(attempt) || attempt < 0) {
+        throw new ConfigurationError('attempt must be a non-negative integer');
+    }
+    if (!Number.isInteger(options.baseDelayMs) || options.baseDelayMs < 1) {
+        throw new ConfigurationError('baseDelayMs must be a positive integer');
+    }
+    if (!Number.isInteger(options.backoffCapMs) || options.backoffCapMs < 1) {
+        throw new ConfigurationError('backoffCapMs must be a positive integer');
+    }
+
+    if (retryAfterMs !== null) {
+        if (!Number.isInteger(retryAfterMs)) {
+            throw new ConfigurationError('retryAfterMs must be an integer');
+        }
+        if (retryAfterMs < 0) {
+            throw new ConfigurationError('retryAfterMs must be non-negative');
+        }
         return Math.min(retryAfterMs, options.backoffCapMs);
     }
 
@@ -76,6 +92,10 @@ export function calculateBackoff(attempt: number, retryAfterMs: number | null, o
  *          Returns 0 if the parsed date is already in the past.
  */
 export function parseRetryAfterHeader(response: HttpResponse, now: number = Date.now()): number | null {
+    if (!Number.isInteger(now)) {
+        throw new ConfigurationError('now must be an integer');
+    }
+
     const raw = response.headers.get('Retry-After');
     if (!raw) {
         return null;
@@ -96,6 +116,10 @@ export function parseRetryAfterHeader(response: HttpResponse, now: number = Date
  * Throws ConfigurationError on the first violation.
  */
 export function validateRetryPolicyConfig(config: RetryPolicyConfig): void {
+    if (!(config.retryableStatusCodes instanceof Set)) {
+        throw new ConfigurationError('retryableStatusCodes must be a Set<number>');
+    }
+
     assert404NotRetryable(config);
     assertBackoffOrdering(config);
     assertValidStatusCodes(config);
@@ -128,7 +152,6 @@ function calculateJitter(baseDelay: number, random: () => number): number {
 }
 
 function tryParseDelaySeconds(value: string): number | null {
-    // RFC 9110: delay-seconds is a non-negative decimal integer.
     if (!/^\d+$/.test(value)) {
         return null;
     }
@@ -169,7 +192,10 @@ function assertBackoffOrdering(config: RetryPolicyConfig): void {
 function assertValidStatusCodes(config: RetryPolicyConfig): void {
     for (const status of config.retryableStatusCodes) {
         if (!Number.isInteger(status) || status < 100 || status > 599) {
-            throw new ConfigurationError(`retryableStatusCodes contains invalid status: ${status}`);
+            throw new ConfigurationError(
+                `retryableStatusCodes contains invalid status: ${status}. ` +
+                    'Status code must be an integer between 100 and 599.',
+            );
         }
     }
 }

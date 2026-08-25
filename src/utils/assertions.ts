@@ -30,10 +30,11 @@ export function makeAssertions(ErrorType: ErrorCtor): Assertions {
         assertInteger(value: number, name: string, opts: { min?: number; max?: number; label?: string } = {}): void {
             const { min = -Infinity, max = Infinity, label } = opts;
 
-            if (Number.isInteger(value) && value >= min && value <= max) return;
+            if (Number.isSafeInteger(value) && value >= min && value <= max) return;
 
             const description =
-                label ?? `an integer${min !== -Infinity ? ` >= ${min}` : ''}${max !== Infinity ? ` <= ${max}` : ''}`;
+                label ??
+                `a safe integer${min !== -Infinity ? ` >= ${min}` : ''}${max !== Infinity ? ` <= ${max}` : ''}`;
 
             fail(`${name} must be ${description}`);
         },
