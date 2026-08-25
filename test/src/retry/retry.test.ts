@@ -146,7 +146,7 @@ describe('Retry', () => {
                     statusCode: 500,
                     err: expect.any(HttpException),
                     errorType: 'HttpException',
-                    durationMs: expect.any(Number)
+                    durationMs: expect.any(Number),
                 }),
                 'Operation failed; retrying',
             );
@@ -916,7 +916,7 @@ describe('Retry', () => {
 
             await expect(retry.perform()).rejects.toBe(error);
             expect(mockLogger.warn).toHaveBeenCalledWith(
-                expect.objectContaining({ attempts: 2, maxAttempts: 2 }),
+                expect.objectContaining({ attempts: 2, maxAttempts: 2, durationMs: expect.any(Number) }),
                 'Operation failed; maximum attempts reached',
             );
         });
@@ -933,7 +933,11 @@ describe('Retry', () => {
             const retry = new Retry(makeOperation(perform), 2, shouldRetry, 0, sleep);
             await expect(retry.perform()).rejects.toBe(error);
             expect(mockLogger.debug).toHaveBeenCalledWith(
-                expect.objectContaining({ err: error }),
+                expect.objectContaining({
+                    err: error,
+                    errorType: 'HttpException',
+                    durationMs: expect.any(Number),
+                }),
                 'Operation failed; error is not retryable',
             );
         });
