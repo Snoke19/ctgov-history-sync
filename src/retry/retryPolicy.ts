@@ -148,7 +148,13 @@ function calculateExponentialBase(attempt: number, baseDelayMs: number): number 
 }
 
 function calculateJitter(baseDelay: number, random: () => number): number {
-    return random() * baseDelay * JITTER_FACTOR;
+    const value = random();
+
+    if (!Number.isFinite(value) || value < 0 || value > 1) {
+        throw new ConfigurationError('random() must return a finite number between 0 and 1');
+    }
+
+    return value * baseDelay * JITTER_FACTOR;
 }
 
 function tryParseDelaySeconds(value: string): number | null {

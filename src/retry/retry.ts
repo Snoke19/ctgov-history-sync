@@ -79,7 +79,16 @@ export class Retry<T> implements BusinessOperation<T> {
             }
 
             this.logRetrying(attempt + 1, directive.delayMs, result.error);
-            await this.delayWithAbortCheck(directive.delayMs);
+
+            try {
+                await this.delayWithAbortCheck(directive.delayMs);
+            } catch (error: unknown) {
+                if (error instanceof CallerAbortedError) {
+                    this.logHaltReason('aborted', attempt, error, startedAt);
+                }
+
+                throw error;
+            }
         }
 
         throw new Error('Invariant violated: retry loop exited without returning or throwing.');
@@ -250,11 +259,15 @@ export class Retry<T> implements BusinessOperation<T> {
 
         try {
             raw = typeof this.delayMs === 'function' ? this.delayMs(currentAttempt, error) : this.delayMs;
+
+            this.validateDelay(raw);
         } catch (cause: unknown) {
+            if (cause instanceof RetryDelayCalculationError) {
+                throw cause;
+            }
+
             throw new RetryDelayCalculationError(cause);
         }
-
-        this.validateDelay(raw);
 
         return raw;
     }

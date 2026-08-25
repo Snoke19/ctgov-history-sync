@@ -421,6 +421,57 @@ describe('retryPolicy', () => {
             backoffCapMs: CAP,
         };
 
+        describe('backoff overflow protection', () => {
+            it('returns the configured cap when exponential calculation overflows', () => {
+                const cap = 30_000;
+                const result = calculateBackoff(1024, null, {
+                    random: () => 0,
+                    baseDelayMs: 1_000,
+                    backoffCapMs: cap,
+                });
+
+                expect(result).toBe(cap);
+            });
+        });
+
+        describe('jitter random contract', () => {
+            it('returns the base delay when random returns 0', () => {
+                const result = calculateBackoff(0, null, {
+                    random: () => 0,
+                    baseDelayMs: 1_000,
+                    backoffCapMs: 10_000,
+                });
+
+                expect(result).toBe(1_000);
+            });
+
+            it('returns base delay plus the maximum 50% jitter when random returns 1', () => {
+                const result = calculateBackoff(0, null, {
+                    random: () => 1,
+                    baseDelayMs: 1_000,
+                    backoffCapMs: 10_000,
+                });
+
+                expect(result).toBe(1_500);
+            });
+
+            it.each([
+                ['negative', -0.01],
+                ['above one', 1.01],
+                ['NaN', Number.NaN],
+                ['positive Infinity', Number.POSITIVE_INFINITY],
+                ['negative Infinity', Number.NEGATIVE_INFINITY],
+            ])('rejects invalid random() output: %s', (_, value) => {
+                expect(() =>
+                    calculateBackoff(0, null, {
+                        random: () => value,
+                        baseDelayMs: 1_000,
+                        backoffCapMs: 10_000,
+                    }),
+                ).toThrow(ConfigurationError);
+            });
+        });
+
         describe('input validation', () => {
             it('throws for fractional retryAfterMs', () => {
                 expect(() => calculateBackoff(0, 150.75, noJitter)).toThrow(ConfigurationError);
