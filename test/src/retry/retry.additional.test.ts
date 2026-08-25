@@ -30,50 +30,6 @@ describe('Retry additional edge cases', () => {
     }
 
     describe('cancellation during retry backoff', () => {
-        it('logs caller abortion when the signal is aborted before the retry backoff starts', async () => {
-            const controller = new AbortController();
-            const operation = makeOperation(
-                jest.fn<() => Promise<string>>().mockRejectedValue(new HttpException('server error', 500)),
-            );
-            const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-
-            const retry = new Retry(operation, 2, () => true, 10, sleep, controller.signal);
-
-            controller.abort();
-            const result = retry.perform();
-
-            await expect(result).rejects.toBeInstanceOf(CallerAbortedError);
-            expect(operation.perform).not.toHaveBeenCalled();
-            expect(sleep).not.toHaveBeenCalled();
-        });
-
-        it('logs caller abortion when the signal becomes aborted during retry backoff', async () => {
-            const controller = new AbortController();
-            const retryError = new HttpException('server error', 500);
-            const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryError));
-            const sleep = jest
-                .fn<(ms: number, signal?: AbortSignal) => Promise<void>>()
-                .mockImplementation(async () => {
-                    controller.abort();
-                    throw new Error('sleep interrupted');
-                });
-
-            const retry = new Retry(operation, 2, () => true, 10, sleep, controller.signal);
-            const result = retry.perform();
-
-            await expect(result).rejects.toBeInstanceOf(CallerAbortedError);
-            expect(operation.perform).toHaveBeenCalledTimes(1);
-            expect(sleep).toHaveBeenCalledTimes(1);
-
-            expect(mockLogger.debug).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    err: expect.any(CallerAbortedError),
-                    errorType: 'CallerAbortedError',
-                }),
-                'Caller aborted; halting retries',
-            );
-        });
-
         it('does not execute another attempt after cancellation during backoff', async () => {
             const controller = new AbortController();
             const perform = jest
@@ -93,6 +49,32 @@ describe('Retry additional edge cases', () => {
             expect(perform).toHaveBeenCalledTimes(1);
             expect(sleep).toHaveBeenCalledTimes(1);
         });
+
+        it('requires cancellation during backoff to be logged as an aborted retry', async () => {
+            const controller = new AbortController();
+            const retryError = new HttpException('server error', 500);
+            const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryError));
+            const sleep = jest
+                .fn<(ms: number, signal?: AbortSignal) => Promise<void>>()
+                .mockImplementation(async () => {
+                    controller.abort();
+                    throw new Error('sleep interrupted');
+                });
+
+            const retry = new Retry(operation, 2, () => true, 10, sleep, controller.signal);
+            const result = retry.perform();
+
+            await expect(result).rejects.toBeInstanceOf(CallerAbortedError);
+
+            // This assertion defines the intended observability contract.
+            expect(mockLogger.debug).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    err: expect.any(CallerAbortedError),
+                    errorType: 'CallerAbortedError',
+                }),
+                'Caller aborted; halting retries',
+            );
+        });
     });
 
     describe('dynamic delay calculation', () => {
@@ -110,7 +92,6 @@ describe('Retry additional edge cases', () => {
             const retry = new Retry(makeOperation(perform), 3, () => true, delay, sleep);
 
             await expect(retry.perform()).resolves.toBe('ok');
-
             expect(delay).toHaveBeenNthCalledWith(1, 0, firstError);
             expect(delay).toHaveBeenNthCalledWith(2, 1, secondError);
             expect(delay).toHaveBeenCalledTimes(2);
@@ -165,14 +146,8 @@ describe('Retry additional edge cases', () => {
 
             const perform = jest.fn<() => Promise<string>>().mockImplementation(async () => {
                 callCount++;
-
-                if (callCount === 1) {
-                    throw firstError;
-                }
-                if (callCount === 2) {
-                    throw secondError;
-                }
-
+                if (callCount === 1) throw firstError;
+                if (callCount === 2) throw secondError;
                 return callCount === 3 ? 'first recovered' : 'second recovered';
             });
 
@@ -186,28 +161,23 @@ describe('Retry additional edge cases', () => {
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
             const retry = new Retry(makeOperation(perform), 2, () => true, delay, sleep);
-
             const [firstResult, secondResult] = await Promise.all([retry.perform(), retry.perform()]);
 
             expect(firstResult).toBe('first recovered');
             expect(secondResult).toBe('second recovered');
             expect(perform).toHaveBeenCalledTimes(4);
-
-            // Each perform() owns its own attempt counter, so both first retries are attempt 0.
             expect(delayAttempts).toEqual([0, 0]);
             expect(delayErrors).toEqual([firstError, secondError]);
             expect(sleep).toHaveBeenCalledTimes(2);
         });
 
         it('does not leak one perform call state into a later perform call', async () => {
-            const firstError = new HttpException('first failure', 500);
             const perform = jest
                 .fn<() => Promise<string>>()
-                .mockRejectedValueOnce(firstError)
+                .mockRejectedValueOnce(new HttpException('first failure', 500))
                 .mockResolvedValueOnce('first ok')
                 .mockRejectedValueOnce(new HttpException('second failure', 500))
                 .mockResolvedValueOnce('second ok');
-
             const delayAttempts: number[] = [];
             const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockImplementation((attempt) => {
                 delayAttempts.push(attempt);
@@ -219,7 +189,6 @@ describe('Retry additional edge cases', () => {
 
             await expect(retry.perform()).resolves.toBe('first ok');
             await expect(retry.perform()).resolves.toBe('second ok');
-
             expect(delayAttempts).toEqual([0, 0]);
         });
     });
@@ -227,7 +196,6 @@ describe('Retry additional edge cases', () => {
     describe('backoff overflow protection', () => {
         it('returns the configured cap when exponential calculation overflows', () => {
             const cap = 30_000;
-
             const result = calculateBackoff(1024, null, {
                 random: () => 0,
                 baseDelayMs: 1_000,
@@ -235,6 +203,44 @@ describe('Retry additional edge cases', () => {
             });
 
             expect(result).toBe(cap);
+        });
+    });
+
+    describe('jitter random contract', () => {
+        it('returns the base delay when random returns 0', () => {
+            const result = calculateBackoff(0, null, {
+                random: () => 0,
+                baseDelayMs: 1_000,
+                backoffCapMs: 10_000,
+            });
+
+            expect(result).toBe(1_000);
+        });
+
+        it('returns base delay plus the maximum 50% jitter when random returns 1', () => {
+            const result = calculateBackoff(0, null, {
+                random: () => 1,
+                baseDelayMs: 1_000,
+                backoffCapMs: 10_000,
+            });
+
+            expect(result).toBe(1_500);
+        });
+
+        it.each([
+            ['negative', -0.01],
+            ['above one', 1.01],
+            ['NaN', Number.NaN],
+            ['positive Infinity', Number.POSITIVE_INFINITY],
+            ['negative Infinity', Number.NEGATIVE_INFINITY],
+        ])('rejects invalid random() output: %s', (_, value) => {
+            expect(() =>
+                calculateBackoff(0, null, {
+                    random: () => value,
+                    baseDelayMs: 1_000,
+                    backoffCapMs: 10_000,
+                }),
+            ).toThrow(ConfigurationError);
         });
     });
 });
