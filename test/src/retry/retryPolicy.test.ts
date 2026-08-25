@@ -442,21 +442,6 @@ describe('retryPolicy', () => {
                 );
             });
 
-            it('does not call random when Retry-After is provided', () => {
-                const random = jest.fn(() => {
-                    throw new Error('random should not be called');
-                });
-
-                const result = calculateBackoff(0, 2_000, {
-                    random,
-                    baseDelayMs: 1_000,
-                    backoffCapMs: 10_000,
-                });
-
-                expect(result).toBe(2_000);
-                expect(random).not.toHaveBeenCalled();
-            });
-
             it('returns the base delay when random returns 0', () => {
                 const result = calculateBackoff(0, null, {
                     random: () => 0,
@@ -637,6 +622,21 @@ describe('retryPolicy', () => {
         });
 
         describe('Retry-After', () => {
+            it('does not call random when Retry-After is provided', () => {
+                const random = jest.fn(() => {
+                    throw new Error('random should not be called');
+                });
+
+                const result = calculateBackoff(0, 2_000, {
+                    random,
+                    baseDelayMs: 1_000,
+                    backoffCapMs: 10_000,
+                });
+
+                expect(result).toBe(2_000);
+                expect(random).not.toHaveBeenCalled();
+            });
+
             it('honors Retry-After header value', () => {
                 const backoff = calculateBackoff(0, 2000, noJitter);
 
