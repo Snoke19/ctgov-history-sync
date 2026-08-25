@@ -149,6 +149,16 @@ export class EndpointAssemblyError extends TrialError {
     }
 }
 
+export class RetryDelayCalculationError extends TrialError {
+    override readonly name = 'RetryDelayCalculationError';
+
+    constructor(cause: unknown) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+
+        super(`Failed to calculate retry delay: ${message}`, { cause });
+    }
+}
+
 /**
  * Strips `user:password@` from the authority of a URL string without
  * normalizing anything else. Falls back to the raw string when the URL

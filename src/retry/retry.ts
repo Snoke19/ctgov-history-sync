@@ -1,5 +1,12 @@
 import { createLogger } from '../config/logging.js';
-import { CallerAbortedError, HttpException, TrialError, UnexpectedError } from '../error/errors.js';
+import {
+    CallerAbortedError,
+    ConfigurationError,
+    HttpException,
+    RetryDelayCalculationError,
+    TrialError,
+    UnexpectedError,
+} from '../error/errors.js';
 import { defaultMonotonicClock, defaultSleeper } from '../http/clock.js';
 import type { MonotonicClock, Sleeper } from '../http/clock.js';
 import { BusinessOperation } from './businessOperation.js';
@@ -31,7 +38,13 @@ export class Retry<T> implements BusinessOperation<T> {
         clock: MonotonicClock['now'] = defaultMonotonicClock.now,
     ) {
         if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
-            throw new TypeError(`maxAttempts must be a positive integer. value is ${maxAttempts}`);
+            throw new ConfigurationError(`maxAttempts must be a positive integer. value is ${maxAttempts}`);
+        }
+
+        if (typeof delayMs === 'number') {
+            this.validateDelay(delayMs);
+        } else if (typeof delayMs !== 'function') {
+            throw new ConfigurationError('delayMs must be a non-negative integer or a function returning one');
         }
 
         this.operation = operation;
@@ -131,11 +144,6 @@ export class Retry<T> implements BusinessOperation<T> {
         }
     }
 
-    private resolveDelay(retryIndex: number, error: TrialError): number {
-        const raw = typeof this.delayMs === 'function' ? this.delayMs(retryIndex, error) : this.delayMs;
-        return Math.max(0, raw);
-    }
-
     private async delayWithAbortCheck(ms: number): Promise<void> {
         if (this.signal?.aborted) {
             throw new CallerAbortedError('Caller aborted before retry backoff.');
@@ -229,5 +237,25 @@ export class Retry<T> implements BusinessOperation<T> {
             },
             'Caller aborted; halting retries',
         );
+    }
+
+    private validateDelay(delayMs: number): void {
+        if (!Number.isInteger(delayMs) || delayMs < 0) {
+            throw new ConfigurationError(`delayMs must be a non-negative integer. value is ${delayMs}`);
+        }
+    }
+
+    private resolveDelay(currentAttempt: number, error: TrialError): number {
+        let raw: number;
+
+        try {
+            raw = typeof this.delayMs === 'function' ? this.delayMs(currentAttempt, error) : this.delayMs;
+        } catch (cause: unknown) {
+            throw new RetryDelayCalculationError(cause);
+        }
+
+        this.validateDelay(raw);
+
+        return raw;
     }
 }
