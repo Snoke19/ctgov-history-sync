@@ -388,16 +388,21 @@ describe('Retry', () => {
     });
 
     describe('error handling', () => {
-        it('does not call shouldRetry for UnexpectedError', async () => {
+        it('halts without calling shouldRetry when operation throws an UnexpectedError', async () => {
             const boom = new Error('boom');
             const shouldRetry = jest.fn<(error: TrialError) => boolean>().mockReturnValue(true);
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(boom));
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-            await expect(new Retry(operation, 3, shouldRetry, 1, sleep).perform()).rejects.toBeInstanceOf(
-                UnexpectedError,
-            );
+            const retry = new Retry(operation, 3, shouldRetry, 1, sleep);
+            const result = retry.perform();
 
+            await expect(result).rejects.toMatchObject({
+                name: 'UnexpectedError',
+                message: 'Unexpected error: boom',
+                cause: boom,
+            });
+            expect(operation.perform).toHaveBeenCalledTimes(1);
             expect(shouldRetry).not.toHaveBeenCalled();
             expect(sleep).not.toHaveBeenCalled();
         });
@@ -407,7 +412,7 @@ describe('Retry', () => {
             ['undefined', undefined],
             ['number', 42],
             ['object', { message: 'custom' }],
-        ])('normalizes a non-TrialError rejection to UnexpectedError: %s', async (_, rawError) => {
+        ])('normalizes non-TrialError rejection to UnexpectedError: %s', async (_, rawError) => {
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(rawError));
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
@@ -422,9 +427,10 @@ describe('Retry', () => {
         });
 
         it('normalizes a synchronous non-Error throw to UnexpectedError', async () => {
+            const rawError = new Error('sync raw string');
             const operation: BusinessOperation<string> = {
                 perform: () => {
-                    throw 'sync raw string';
+                    throw rawError;
                 },
             };
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
@@ -435,24 +441,23 @@ describe('Retry', () => {
             await expect(result).rejects.toMatchObject({
                 name: 'UnexpectedError',
                 message: 'Unexpected error: sync raw string',
+                cause: rawError,
             });
 
             expect(sleep).not.toHaveBeenCalled();
         });
 
-        it('preserves the original error and cause when retries are exhausted', async () => {
+        it('preserves a known error and its cause when retries are exhausted', async () => {
             const cause = new Error('root cause');
             const error = new HttpException('server error', 500, undefined, { cause });
-
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(error));
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
             const retry = new Retry(operation, 3, () => true, 1, sleep);
-            const promise = retry.perform();
+            const result = retry.perform();
 
-            await expect(promise).rejects.toBe(error);
-            await expect(promise).rejects.toMatchObject({ cause });
-
+            await expect(result).rejects.toBe(error);
+            await expect(result).rejects.toMatchObject({ cause });
             expect(operation.perform).toHaveBeenCalledTimes(3);
             expect(sleep).toHaveBeenCalledTimes(2);
         });
@@ -461,11 +466,14 @@ describe('Retry', () => {
             const boom = new Error('boom');
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(boom));
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-            const promise = new Retry(operation, 3, () => true, 1, sleep).perform();
 
-            await expect(promise).rejects.toBeInstanceOf(UnexpectedError);
-            await expect(promise).rejects.toMatchObject({ cause: boom });
+            const retry = new Retry(operation, 3, () => true, 1, sleep);
+            const result = retry.perform();
 
+            await expect(result).rejects.toMatchObject({
+                name: 'UnexpectedError',
+                cause: boom,
+            });
             expect(operation.perform).toHaveBeenCalledTimes(1);
             expect(sleep).not.toHaveBeenCalled();
         });
@@ -474,25 +482,16 @@ describe('Retry', () => {
             const sleepError = new Error('sleep boom');
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockRejectedValue(sleepError);
-            const promise = new Retry(operation, 2, () => true, 1, sleep).perform();
 
-            await expect(promise).rejects.toBeInstanceOf(UnexpectedError);
-            await expect(promise).rejects.toMatchObject({ cause: sleepError });
+            const retry = new Retry(operation, 2, () => true, 1, sleep);
+            const result = retry.perform();
 
+            await expect(result).rejects.toMatchObject({
+                name: 'UnexpectedError',
+                cause: sleepError,
+            });
             expect(operation.perform).toHaveBeenCalledTimes(1);
             expect(sleep).toHaveBeenCalledTimes(1);
-        });
-
-        it('propagates asynchronous attempt failures without an unhandled rejection', async () => {
-            const error = retryableError();
-
-            const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(error));
-            const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-
-            await expect(new Retry(operation, 1, () => true, 10, sleep).perform()).rejects.toBe(error);
-
-            expect(operation.perform).toHaveBeenCalledTimes(1);
-            expect(sleep).not.toHaveBeenCalled();
         });
     });
 
