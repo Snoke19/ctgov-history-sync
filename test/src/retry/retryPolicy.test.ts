@@ -434,7 +434,7 @@ describe('retryPolicy', () => {
             });
         });
 
-        describe('jitter random contract', () => {
+        describe('jitter', () => {
             it('returns the base delay when random returns 0', () => {
                 const result = calculateBackoff(0, null, {
                     random: () => 0,
@@ -453,6 +453,15 @@ describe('retryPolicy', () => {
                 });
 
                 expect(result).toBe(1_500);
+            });
+
+            it('correctly scales jitter for intermediate random values', () => {
+                const result = calculateBackoff(0, null, {
+                    ...noJitter,
+                    random: () => 0.5,
+                });
+
+                expect(result).toBe(1_250);
             });
 
             it.each([
@@ -495,7 +504,7 @@ describe('retryPolicy', () => {
         });
 
         describe('overflow protection', () => {
-            it('caps the delay at backoffCapMs for very large attempt counts', () => {
+            it('caps very large finite exponential values', () => {
                 const result = calculateBackoff(10_000, null, {
                     baseDelayMs: 100,
                     backoffCapMs: 10_000,
@@ -505,7 +514,7 @@ describe('retryPolicy', () => {
                 expect(result).toBe(10_000);
             });
 
-            it('handles attempt counts resulting in Infinity exponential base', () => {
+            it('returns the cap when exponential calculation overflows to Infinity', () => {
                 const result = calculateBackoff(1024, null, noJitter);
                 expect(result).toBe(CAP);
             });
@@ -549,43 +558,6 @@ describe('retryPolicy', () => {
             it('throws for negative backoffCapMs', () => {
                 const opts = { ...noJitter, backoffCapMs: -100 };
                 expect(() => calculateBackoff(0, null, opts)).toThrow(ConfigurationError);
-            });
-        });
-
-        describe('jitter', () => {
-            it('uses zero jitter when random returns 0', () => {
-                expect(
-                    calculateBackoff(2, null, {
-                        random: () => 0,
-                        baseDelayMs: BASE,
-                        backoffCapMs: CAP,
-                    }),
-                ).toBe(BASE * 4);
-            });
-
-            it('adds up to 50% random jitter', () => {
-                const withoutJitter = calculateBackoff(0, null, {
-                    ...noJitter,
-                    random: () => 0,
-                });
-
-                const withMaxJitter = calculateBackoff(0, null, {
-                    ...noJitter,
-                    random: () => 1,
-                });
-
-                expect(withoutJitter).toBe(BASE);
-                expect(withMaxJitter).toBe(BASE + BASE * 0.5);
-            });
-
-            it('correctly scales jitter for intermediate random values (e.g. 0.5)', () => {
-                const backoff = calculateBackoff(0, null, {
-                    ...noJitter,
-                    random: () => 0.5,
-                });
-
-                // Jitter is random() * baseDelay * 0.5 => 0.5 * 1000 * 0.5 = 250
-                expect(backoff).toBe(1250);
             });
         });
 
