@@ -827,32 +827,67 @@ describe('Retry', () => {
             expect(sleep).toHaveBeenCalledTimes(2);
         });
 
-        it('keeps concurrent perform invocations independent', async () => {
-            const error = retryableError();
-            const delayAttempts: number[] = [];
+        it('keeps concurrent perform invocations independent during overlapping retries', async () => {
+            const firstError = new HttpException('first call failure', 503);
+            const secondError = new HttpException('second call failure', 503);
+
             const perform = jest
                 .fn<() => Promise<string>>()
-                .mockRejectedValueOnce(error)
-                .mockRejectedValueOnce(error)
-                .mockResolvedValueOnce('first')
-                .mockResolvedValueOnce('second');
-            const operation = makeOperation(perform);
-            const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockImplementation((attempt) => {
-                delayAttempts.push(attempt);
-                return 0;
-            });
-            const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
+                .mockRejectedValueOnce(firstError)
+                .mockRejectedValueOnce(secondError)
+                .mockResolvedValueOnce('first recovered')
+                .mockResolvedValueOnce('second recovered');
 
-            const retry = new Retry(operation, 2, () => true, delay, sleep);
+            const delayAttempts: number[] = [];
+            const delayErrors: TrialError[] = [];
+
+            const delay = jest
+                .fn<(attempt: number, error: TrialError) => number>()
+                .mockImplementation((attempt, error) => {
+                    delayAttempts.push(attempt);
+                    delayErrors.push(error);
+                    return 10;
+                });
+
+            const sleepResolvers: Array<() => void> = [];
+
+            const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockImplementation(
+                () =>
+                    new Promise<void>((resolve) => {
+                        sleepResolvers.push(resolve);
+                    }),
+            );
+
+            const retry = new Retry(makeOperation(perform), 2, () => true, delay, sleep);
 
             const first = retry.perform();
             const second = retry.perform();
-            const results = await Promise.all([first, second]);
 
-            expect(results).toEqual(expect.arrayContaining(['first', 'second']));
-            expect(perform).toHaveBeenCalledTimes(4);
-            expect(delayAttempts).toHaveLength(2);
+            // Let both executions reach their retry delay.
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(perform).toHaveBeenCalledTimes(2);
+            expect(sleep).toHaveBeenCalledTimes(2);
+
+            // Both executions must start their own retry sequence at attempt 0.
             expect(delayAttempts).toEqual([0, 0]);
+            expect(delayErrors).toEqual([firstError, secondError]);
+
+            // Release the first retry.
+            sleepResolvers[0]!();
+
+            await expect(first).resolves.toBe('first recovered');
+
+            // The second execution is still blocked in its own backoff.
+            expect(perform).toHaveBeenCalledTimes(3);
+
+            // Release the second retry.
+            sleepResolvers[1]!();
+
+            await expect(second).resolves.toBe('second recovered');
+
+            expect(perform).toHaveBeenCalledTimes(4);
             expect(sleep).toHaveBeenCalledTimes(2);
         });
 
