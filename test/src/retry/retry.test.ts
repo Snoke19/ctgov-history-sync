@@ -140,12 +140,13 @@ describe('Retry', () => {
             expect(mockLogger.warn).toHaveBeenNthCalledWith(
                 1,
                 expect.objectContaining({
-                    attempt: 2,
+                    attempts: 2,
                     maxAttempts: 2,
                     delayMs: 1,
                     statusCode: 500,
                     err: expect.any(HttpException),
                     errorType: 'HttpException',
+                    durationMs: expect.any(Number)
                 }),
                 'Operation failed; retrying',
             );
@@ -964,12 +965,13 @@ describe('Retry', () => {
             expect(mockLogger.warn).toHaveBeenNthCalledWith(
                 1,
                 expect.objectContaining({
-                    attempt: 2,
+                    attempts: 2,
                     maxAttempts: 3,
                     delayMs: 0,
                     err: error,
                     errorType: 'HttpException',
                     statusCode: 500,
+                    durationMs: expect.any(Number),
                 }),
                 'Operation failed; retrying',
             );
@@ -977,12 +979,13 @@ describe('Retry', () => {
             expect(mockLogger.warn).toHaveBeenNthCalledWith(
                 2,
                 expect.objectContaining({
-                    attempt: 3,
+                    attempts: 3,
                     maxAttempts: 3,
                     delayMs: 0,
                     err: error,
                     errorType: 'HttpException',
                     statusCode: 500,
+                    durationMs: expect.any(Number),
                 }),
                 'Operation failed; retrying',
             );
@@ -992,10 +995,13 @@ describe('Retry', () => {
             const error = retryableError();
             const perform = jest.fn<() => Promise<string>>().mockRejectedValueOnce(error).mockResolvedValueOnce('ok');
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-            const clock = jest.fn<() => number>().mockReturnValueOnce(100).mockReturnValueOnce(250);
+            const clock = jest
+                .fn<() => number>()
+                .mockReturnValueOnce(100)
+                .mockReturnValueOnce(250)
+                .mockReturnValueOnce(400);
 
             const retry = new Retry(makeOperation(perform), 2, () => true, 0, sleep, undefined, clock);
-
             await expect(retry.perform()).resolves.toBe('ok');
 
             expect(mockLogger.debug).toHaveBeenCalledTimes(1);
@@ -1003,7 +1009,7 @@ describe('Retry', () => {
                 expect.objectContaining({
                     attempts: 2,
                     retries: 1,
-                    durationMs: 150,
+                    durationMs: 300,
                 }),
                 'Operation recovered after retry',
             );
@@ -1011,12 +1017,13 @@ describe('Retry', () => {
             expect(mockLogger.warn).toHaveBeenCalledTimes(1);
             expect(mockLogger.warn).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    attempt: 2,
+                    attempts: 2,
                     maxAttempts: 2,
                     delayMs: 0,
                     err: error,
                     errorType: 'HttpException',
                     statusCode: 500,
+                    durationMs: 150,
                 }),
                 'Operation failed; retrying',
             );
@@ -1084,10 +1091,13 @@ describe('Retry', () => {
             await expect(retry.perform()).resolves.toBe('ok');
             expect(mockLogger.warn).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    attempt: 2,
+                    attempts: 2,
+                    maxAttempts: 2,
+                    delayMs: 0,
                     statusCode: undefined,
                     err: netError,
                     errorType: 'NetworkException',
+                    durationMs: expect.any(Number),
                 }),
                 'Operation failed; retrying',
             );

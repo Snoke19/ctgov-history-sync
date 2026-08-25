@@ -87,7 +87,7 @@ export class Retry<T> implements BusinessOperation<T> {
                 throw result.error;
             }
 
-            this.logRetrying(attempt + 1, directive.delayMs, result.error);
+            this.logRetrying(attempt + 1, directive.delayMs, result.error, startedAt);
 
             try {
                 await this.delayWithAbortCheck(directive.delayMs);
@@ -142,7 +142,7 @@ export class Retry<T> implements BusinessOperation<T> {
     ): void {
         switch (reason) {
             case 'not-retryable':
-                this.logNotRetryable(error);
+                this.logNotRetryable(error, startedAt);
                 break;
             case 'exhausted':
                 this.logExhausted(attempt, error, startedAt);
@@ -196,11 +196,12 @@ export class Retry<T> implements BusinessOperation<T> {
         );
     }
 
-    private logNotRetryable(error: TrialError): void {
+    private logNotRetryable(error: TrialError, startedAt: number): void {
         logger.debug(
             {
                 err: error,
                 errorType: error.name,
+                durationMs: this.clock() - startedAt,
             },
             'Operation failed; error is not retryable',
         );
@@ -219,15 +220,16 @@ export class Retry<T> implements BusinessOperation<T> {
         );
     }
 
-    private logRetrying(nextAttempt: number, delayMs: number, error: TrialError): void {
+    private logRetrying(nextAttempt: number, delayMs: number, error: TrialError, startedAt: number): void {
         logger.warn(
             {
-                attempt: nextAttempt,
+                attempts: nextAttempt,
                 maxAttempts: this.maxAttempts,
                 delayMs,
                 statusCode: error instanceof HttpException ? error.status : undefined,
                 err: error,
                 errorType: error.name,
+                durationMs: this.clock() - startedAt,
             },
             'Operation failed; retrying',
         );
