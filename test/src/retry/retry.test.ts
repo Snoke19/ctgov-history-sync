@@ -370,7 +370,7 @@ describe('Retry', () => {
             expect(sleep).not.toHaveBeenCalled();
         });
 
-        it('propagates a shouldRetry exception on a later retry attempt', async () => {
+        it('normalizes a shouldRetry exception on a later retry attempt', async () => {
             const firstError = retryableError();
             const predicateError = new Error('shouldRetry exploded on second attempt');
             const perform = jest
