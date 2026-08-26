@@ -112,50 +112,13 @@ describe('FetchOperation', () => {
         const operation = createOperation(endpointManager, {
             timeoutMs,
         });
-
         const promise = operation.perform();
         const rejection = promise.catch((error: unknown) => error);
 
         await jest.advanceTimersByTimeAsync(timeoutMs - 1);
         expect(transport.request).toHaveBeenCalledTimes(1);
-
         await jest.advanceTimersByTimeAsync(1);
         const error = await rejection;
-
-        expect(error).toBeInstanceOf(TimeoutException);
-        expect((error as TimeoutException).message).toContain(`Request timed out after ${timeoutMs}ms`);
-    });
-
-    it('uses the operation timeout instead of the default timeout', async () => {
-        const timeoutMs = 250;
-
-        const transport = createMockTransport();
-        const transportAbortError = new Error('The operation was aborted.');
-
-        transport.request.mockImplementation((options) => {
-            return new Promise<HttpResponse>((_, reject) => {
-                rejectOnAbort(options.signal, reject, transportAbortError);
-            });
-        });
-
-        const endpoint = createEndpoint(transport);
-        const endpointManager = createEndpointManager(endpoint);
-
-        const operation = createOperation(endpointManager, {
-            timeoutMs,
-        });
-
-        const promise = operation.perform();
-        const rejection = promise.catch((error: unknown) => error);
-
-        await jest.advanceTimersByTimeAsync(timeoutMs - 1);
-
-        expect(transport.request).toHaveBeenCalledTimes(1);
-
-        await jest.advanceTimersByTimeAsync(1);
-
-        const error = await rejection;
-
         expect(error).toBeInstanceOf(TimeoutException);
         expect((error as TimeoutException).message).toContain(`Request timed out after ${timeoutMs}ms`);
     });
@@ -174,6 +137,7 @@ describe('FetchOperation', () => {
             await expect(operation.perform()).resolves.toBe(response);
 
             expect(endpointManager.acquireEndpoint).toHaveBeenCalledTimes(1);
+            expect(endpointManager.acquireEndpoint).toHaveBeenCalledWith(expect.any(AbortSignal));
             expect(transport.request).toHaveBeenCalledTimes(1);
         });
 
@@ -535,6 +499,63 @@ describe('FetchOperation', () => {
     });
 
     describe('HTTP responses', () => {
+        it('preserves HttpException when response body draining fails', async () => {
+            const transport = createMockTransport();
+            const discardError = new Error('discard failed');
+            const discard = jest.fn<() => Promise<void>>().mockRejectedValue(discardError);
+            transport.request.mockResolvedValue(
+                createResponse({
+                    ok: false,
+                    status: 503,
+                    statusText: 'Service Unavailable',
+                    discard,
+                }),
+            );
+
+            const endpoint = createEndpoint(transport);
+            const endpointManager = createEndpointManager(endpoint);
+            const operation = createOperation(endpointManager);
+
+            const error = await operation.perform().catch((value: unknown) => value);
+            expect(discard).toHaveBeenCalledTimes(1);
+            expect(error).toBeInstanceOf(HttpException);
+            expect((error as HttpException).status).toBe(503);
+        });
+
+        it('extracts Retry-After HTTP-date into HttpException', async () => {
+            const transport = createMockTransport();
+            const now = Date.parse('2026-08-26T12:00:00.000Z');
+            const retryAt = new Date(now + 30_000).toUTCString();
+            transport.request.mockResolvedValue(
+                createResponse({
+                    ok: false,
+                    status: 429,
+                    statusText: 'Too Many Requests',
+                    headers: {
+                        'Retry-After': retryAt,
+                    },
+                }),
+            );
+            const endpoint = createEndpoint(transport);
+            const endpointManager = createEndpointManager(endpoint);
+            const operation = new FetchOperation(
+                endpointManager as unknown as EndpointManager,
+                URL,
+                {},
+                {
+                    timeoutMs: DEFAULT_TIMEOUT_MS,
+                    userAgent: USER_AGENT,
+                },
+                () => now,
+            );
+
+            const error = await operation.perform().catch((value: unknown) => value);
+            expect(error).toBeInstanceOf(HttpException);
+            const httpError = error as HttpException;
+            expect(httpError.status).toBe(429);
+            expect(httpError.retryAfterMs).toBe(30_000);
+        });
+
         it.each([
             [400, 'Bad Request'],
             [404, 'Not Found'],
@@ -670,128 +691,60 @@ describe('FetchOperation', () => {
         });
     });
 
-    it('extracts Retry-After HTTP-date into HttpException', async () => {
-        const transport = createMockTransport();
+    describe('error messages', () => {
+        it('includes a string transport cause without throwing while formatting the error', async () => {
+            const transport = createMockTransport();
 
-        const now = Date.parse('2026-08-26T12:00:00.000Z');
-        const retryAt = new Date(now + 30_000).toUTCString();
+            transport.request.mockRejectedValue('connection failed');
 
-        transport.request.mockResolvedValue(
-            createResponse({
-                ok: false,
-                status: 429,
-                statusText: 'Too Many Requests',
-                headers: {
-                    'Retry-After': retryAt,
-                },
-            }),
-        );
+            transport.classifyError.mockReturnValue({
+                kind: 'network',
+                cause: 'connection failed',
+            });
 
-        const endpoint = createEndpoint(transport);
-        const endpointManager = createEndpointManager(endpoint);
+            const endpoint = createEndpoint(transport);
+            const endpointManager = createEndpointManager(endpoint);
+            const operation = createOperation(endpointManager);
 
-        const operation = new FetchOperation(
-            endpointManager as unknown as EndpointManager,
-            URL,
-            {},
-            {
-                timeoutMs: DEFAULT_TIMEOUT_MS,
-                userAgent: USER_AGENT,
-            },
-            () => now,
-        );
+            const error = await operation.perform().catch((value: unknown) => value);
 
-        const error = await operation.perform().catch((value: unknown) => value);
+            expect(error).toBeInstanceOf(NetworkException);
 
-        expect(error).toBeInstanceOf(HttpException);
-
-        const httpError = error as HttpException;
-
-        expect(httpError.status).toBe(429);
-        expect(httpError.retryAfterMs).toBe(30_000);
-    });
-
-    it('preserves HttpException when response body draining fails', async () => {
-        const transport = createMockTransport();
-
-        const discardError = new Error('discard failed');
-
-        const discard = jest.fn<() => Promise<void>>().mockRejectedValue(discardError);
-
-        transport.request.mockResolvedValue(
-            createResponse({
-                ok: false,
-                status: 503,
-                statusText: 'Service Unavailable',
-                discard,
-            }),
-        );
-
-        const endpoint = createEndpoint(transport);
-        const endpointManager = createEndpointManager(endpoint);
-        const operation = createOperation(endpointManager);
-
-        const error = await operation.perform().catch((value: unknown) => value);
-
-        expect(discard).toHaveBeenCalledTimes(1);
-
-        expect(error).toBeInstanceOf(HttpException);
-
-        expect((error as HttpException).status).toBe(503);
-    });
-
-    it('includes a string transport cause without throwing while formatting the error', async () => {
-        const transport = createMockTransport();
-
-        transport.request.mockRejectedValue('connection failed');
-
-        transport.classifyError.mockReturnValue({
-            kind: 'network',
-            cause: 'connection failed',
+            expect((error as NetworkException).message).toContain('connection failed');
         });
 
-        const endpoint = createEndpoint(transport);
-        const endpointManager = createEndpointManager(endpoint);
-        const operation = createOperation(endpointManager);
+        it('does not expose sensitive fields from an arbitrary transport cause', async () => {
+            const transport = createMockTransport();
 
-        const error = await operation.perform().catch((value: unknown) => value);
+            const sensitiveCause = {
+                message: 'connection failed',
+                username: 'admin',
+                password: 'super-secret-password',
+                token: 'super-secret-token',
+            };
 
-        expect(error).toBeInstanceOf(NetworkException);
+            transport.request.mockRejectedValue(sensitiveCause);
 
-        expect((error as NetworkException).message).toContain('connection failed');
-    });
+            transport.classifyError.mockReturnValue({
+                kind: 'network',
+                cause: sensitiveCause,
+            });
 
-    it('does not expose sensitive fields from an arbitrary transport cause', async () => {
-        const transport = createMockTransport();
+            const endpoint = createEndpoint(transport);
+            const endpointManager = createEndpointManager(endpoint);
+            const operation = createOperation(endpointManager);
 
-        const sensitiveCause = {
-            message: 'connection failed',
-            username: 'admin',
-            password: 'super-secret-password',
-            token: 'super-secret-token',
-        };
+            const error = await operation.perform().catch((value: unknown) => value);
 
-        transport.request.mockRejectedValue(sensitiveCause);
+            expect(error).toBeInstanceOf(NetworkException);
 
-        transport.classifyError.mockReturnValue({
-            kind: 'network',
-            cause: sensitiveCause,
+            const message = (error as NetworkException).message;
+
+            expect(message).toContain('https://example.com/trials');
+
+            expect(message).not.toContain('super-secret-password');
+            expect(message).not.toContain('super-secret-token');
         });
-
-        const endpoint = createEndpoint(transport);
-        const endpointManager = createEndpointManager(endpoint);
-        const operation = createOperation(endpointManager);
-
-        const error = await operation.perform().catch((value: unknown) => value);
-
-        expect(error).toBeInstanceOf(NetworkException);
-
-        const message = (error as NetworkException).message;
-
-        expect(message).toContain('https://example.com/trials');
-
-        expect(message).not.toContain('super-secret-password');
-        expect(message).not.toContain('super-secret-token');
     });
 
     describe('request timeout', () => {
