@@ -17,6 +17,8 @@ import { HttpResponse, HttpTransport } from '../http/transport/httpTransport.js'
 import type { BusinessOperation } from '../retry/businessOperation.js';
 import { parseRetryAfterHeader } from '../retry/retryPolicy.js';
 
+const MAX_ERROR_DESCRIPTION_LENGTH = 256;
+
 const logger = createLogger(import.meta.url);
 
 type AbortKind = 'caller' | 'timeout';
@@ -280,13 +282,22 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 function describeError(error: unknown): string {
     if (error instanceof Error) {
         const code = 'code' in error ? (error as NodeJS.ErrnoException).code : undefined;
+        const message = truncate(error.message);
 
-        return code ? `${error.name} (${code}): ${error.message}` : `${error.name}: ${error.message}`;
+        return code ? `${error.name} (${code}): ${message}` : `${error.name}: ${message}`;
     }
 
     if (typeof error === 'string') {
-        return error;
+        return truncate(error);
     }
 
     return 'Unknown transport error';
+}
+
+function truncate(value: string): string {
+    if (value.length <= MAX_ERROR_DESCRIPTION_LENGTH) {
+        return value;
+    }
+
+    return `${value.slice(0, MAX_ERROR_DESCRIPTION_LENGTH)}…`;
 }

@@ -780,6 +780,52 @@ describe('FetchOperation', () => {
     });
 
     describe('error messages', () => {
+        it('bounds a long Error message', async () => {
+            const transport = createMockTransport();
+            const longMessage = 'x'.repeat(1_000);
+            const cause = new Error(longMessage);
+            transport.request.mockRejectedValue(cause);
+            transport.classifyError.mockReturnValue({
+                kind: 'network',
+                cause,
+            });
+
+            const endpoint = createEndpoint(transport);
+            const endpointManager = createEndpointManager(endpoint);
+            const operation = createOperation(endpointManager);
+
+            const error = await operation.perform().catch((value: unknown) => value);
+            expect(error).toBeInstanceOf(NetworkException);
+
+            const message = (error as NetworkException).message;
+            expect(message.length).toBeLessThan(400);
+            expect(message).toContain('xxxxxxxx');
+            expect(message).toContain('…');
+        });
+
+        it('bounds a long string transport cause', async () => {
+            const transport = createMockTransport();
+            const longCause = 'connection failed '.repeat(100);
+
+            transport.request.mockRejectedValue(longCause);
+            transport.classifyError.mockReturnValue({
+                kind: 'network',
+                cause: longCause,
+            });
+
+            const endpoint = createEndpoint(transport);
+            const endpointManager = createEndpointManager(endpoint);
+            const operation = createOperation(endpointManager);
+
+            const error = await operation.perform().catch((value: unknown) => value);
+            expect(error).toBeInstanceOf(NetworkException);
+
+            const message = (error as NetworkException).message;
+            expect(message).toContain('Network failure:');
+            expect(message).toContain('…');
+            expect(message.length).toBeLessThan(400);
+        });
+
         it('includes a string transport cause without throwing while formatting the error', async () => {
             const transport = createMockTransport();
 
