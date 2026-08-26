@@ -38,6 +38,34 @@ describe('Retry', () => {
     });
 
     describe('configuration', () => {
+        it('rethrows an existing RetryDelayCalculationError without wrapping it', async () => {
+            const delayError = new RetryDelayCalculationError(new Error('delay calculation failed'));
+            const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
+
+            const retry = new Retry(
+                operation,
+                2,
+                () => true,
+                () => {
+                    throw delayError;
+                },
+            );
+
+            await expect(retry.perform()).rejects.toBe(delayError);
+        });
+
+        it.each([
+            ['string', 'invalid'],
+            ['object', {}],
+            ['null', null],
+        ])('throws ConfigurationError when retryDelay is %s', (_description, retryDelay) => {
+            const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
+
+            expect(() => new Retry(operation, 3, () => true, retryDelay as unknown as number)).toThrow(
+                ConfigurationError,
+            );
+        });
+
         it('stops after the first failed attempt when maxAttempts is 1', async () => {
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
