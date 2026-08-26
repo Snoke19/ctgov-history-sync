@@ -122,7 +122,15 @@ export class Retry<T> implements BusinessOperation<T> {
             return { action: 'halt', reason: 'aborted' };
         }
 
-        if (!this.shouldRetry(error)) {
+        let retry: boolean;
+
+        try {
+            retry = this.shouldRetry(error);
+        } catch (cause: unknown) {
+            throw TrialError.normalize(cause);
+        }
+
+        if (!retry) {
             return { action: 'halt', reason: 'not-retryable' };
         }
 

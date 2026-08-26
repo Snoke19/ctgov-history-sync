@@ -357,7 +357,11 @@ describe('Retry', () => {
             const retry = new Retry(operation, 3, shouldRetry, 1, sleep);
             const result = retry.perform();
 
-            await expect(result).rejects.toBe(predicateError);
+            await expect(result).rejects.toMatchObject({
+                name: 'UnexpectedError',
+                message: 'Unexpected error: shouldRetry exploded',
+                cause: predicateError,
+            });
             expect(operation.perform).toHaveBeenCalledTimes(1);
             expect(shouldRetry).toHaveBeenCalledTimes(1);
             expect(sleep).not.toHaveBeenCalled();
@@ -382,7 +386,14 @@ describe('Retry', () => {
             const retry = new Retry(operation, 3, shouldRetry, 0, sleep);
             const result = retry.perform();
 
-            await expect(result).rejects.toBe(predicateError);
+            await expect(result).rejects.toBeInstanceOf(UnexpectedError);
+
+            const error = await result.catch((error) => error);
+
+            expect(error).toBeInstanceOf(UnexpectedError);
+            expect(error.message).toBe('Unexpected error: shouldRetry exploded on second attempt');
+            expect(error.cause).toBe(predicateError);
+
             expect(perform).toHaveBeenCalledTimes(2);
             expect(shouldRetry).toHaveBeenCalledTimes(2);
             expect(sleep).toHaveBeenCalledTimes(1);
