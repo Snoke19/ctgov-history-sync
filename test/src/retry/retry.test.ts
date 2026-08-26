@@ -346,7 +346,7 @@ describe('Retry', () => {
             expect(shouldRetry).toHaveBeenNthCalledWith(2, secondError);
         });
 
-        it('propagates a shouldRetry exception immediately without retrying', async () => {
+        it('normalizes a shouldRetry exception immediately without retrying', async () => {
             const predicateError = new Error('shouldRetry exploded');
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
             const shouldRetry = jest.fn<(error: TrialError) => boolean>().mockImplementation(() => {
@@ -357,11 +357,14 @@ describe('Retry', () => {
             const retry = new Retry(operation, 3, shouldRetry, 1, sleep);
             const result = retry.perform();
 
-            await expect(result).rejects.toMatchObject({
-                name: 'UnexpectedError',
-                message: 'Unexpected error: shouldRetry exploded',
-                cause: predicateError,
-            });
+            await expect(result).rejects.toBeInstanceOf(UnexpectedError);
+
+            const error = await result.catch((error) => error);
+
+            expect(error).toBeInstanceOf(UnexpectedError);
+            expect(error.message).toBe('Unexpected error: shouldRetry exploded');
+            expect(error.cause).toBe(predicateError);
+
             expect(operation.perform).toHaveBeenCalledTimes(1);
             expect(shouldRetry).toHaveBeenCalledTimes(1);
             expect(sleep).not.toHaveBeenCalled();
