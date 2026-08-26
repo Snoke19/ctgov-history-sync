@@ -259,6 +259,34 @@ describe('FetchOperation', () => {
                 );
             },
         );
+
+        it('preserves arbitrary caller headers unchanged', async () => {
+            const transport = createMockTransport();
+            transport.request.mockResolvedValue(createResponse());
+
+            const endpoint = createEndpoint(transport);
+            const endpointManager = createEndpointManager(endpoint);
+
+            const operation = createOperation(endpointManager, {
+                headers: {
+                    'X-Request-ID': 'request-123',
+                    'X-Custom-Header': 'custom-value',
+                },
+            });
+
+            await operation.perform();
+
+            expect(transport.request).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    headers: {
+                        Accept: 'application/json',
+                        'User-Agent': USER_AGENT,
+                        'X-Request-ID': 'request-123',
+                        'X-Custom-Header': 'custom-value',
+                    },
+                }),
+            );
+        });
     });
 
     describe('endpoint acquisition', () => {
