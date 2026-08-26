@@ -18,15 +18,14 @@ import type { BusinessOperation } from '../retry/businessOperation.js';
 import { parseRetryAfterHeader } from '../retry/retryPolicy.js';
 
 const MAX_ERROR_DESCRIPTION_LENGTH = 256;
-
 const logger = createLogger(import.meta.url);
-
-type AbortKind = 'caller' | 'timeout';
-
 const CANONICAL_HEADER_NAMES = new Map<string, string>([
     ['accept', 'Accept'],
     ['user-agent', 'User-Agent'],
 ]);
+
+type TimeoutId = ReturnType<typeof setTimeout>;
+type ClassifiedTransportError = NetworkException | TimeoutException | CallerAbortedError | UnexpectedError;
 
 export interface FetchOperationDefaults {
     readonly timeoutMs: number;
@@ -44,72 +43,93 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
     async perform(): Promise<HttpResponse> {
         const controller = new AbortController();
+        const removeCallerAbortListener = this.attachCallerAbort(controller);
+
+        let timeoutId: TimeoutId | undefined;
+
+        try {
+            const endpoint = await this.acquireEndpoint(controller.signal);
+
+            timeoutId = this.startRequestTimeout(controller);
+
+            return await this.executeRequest(endpoint, controller.signal);
+        } catch (error: unknown) {
+            throw this.handleOperationError(error, controller.signal);
+        } finally {
+            clearTimeout(timeoutId);
+            removeCallerAbortListener();
+        }
+    }
+
+    private attachCallerAbort(controller: AbortController): () => void {
         const callerSignal = this.options.signal;
+
+        if (!callerSignal) {
+            return () => {};
+        }
 
         const forwardAbort = (): void => {
             controller.abort('caller');
         };
 
-        if (callerSignal?.aborted) {
+        if (callerSignal.aborted) {
             forwardAbort();
         } else {
-            callerSignal?.addEventListener('abort', forwardAbort, { once: true });
+            callerSignal.addEventListener('abort', forwardAbort, { once: true });
         }
 
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        return () => {
+            callerSignal.removeEventListener('abort', forwardAbort);
+        };
+    }
 
-        try {
-            const endpoint = await this.acquireEndpoint(controller.signal);
+    private startRequestTimeout(controller: AbortController): TimeoutId {
+        return setTimeout(() => {
+            controller.abort('timeout');
+        }, this.getRequestTimeoutMs());
+    }
 
-            // The request timeout starts only after an endpoint is acquired.
-            // Endpoint-pool wait time is governed separately by EndpointManager.
-            timeoutId = setTimeout(() => {
-                controller.abort('timeout');
-            }, this.options.timeoutMs ?? this.defaults.timeoutMs);
+    private getRequestTimeoutMs(): number {
+        return this.options.timeoutMs ?? this.defaults.timeoutMs;
+    }
 
-            return await this.executeRequest(endpoint, controller.signal);
-        } catch (error: unknown) {
-            /*
-             * Capture the abort reason before performing defensive abort().
-             * This preserves the actual source of cancellation:
-             * caller > internal timeout > no abort.
-             */
-            const abortReason = controller.signal.reason;
+    private handleOperationError(error: unknown, signal: AbortSignal): unknown {
+        const abortReason = signal.reason;
 
-            // Defensive abort: cancel any in-flight operation on the error path.
-            controller.abort();
-
-            // Caller cancellation always has precedence over internal timeout.
-            // This guarantees caller cancellation can never accidentally become
-            // a retryable TimeoutException.
-            if (callerSignal?.aborted || abortReason === 'caller') {
-                throw this.buildAbortError('caller', error);
-            }
-
-            // Endpoint acquisition has its own timeout domain and is exposed as
-            // the standard retryable TimeoutException.
-            if (error instanceof EndpointAcquisitionTimeoutError) {
-                throw new TimeoutException(
-                    `Endpoint acquisition timed out after ${error.timeoutMs}ms: ${this.sanitizedUrl()}`,
-                    { cause: error },
-                );
-            }
-
-            if (error instanceof CallerAbortedError) {
-                throw this.buildAbortError('caller', error);
-            }
-
-            // If the internal request timeout caused the abort, preserve that
-            // classification even if the transport returned a generic error.
-            if (abortReason === 'timeout') {
-                throw this.buildAbortError('timeout', error);
-            }
-
-            throw error;
-        } finally {
-            clearTimeout(timeoutId);
-            callerSignal?.removeEventListener('abort', forwardAbort);
+        if (this.options.signal?.aborted || abortReason === 'caller') {
+            return this.createCallerAbortedError(error);
         }
+
+        if (error instanceof EndpointAcquisitionTimeoutError) {
+            return new TimeoutException(
+                `Endpoint acquisition timed out after ${error.timeoutMs}ms: ${this.sanitizedUrl()}`,
+                { cause: error },
+            );
+        }
+
+        if (error instanceof CallerAbortedError) {
+            return this.createCallerAbortedError(error);
+        }
+
+        if (abortReason === 'timeout') {
+            return this.createRequestTimeoutError(error);
+        }
+
+        return error;
+    }
+
+    private createCallerAbortedError(cause: unknown): CallerAbortedError {
+        return new CallerAbortedError(
+            `Request cancelled by caller: ${this.sanitizedUrl()} — cause: ${describeError(cause)}`,
+            { cause },
+        );
+    }
+
+    private createRequestTimeoutError(cause: unknown): TimeoutException {
+        return new TimeoutException(
+            `Request timed out after ${this.getRequestTimeoutMs()}ms: ${this.sanitizedUrl()} — cause: ${describeError(cause)}`,
+            { cause },
+        );
     }
 
     private async acquireEndpoint(signal: AbortSignal): Promise<EndpointHandle> {
@@ -117,10 +137,18 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     }
 
     private async executeRequest(endpoint: EndpointHandle, signal: AbortSignal): Promise<HttpResponse> {
-        let response: HttpResponse;
+        const response = await this.request(endpoint, signal);
 
+        if (response.ok) {
+            return response;
+        }
+
+        return this.handleHttpError(response);
+    }
+
+    private async request(endpoint: EndpointHandle, signal: AbortSignal): Promise<HttpResponse> {
         try {
-            response = await endpoint.transport.request({
+            return await endpoint.transport.request({
                 url: this.url,
                 method: HTTP_METHOD_GET,
                 headers: this.buildHeaders(),
@@ -138,50 +166,30 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
             throw this.classifyTransportError(endpoint.transport, error);
         }
-
-        if (!response.ok) {
-            const retryAfter = parseRetryAfterHeader(response, this.now());
-
-            // Preserve the primary HTTP failure even if draining the body fails.
-            try {
-                await drainBody(response);
-            } catch (error: unknown) {
-                logger.debug(
-                    {
-                        error,
-                        status: response.status,
-                        url: this.sanitizedUrl(),
-                    },
-                    'Failed to drain non-success HTTP response body',
-                );
-            }
-
-            throw new HttpException(
-                `HTTP ${response.status} ${response.statusText} — GET ${this.sanitizedUrl()}`,
-                response.status,
-                retryAfter ?? undefined,
-            );
-        }
-
-        return response;
     }
 
-    private classifyTransportError(
-        transport: HttpTransport,
-        error: unknown,
-    ): NetworkException | TimeoutException | CallerAbortedError | UnexpectedError {
+    private async handleHttpError(response: HttpResponse): Promise<never> {
+        const retryAfter = parseRetryAfterHeader(response, this.now());
+
+        await drainBody(response);
+
+        throw new HttpException(
+            `HTTP ${response.status} ${response.statusText} — GET ${this.sanitizedUrl()}`,
+            response.status,
+            retryAfter ?? undefined,
+        );
+    }
+
+    private classifyTransportError(transport: HttpTransport, error: unknown): ClassifiedTransportError {
         const classification = transport.classifyError(error);
         const cause = classification.cause;
 
         switch (classification.kind) {
             case 'timeout':
                 return new TimeoutException(
-                    `Request timed out after ${
-                        this.options.timeoutMs ?? this.defaults.timeoutMs
-                    }ms: ${this.sanitizedUrl()} — cause: ${describeError(cause)}`,
+                    `Request timed out after ${this.getRequestTimeoutMs()}ms: ${this.sanitizedUrl()} — cause: ${describeError(cause)}`,
                     { cause },
                 );
-
             case 'cancelled': {
                 const unexpectedError = new UnexpectedError(cause);
 
@@ -216,30 +224,6 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 return unexpectedError;
             }
         }
-    }
-
-    /**
-     * Maps an AbortKind to the correct typed error.
-     *
-     * perform() uses this method to create the final application-level
-     * cancellation or timeout error with the operation-specific message.
-     */
-    private buildAbortError(kind: AbortKind, cause: unknown): CallerAbortedError | TimeoutException {
-        const causeDescription = describeError(cause);
-
-        if (kind === 'timeout') {
-            return new TimeoutException(
-                `Request timed out after ${
-                    this.options.timeoutMs ?? this.defaults.timeoutMs
-                }ms: ${this.sanitizedUrl()} — cause: ${causeDescription}`,
-                { cause },
-            );
-        }
-
-        return new CallerAbortedError(
-            `Request cancelled by caller: ${this.sanitizedUrl()} — cause: ${causeDescription}`,
-            { cause },
-        );
     }
 
     private buildHeaders(): Record<string, string> {

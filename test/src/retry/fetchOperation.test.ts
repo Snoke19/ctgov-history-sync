@@ -882,6 +882,73 @@ describe('FetchOperation', () => {
     });
 
     describe('request timeout', () => {
+        it('clears the request timeout after a successful request', async () => {
+            const transport = createMockTransport();
+            transport.request.mockResolvedValue(createResponse());
+            const endpoint = createEndpoint(transport);
+            const endpointManager = createEndpointManager(endpoint);
+            const operation = createOperation(endpointManager);
+
+            await operation.perform();
+
+            expect(jest.getTimerCount()).toBe(0);
+        });
+
+        it('clears the request timeout after a failed request', async () => {
+            const transport = createMockTransport();
+            transport.request.mockRejectedValue(new Error('network down'));
+            transport.classifyError.mockReturnValue({
+                kind: 'network',
+                cause: new Error('ECONNRESET'),
+            });
+            const endpoint = createEndpoint(transport);
+            const endpointManager = createEndpointManager(endpoint);
+            const operation = createOperation(endpointManager);
+
+            await expect(operation.perform()).rejects.toBeInstanceOf(NetworkException);
+
+            expect(jest.getTimerCount()).toBe(0);
+        });
+
+        it('removes the caller abort listener after completion', async () => {
+            const controller = new AbortController();
+            const addSpy = jest.spyOn(controller.signal, 'addEventListener');
+            const removeSpy = jest.spyOn(controller.signal, 'removeEventListener');
+            const transport = createMockTransport();
+            transport.request.mockResolvedValue(createResponse());
+            const endpoint = createEndpoint(transport);
+            const endpointManager = createEndpointManager(endpoint);
+            const operation = createOperation(endpointManager, {
+                signal: controller.signal,
+            });
+
+            await operation.perform();
+
+            expect(addSpy).toHaveBeenCalledWith('abort', expect.any(Function), { once: true });
+            expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+        });
+
+        it('removes the caller abort listener when the request fails', async () => {
+            const controller = new AbortController();
+            const addSpy = jest.spyOn(controller.signal, 'addEventListener');
+            const removeSpy = jest.spyOn(controller.signal, 'removeEventListener');
+            const transport = createMockTransport();
+            transport.request.mockRejectedValue(new Error('network down'));
+            transport.classifyError.mockReturnValue({
+                kind: 'network',
+                cause: new Error('ECONNRESET'),
+            });
+            const endpoint = createEndpoint(transport);
+            const endpointManager = createEndpointManager(endpoint);
+            const operation = createOperation(endpointManager, {
+                signal: controller.signal,
+            });
+
+            await expect(operation.perform()).rejects.toBeInstanceOf(NetworkException);
+            expect(addSpy).toHaveBeenCalledWith('abort', expect.any(Function), { once: true });
+            expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+        });
+
         it('throws TimeoutException when the internal request timeout aborts the transport', async () => {
             const transport = createMockTransport();
             const transportAbortError = new Error('The operation was aborted.');
