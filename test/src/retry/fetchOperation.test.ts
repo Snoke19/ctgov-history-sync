@@ -323,6 +323,7 @@ describe('FetchOperation', () => {
 
     describe('caller cancellation', () => {
         it('throws CallerAbortedError when the caller aborts during the request', async () => {
+            const transportAbortError = new Error('The operation was aborted.');
             const controller = new AbortController();
 
             const transport = createMockTransport();
@@ -335,7 +336,7 @@ describe('FetchOperation', () => {
 
             transport.classifyError.mockReturnValue({
                 kind: 'cancelled',
-                cause: new DOMException('The operation was aborted.', 'AbortError'),
+                cause: transportAbortError,
             });
 
             const endpoint = createEndpoint(transport);
@@ -353,6 +354,7 @@ describe('FetchOperation', () => {
         });
 
         it('prioritizes caller cancellation over the internal timeout', async () => {
+            const transportAbortError = new Error('The operation was aborted.');
             const controller = new AbortController();
             const transport = createMockTransport();
 
@@ -364,7 +366,7 @@ describe('FetchOperation', () => {
 
             transport.classifyError.mockReturnValue({
                 kind: 'cancelled',
-                cause: new DOMException('The operation was aborted.', 'AbortError'),
+                cause: transportAbortError,
             });
 
             const endpoint = createEndpoint(transport);
