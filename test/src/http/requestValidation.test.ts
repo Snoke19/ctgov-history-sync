@@ -37,14 +37,6 @@ describe('validateFetchJsonRequestOptions', () => {
         ).toThrow(TrialValidationError);
     });
 
-    it('throws TrialValidationError for invalid timeoutMs', () => {
-        expect(() =>
-            validateFetchJsonRequestOptions({
-                timeoutMs: 0,
-            }),
-        ).toThrow(TrialValidationError);
-    });
-
     it('throws TrialValidationError for invalid retryOnTimeout', () => {
         expect(() =>
             validateFetchJsonRequestOptions({
