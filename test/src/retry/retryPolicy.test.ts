@@ -26,6 +26,27 @@ import {
 
 describe('retryPolicy', () => {
     describe('validateRetryPolicyConfig', () => {
+        it.each(['true', 1, null, undefined, {}, []])('rejects non-boolean retryOnTimeout: %s', (retryOnTimeout) => {
+            expect(() =>
+                validateRetryPolicyConfig({
+                    ...defaultRetryPolicyConfig,
+                    retryOnTimeout: retryOnTimeout as unknown as boolean,
+                }),
+            ).toThrow('retryOnTimeout must be a boolean');
+        });
+
+        it.each(['true', 1, null, undefined, {}, []])(
+            'rejects non-boolean retryOnNetworkError: %s',
+            (retryOnNetworkError) => {
+                expect(() =>
+                    validateRetryPolicyConfig({
+                        ...defaultRetryPolicyConfig,
+                        retryOnNetworkError: retryOnNetworkError as unknown as boolean,
+                    }),
+                ).toThrow('retryOnNetworkError must be a boolean');
+            },
+        );
+
         it('does not mutate the provided configuration', () => {
             const config = {
                 ...defaultRetryPolicyConfig,
