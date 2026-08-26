@@ -13,17 +13,18 @@ import { BusinessOperation } from './businessOperation.js';
 
 const logger = createLogger(import.meta.url);
 
-type DelayMs = number | ((retryAttempt: number, error: TrialError) => number);
+type RetryHaltReason = 'unexpected' | 'aborted' | 'not-retryable' | 'exhausted';
+type RetryDirective = { action: 'retry'; delayMs: number } | { action: 'halt'; reason: RetryHaltReason };
+type RetryDelayCalculator = (retryAttempt: number, error: TrialError) => number;
+type RetryDelay = number | RetryDelayCalculator;
+
 type AttemptResult<T> = { ok: true; value: T } | { ok: false; error: TrialError };
-type RetryDirective =
-    | { action: 'retry'; delayMs: number }
-    | { action: 'halt'; reason: 'unexpected' | 'aborted' | 'not-retryable' | 'exhausted' };
 
 export class Retry<T> implements BusinessOperation<T> {
     private readonly operation: BusinessOperation<T>;
     private readonly maxAttempts: number;
     private readonly shouldRetry: (error: TrialError) => boolean;
-    private readonly delayMs: DelayMs;
+    private readonly retryDelay: RetryDelay;
     private readonly sleep: Sleeper['sleep'];
     private readonly signal: AbortSignal | undefined;
     private readonly clock: MonotonicClock['now'];
@@ -32,7 +33,7 @@ export class Retry<T> implements BusinessOperation<T> {
         operation: BusinessOperation<T>,
         maxAttempts: number,
         shouldRetry: (error: TrialError) => boolean,
-        delayMs: DelayMs,
+        retryDelay: RetryDelay,
         sleep: Sleeper['sleep'] = defaultSleeper.sleep,
         signal?: AbortSignal,
         clock: MonotonicClock['now'] = defaultMonotonicClock.now,
@@ -41,16 +42,16 @@ export class Retry<T> implements BusinessOperation<T> {
             throw new ConfigurationError(`maxAttempts must be a positive integer. value is ${maxAttempts}`);
         }
 
-        if (typeof delayMs === 'number') {
-            this.validateDelay(delayMs);
-        } else if (typeof delayMs !== 'function') {
-            throw new ConfigurationError('delayMs must be a non-negative integer or a function returning one');
+        if (typeof retryDelay === 'number') {
+            this.validateDelay(retryDelay);
+        } else if (typeof retryDelay !== 'function') {
+            throw new ConfigurationError('retryDelay must be a non-negative integer or a function returning one');
         }
 
         this.operation = operation;
         this.maxAttempts = maxAttempts;
         this.shouldRetry = shouldRetry;
-        this.delayMs = delayMs;
+        this.retryDelay = retryDelay;
         this.sleep = sleep;
         this.signal = signal;
         this.clock = clock;
@@ -70,30 +71,30 @@ export class Retry<T> implements BusinessOperation<T> {
 
         const startedAt = this.clock();
 
-        for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+        for (let attemptNumber = 1; attemptNumber <= this.maxAttempts; attemptNumber++) {
             const result = await this.tryOnce();
 
             if (result.ok) {
-                if (attempt > 1) {
-                    this.logRecovery(attempt, attempt - 1, startedAt);
+                if (attemptNumber > 1) {
+                    this.logRecovery(attemptNumber, attemptNumber - 1, startedAt);
                 }
                 return result.value;
             }
 
-            const directive = this.determineNextAction(attempt, result.error);
+            const directive = this.determineNextAction(attemptNumber, result.error);
 
             if (directive.action === 'halt') {
-                this.logHaltReason(directive.reason, attempt, result.error, startedAt);
+                this.logHaltReason(directive.reason, attemptNumber, result.error, startedAt);
                 throw result.error;
             }
 
-            this.logRetrying(attempt + 1, directive.delayMs, result.error, startedAt);
+            this.logRetrying(attemptNumber + 1, directive.delayMs, result.error, startedAt);
 
             try {
-                await this.delayWithAbortCheck(directive.delayMs);
+                await this.waitForRetry(directive.delayMs);
             } catch (error: unknown) {
                 if (error instanceof CallerAbortedError) {
-                    this.logHaltReason('aborted', attempt, error, startedAt);
+                    this.logHaltReason('aborted', attemptNumber, error, startedAt);
                 }
 
                 throw error;
@@ -112,7 +113,7 @@ export class Retry<T> implements BusinessOperation<T> {
         }
     }
 
-    private determineNextAction(currentAttempt: number, error: TrialError): RetryDirective {
+    private determineNextAction(attemptNumber: number, error: TrialError): RetryDirective {
         if (error instanceof UnexpectedError) {
             return { action: 'halt', reason: 'unexpected' };
         }
@@ -125,33 +126,29 @@ export class Retry<T> implements BusinessOperation<T> {
             return { action: 'halt', reason: 'not-retryable' };
         }
 
-        if (currentAttempt >= this.maxAttempts) {
+        if (attemptNumber >= this.maxAttempts) {
             return { action: 'halt', reason: 'exhausted' };
         }
 
-        const delayMs = this.resolveDelay(currentAttempt - 1, error);
-
-        return { action: 'retry', delayMs };
+        return {
+            action: 'retry',
+            delayMs: this.calculateDelay(attemptNumber - 1, error),
+        };
     }
 
-    private logHaltReason(
-        reason: 'unexpected' | 'aborted' | 'not-retryable' | 'exhausted',
-        attempt: number,
-        error: TrialError,
-        startedAt: number,
-    ): void {
+    private logHaltReason(reason: RetryHaltReason, attemptNumber: number, error: TrialError, startedAt: number): void {
         switch (reason) {
             case 'not-retryable':
                 this.logNotRetryable(error, startedAt);
                 break;
             case 'exhausted':
-                this.logExhausted(attempt, error, startedAt);
+                this.logExhausted(attemptNumber, error, startedAt);
                 break;
             case 'unexpected':
-                this.logUnexpected(attempt, error, startedAt);
+                this.logUnexpected(attemptNumber, error, startedAt);
                 break;
             case 'aborted':
-                this.logAborted(attempt, error, startedAt);
+                this.logAborted(attemptNumber, error, startedAt);
                 break;
         }
     }
@@ -162,13 +159,13 @@ export class Retry<T> implements BusinessOperation<T> {
         }
     }
 
-    private async delayWithAbortCheck(ms: number): Promise<void> {
+    private async waitForRetry(delayMs: number): Promise<void> {
         if (this.signal?.aborted) {
             throw new CallerAbortedError('Caller aborted before retry backoff.');
         }
 
         try {
-            await this.sleep(ms, this.signal);
+            await this.sleep(delayMs, this.signal);
         } catch (error: unknown) {
             if (this.signal?.aborted) {
                 throw new CallerAbortedError('The retry backoff was aborted by the caller.', { cause: error });
@@ -185,10 +182,10 @@ export class Retry<T> implements BusinessOperation<T> {
         }
     }
 
-    private logRecovery(attempt: number, retries: number, startedAt: number): void {
+    private logRecovery(attemptNumber: number, retries: number, startedAt: number): void {
         logger.debug(
             {
-                attempts: attempt,
+                attempts: attemptNumber,
                 retries,
                 durationMs: this.clock() - startedAt,
             },
@@ -207,10 +204,10 @@ export class Retry<T> implements BusinessOperation<T> {
         );
     }
 
-    private logExhausted(attempt: number, error: TrialError, startedAt: number): void {
+    private logExhausted(attemptNumber: number, error: TrialError, startedAt: number): void {
         logger.warn(
             {
-                attempts: attempt,
+                attempts: attemptNumber,
                 maxAttempts: this.maxAttempts,
                 err: error,
                 errorType: error.name,
@@ -220,10 +217,10 @@ export class Retry<T> implements BusinessOperation<T> {
         );
     }
 
-    private logRetrying(nextAttempt: number, delayMs: number, error: TrialError, startedAt: number): void {
+    private logRetrying(attemptNumber: number, delayMs: number, error: TrialError, startedAt: number): void {
         logger.warn(
             {
-                attempts: nextAttempt,
+                attempts: attemptNumber,
                 maxAttempts: this.maxAttempts,
                 delayMs,
                 statusCode: error instanceof HttpException ? error.status : undefined,
@@ -235,10 +232,10 @@ export class Retry<T> implements BusinessOperation<T> {
         );
     }
 
-    private logUnexpected(attempt: number, error: TrialError, startedAt: number): void {
+    private logUnexpected(attemptNumber: number, error: TrialError, startedAt: number): void {
         logger.debug(
             {
-                attempts: attempt,
+                attempts: attemptNumber,
                 durationMs: this.clock() - startedAt,
                 err: error,
                 errorType: error.name,
@@ -247,10 +244,10 @@ export class Retry<T> implements BusinessOperation<T> {
         );
     }
 
-    private logAborted(attempt: number, error: TrialError, startedAt: number): void {
+    private logAborted(attemptNumber: number, error: TrialError, startedAt: number): void {
         logger.debug(
             {
-                attempts: attempt,
+                attempts: attemptNumber,
                 durationMs: this.clock() - startedAt,
                 err: error,
                 errorType: error.name,
@@ -265,21 +262,18 @@ export class Retry<T> implements BusinessOperation<T> {
         }
     }
 
-    private resolveDelay(currentAttempt: number, error: TrialError): number {
-        let raw: number;
-
+    private calculateDelay(retryAttempt: number, error: TrialError): number {
         try {
-            raw = typeof this.delayMs === 'function' ? this.delayMs(currentAttempt, error) : this.delayMs;
+            const delay =
+                typeof this.retryDelay === 'function' ? this.retryDelay(retryAttempt, error) : this.retryDelay;
 
-            this.validateDelay(raw);
+            this.validateDelay(delay);
+            return delay;
         } catch (cause: unknown) {
             if (cause instanceof RetryDelayCalculationError) {
                 throw cause;
             }
-
             throw new RetryDelayCalculationError(cause);
         }
-
-        return raw;
     }
 }
