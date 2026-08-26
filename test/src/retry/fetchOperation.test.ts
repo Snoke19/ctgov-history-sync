@@ -324,6 +324,52 @@ describe('FetchOperation', () => {
     });
 
     describe('caller cancellation', () => {
+        it('throws CallerAbortedError when the caller signal is already aborted', async () => {
+            const controller = new AbortController();
+            controller.abort();
+            const transport = createMockTransport();
+            const endpoint = createEndpoint(transport);
+            const endpointManager = {
+                acquireEndpoint: jest
+                    .fn<(signal: AbortSignal) => Promise<EndpointHandle>>()
+                    .mockImplementation(async (signal) => {
+                        if (signal.aborted) {
+                            throw new CallerAbortedError();
+                        }
+                        return endpoint;
+                    }),
+            } as unknown as EndpointManager;
+            const operation = createOperation(endpointManager, {
+                signal: controller.signal,
+            });
+
+            const error = await operation.perform().catch((value: unknown) => value);
+
+            expect(error).toBeInstanceOf(CallerAbortedError);
+            expect(endpointManager.acquireEndpoint).toHaveBeenCalledWith(expect.any(AbortSignal));
+            expect(transport.request).not.toHaveBeenCalled();
+        });
+
+        it('converts an existing CallerAbortedError into the operation-level caller error', async () => {
+            const originalError = new CallerAbortedError('endpoint acquisition was cancelled');
+
+            const endpointManager = {
+                acquireEndpoint: jest
+                    .fn<(signal: AbortSignal) => Promise<EndpointHandle>>()
+                    .mockRejectedValue(originalError),
+            } as unknown as EndpointManager;
+
+            const operation = createOperation(endpointManager);
+
+            const error = await operation.perform().catch((value: unknown) => value);
+
+            expect(error).toBeInstanceOf(CallerAbortedError);
+            expect(error).not.toBe(originalError);
+
+            expect((error as CallerAbortedError).message).toContain('Request cancelled by caller');
+            expect((error as CallerAbortedError).cause).toBe(originalError);
+        });
+
         it('throws CallerAbortedError when the caller aborts during the request', async () => {
             const transportAbortError = new Error('The operation was aborted.');
             const controller = new AbortController();
