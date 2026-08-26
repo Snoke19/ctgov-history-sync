@@ -3,6 +3,32 @@ import { TrialValidationError } from '../../../src/error/errors.js';
 import { validateFetchJsonRequestOptions } from '../../../src/http/requestValidation.js';
 
 describe('validateFetchJsonRequestOptions', () => {
+    describe('timeoutMs', () => {
+        it.each([
+            ['zero', 0],
+            ['negative integer', -1],
+            ['decimal', 1.5],
+            ['NaN', NaN],
+            ['Infinity', Infinity],
+            ['negative Infinity', -Infinity],
+            ['unsafe integer', Number.MAX_SAFE_INTEGER + 1],
+        ])('rejects %s', (_, timeoutMs) => {
+            expect(() =>
+                validateFetchJsonRequestOptions({
+                    timeoutMs,
+                }),
+            ).toThrow(TrialValidationError);
+        });
+
+        it.each([1, 50, 1_000, Number.MAX_SAFE_INTEGER])('accepts positive safe integer %s', (timeoutMs) => {
+            expect(() =>
+                validateFetchJsonRequestOptions({
+                    timeoutMs,
+                }),
+            ).not.toThrow();
+        });
+    });
+
     it('throws TrialValidationError for invalid maxRetries', () => {
         expect(() =>
             validateFetchJsonRequestOptions({

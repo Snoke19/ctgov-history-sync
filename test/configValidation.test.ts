@@ -13,6 +13,44 @@ describe('configValidation', () => {
         process.env = ORIGINAL_ENV;
     });
 
+    describe('positive integer configuration', () => {
+        it.each([
+            ['0', 0],
+            ['-1', -1],
+        ])('rejects %s when positive is required', (_, raw) => {
+            process.env.MY_TIMEOUT = String(raw);
+
+            expect(() =>
+                env.int('MY_TIMEOUT', 1_000, {
+                    positive: true,
+                }),
+            ).toThrow(ConfigurationError);
+        });
+
+        it.each(['1.5', 'NaN', 'Infinity', '-Infinity', '1e3', '0x100'])(
+            'rejects %s as a timeout configuration value',
+            (raw) => {
+                process.env.MY_TIMEOUT = raw;
+
+                expect(() =>
+                    env.int('MY_TIMEOUT', 1_000, {
+                        positive: true,
+                    }),
+                ).toThrow(ConfigurationError);
+            },
+        );
+
+        it.each(['1', '50', '1000', '15000'])('accepts %s as a timeout configuration value', (raw) => {
+            process.env.MY_TIMEOUT = raw;
+
+            expect(
+                env.int('MY_TIMEOUT', 1_000, {
+                    positive: true,
+                }),
+            ).toBe(Number(raw));
+        });
+    });
+
     // -----------------------------------------------------------------------
     // env.int
     // -----------------------------------------------------------------------
