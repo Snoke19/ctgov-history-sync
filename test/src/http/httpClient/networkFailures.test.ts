@@ -150,7 +150,7 @@ describe('HttpClient network & timeout failures', () => {
                 TimeoutException,
             );
 
-            expect(error.message).toContain('Request timed out after 50ms: http://api.test/slow — cause: {}');
+            expect(error.message).toContain('Request timed out after 50ms: http://api.test/slow — cause: Unknown transport error');
             expect(fetchMock).toHaveBeenCalledTimes(1);
         });
     });
@@ -170,7 +170,7 @@ describe('HttpClient network & timeout failures', () => {
             );
 
             expect(error.message).toContain(
-                'Request timed out after 50ms: http://api.test/timeout-no-retry — cause: {}',
+                'Request timed out after 50ms: http://api.test/timeout-no-retry — cause: Unknown transport error',
             );
             expect(fetchMock).toHaveBeenCalledTimes(1);
         });

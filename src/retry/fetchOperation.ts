@@ -129,7 +129,12 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 throw error;
             }
 
-            throw this.classifyTransportError(endpoint.transport, error, signal);
+            const reason = signal.reason;
+            if (reason === 'caller' || reason === 'timeout') {
+                throw error;
+            }
+
+            throw this.classifyTransportError(endpoint.transport, error);
         }
 
         if (!response.ok) {
@@ -162,7 +167,6 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     private classifyTransportError(
         transport: HttpTransport,
         error: unknown,
-        signal: AbortSignal,
     ): NetworkException | TimeoutException | CallerAbortedError | UnexpectedError {
         const classification = transport.classifyError(error);
         const cause = classification.cause;
@@ -177,14 +181,6 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 );
 
             case 'cancelled': {
-                const reason = signal.reason;
-
-                if (reason === 'caller' || reason === 'timeout') {
-                    return this.buildAbortError(reason, cause);
-                }
-
-                // A cancelled transport error without our own abort reason
-                // should not be incorrectly classified as caller cancellation.
                 const unexpectedError = new UnexpectedError(cause);
 
                 logger.debug(
@@ -223,8 +219,8 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     /**
      * Maps an AbortKind to the correct typed error.
      *
-     * Both perform() and the cancelled branch of classifyTransportError()
-     * use this method so the mapping is defined in one place.
+     * perform() uses this method to create the final application-level
+     * cancellation or timeout error with the operation-specific message.
      */
     private buildAbortError(kind: AbortKind, cause: unknown): CallerAbortedError | TimeoutException {
         const causeDescription = describeError(cause);
@@ -292,10 +288,5 @@ function describeError(error: unknown): string {
         return error;
     }
 
-    try {
-        const serialized = JSON.stringify(error);
-        return serialized ?? String(error);
-    } catch {
-        return String(error);
-    }
+    return 'Unknown transport error';
 }
