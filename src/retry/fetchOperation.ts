@@ -25,7 +25,7 @@ const CANONICAL_HEADER_NAMES = new Map<string, string>([
 ]);
 
 type TimeoutId = ReturnType<typeof setTimeout>;
-type ClassifiedTransportError = NetworkException | TimeoutException | CallerAbortedError | UnexpectedError;
+type ClassifiedTransportError = NetworkException | TimeoutException | UnexpectedError;
 
 export interface FetchOperationDefaults {
     readonly timeoutMs: number;

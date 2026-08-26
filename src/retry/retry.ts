@@ -81,7 +81,7 @@ export class Retry<T> implements BusinessOperation<T> {
                 return result.value;
             }
 
-            const directive = this.determineNextAction(attemptNumber, result.error);
+            const directive = this.determineRetryDirective(attemptNumber, result.error);
 
             if (directive.action === 'halt') {
                 this.logHaltReason(directive.reason, attemptNumber, result.error, startedAt);
@@ -113,7 +113,8 @@ export class Retry<T> implements BusinessOperation<T> {
         }
     }
 
-    private determineNextAction(attemptNumber: number, error: TrialError): RetryDirective {
+    private determineRetryDirective(attemptNumber: number, error: TrialError): RetryDirective {
+        // These errors must never be retried, regardless of the configured policy.
         if (error instanceof UnexpectedError) {
             return { action: 'halt', reason: 'unexpected' };
         }
