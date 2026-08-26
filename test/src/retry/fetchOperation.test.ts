@@ -262,6 +262,20 @@ describe('FetchOperation', () => {
     });
 
     describe('endpoint acquisition', () => {
+        it('propagates an unexpected endpoint acquisition error unchanged', async () => {
+            const originalError = new Error('endpoint provider failed');
+
+            const endpointManager = {
+                acquireEndpoint: jest
+                    .fn<(signal: AbortSignal) => Promise<EndpointHandle>>()
+                    .mockRejectedValue(originalError),
+            } as unknown as EndpointManager;
+
+            const operation = createOperation(endpointManager);
+
+            await expect(operation.perform()).rejects.toBe(originalError);
+        });
+
         it('converts EndpointAcquisitionTimeoutError into TimeoutException', async () => {
             const endpointManager = {
                 acquireEndpoint: jest
