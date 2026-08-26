@@ -571,20 +571,20 @@ describe('Retry', () => {
             const controller = new AbortController();
 
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
-            const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockImplementation(() => {
+            const retryDelay = jest.fn<(attempt: number, error: TrialError) => number>().mockImplementation(() => {
                 controller.abort();
                 return 1;
             });
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-            const promiseRetry = new Retry(operation, 2, () => true, delay, sleep, controller.signal).perform();
+            const promiseRetry = new Retry(operation, 2, () => true, retryDelay, sleep, controller.signal).perform();
             const error = await promiseRetry.catch((e) => e);
 
             expect(error).toBeInstanceOf(CallerAbortedError);
             expect(error.message).toBe('Caller aborted before retry backoff.');
 
             expect(operation.perform).toHaveBeenCalledTimes(1);
-            expect(delay).toHaveBeenCalledTimes(1);
+            expect(retryDelay).toHaveBeenCalledTimes(1);
             expect(sleep).not.toHaveBeenCalled();
         });
 
@@ -686,26 +686,26 @@ describe('Retry', () => {
             const operation = makeOperation(
                 jest.fn<() => Promise<string>>().mockRejectedValueOnce(error).mockResolvedValueOnce('ok'),
             );
-            const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockReturnValue(25);
+            const retryDelay = jest.fn<(attempt: number, error: TrialError) => number>().mockReturnValue(25);
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-            const retry = new Retry(operation, 2, () => true, delay, sleep);
+            const retry = new Retry(operation, 2, () => true, retryDelay, sleep);
             const result = await retry.perform();
 
             expect(result).toBe('ok');
-            expect(delay).toHaveBeenCalledWith(0, error);
+            expect(retryDelay).toHaveBeenCalledWith(0, error);
             expect(sleep).toHaveBeenCalledWith(25, undefined);
         });
 
         it('propagates exception thrown by delayMs function immediately', async () => {
             const delayError = new Error('delay calc failure');
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
-            const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockImplementation(() => {
+            const retryDelay = jest.fn<(attempt: number, error: TrialError) => number>().mockImplementation(() => {
                 throw delayError;
             });
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-            const retry = new Retry(operation, 3, () => true, delay, sleep);
+            const retry = new Retry(operation, 3, () => true, retryDelay, sleep);
             const result = retry.perform();
 
             await expect(result).rejects.toMatchObject({
@@ -714,7 +714,7 @@ describe('Retry', () => {
                 cause: delayError,
             });
             expect(operation.perform).toHaveBeenCalledTimes(1);
-            expect(delay).toHaveBeenCalledWith(0, expect.any(HttpException));
+            expect(retryDelay).toHaveBeenCalledWith(0, expect.any(HttpException));
             expect(sleep).not.toHaveBeenCalled();
         });
 
@@ -726,12 +726,12 @@ describe('Retry', () => {
             ['NaN', Number.NaN],
             ['positive Infinity', Number.POSITIVE_INFINITY],
             ['negative Infinity', Number.NEGATIVE_INFINITY],
-        ])('fails fast for invalid static delayMs (%s)', (_, delayMs) => {
+        ])('fails fast for invalid static retryDelay (%s)', (_, retryDelay) => {
             const operation = makeOperation(jest.fn<() => Promise<string>>());
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>();
 
-            expect(() => new Retry(operation, 3, () => true, delayMs, sleep)).toThrow(
-                new ConfigurationError(`delayMs must be a non-negative integer. value is ${delayMs}`),
+            expect(() => new Retry(operation, 3, () => true, retryDelay, sleep)).toThrow(
+                new ConfigurationError(`delayMs must be a non-negative integer. value is ${retryDelay}`),
             );
 
             expect(operation.perform).not.toHaveBeenCalled();
@@ -746,9 +746,9 @@ describe('Retry', () => {
             ['negative Infinity', Number.NEGATIVE_INFINITY],
         ])('rejects invalid delay returned by callback (%s)', async (_, delayMs) => {
             const operation = makeOperation(jest.fn<() => Promise<string>>().mockRejectedValue(retryableError()));
-            const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockReturnValue(delayMs);
+            const retryDelay = jest.fn<(attempt: number, error: TrialError) => number>().mockReturnValue(delayMs);
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
-            const retry = new Retry(operation, 2, () => true, delay, sleep);
+            const retry = new Retry(operation, 2, () => true, retryDelay, sleep);
 
             const result = retry.perform();
 
@@ -761,7 +761,7 @@ describe('Retry', () => {
             });
 
             expect(operation.perform).toHaveBeenCalledTimes(1);
-            expect(delay).toHaveBeenCalledWith(0, expect.any(HttpException));
+            expect(retryDelay).toHaveBeenCalledWith(0, expect.any(HttpException));
             expect(sleep).not.toHaveBeenCalled();
         });
 
@@ -776,14 +776,14 @@ describe('Retry', () => {
                     .mockRejectedValueOnce(secondError)
                     .mockResolvedValueOnce('ok'),
             );
-            const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockReturnValue(25);
+            const retryDelay = jest.fn<(attempt: number, error: TrialError) => number>().mockReturnValue(25);
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-            const retry = new Retry(operation, 3, () => true, delay, sleep);
+            const retry = new Retry(operation, 3, () => true, retryDelay, sleep);
 
             await expect(retry.perform()).resolves.toBe('ok');
-            expect(delay).toHaveBeenNthCalledWith(1, 0, firstError);
-            expect(delay).toHaveBeenNthCalledWith(2, 1, secondError);
+            expect(retryDelay).toHaveBeenNthCalledWith(1, 0, firstError);
+            expect(retryDelay).toHaveBeenNthCalledWith(2, 1, secondError);
             expect(sleep).toHaveBeenNthCalledWith(1, 25, undefined);
             expect(sleep).toHaveBeenNthCalledWith(2, 25, undefined);
         });
@@ -1204,15 +1204,15 @@ describe('Retry', () => {
                 .mockRejectedValueOnce(firstError)
                 .mockRejectedValueOnce(secondError)
                 .mockResolvedValueOnce('ok');
-            const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockReturnValue(0);
+            const retryDelay = jest.fn<(attempt: number, error: TrialError) => number>().mockReturnValue(0);
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-            const retry = new Retry(makeOperation(perform), 3, () => true, delay, sleep);
+            const retry = new Retry(makeOperation(perform), 3, () => true, retryDelay, sleep);
 
             await expect(retry.perform()).resolves.toBe('ok');
-            expect(delay).toHaveBeenNthCalledWith(1, 0, firstError);
-            expect(delay).toHaveBeenNthCalledWith(2, 1, secondError);
-            expect(delay).toHaveBeenCalledTimes(2);
+            expect(retryDelay).toHaveBeenNthCalledWith(1, 0, firstError);
+            expect(retryDelay).toHaveBeenNthCalledWith(2, 1, secondError);
+            expect(retryDelay).toHaveBeenCalledTimes(2);
         });
 
         it('wraps a delay callback exception in RetryDelayCalculationError', async () => {
@@ -1220,12 +1220,12 @@ describe('Retry', () => {
             const operation = makeOperation(
                 jest.fn<() => Promise<string>>().mockRejectedValue(new HttpException('server error', 500)),
             );
-            const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockImplementation(() => {
+            const retryDelay = jest.fn<(attempt: number, error: TrialError) => number>().mockImplementation(() => {
                 throw callbackError;
             });
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-            const retry = new Retry(operation, 2, () => true, delay, sleep);
+            const retry = new Retry(operation, 2, () => true, retryDelay, sleep);
             const result = retry.perform();
 
             await expect(result).rejects.toBeInstanceOf(RetryDelayCalculationError);
@@ -1244,10 +1244,10 @@ describe('Retry', () => {
             const operation = makeOperation(
                 jest.fn<() => Promise<string>>().mockRejectedValue(new HttpException('server error', 500)),
             );
-            const delay = jest.fn<(attempt: number, error: TrialError) => number>().mockReturnValue(value);
+            const retryDelay = jest.fn<(attempt: number, error: TrialError) => number>().mockReturnValue(value);
             const sleep = jest.fn<(ms: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
-            const retry = new Retry(operation, 2, () => true, delay, sleep);
+            const retry = new Retry(operation, 2, () => true, retryDelay, sleep);
             const result = retry.perform();
 
             await expect(result).rejects.toBeInstanceOf(RetryDelayCalculationError);
