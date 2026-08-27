@@ -64,10 +64,10 @@ function createOperationFixture(
 ) {
     const transport = createMockTransport();
     const endpoint = createMockEndpoint(transport);
-    const { manager, acquireEndpoint } = createMockEndpointManager(endpoint);
+    const endpointManager = createMockEndpointManager(endpoint, 1);
 
     const operation = new FetchOperation(
-        manager,
+        endpointManager,
         url,
         transportOptions,
         {
@@ -80,8 +80,7 @@ function createOperationFixture(
     return {
         transport,
         endpoint,
-        endpointManager: manager,
-        acquireEndpoint,
+        endpointManager,
         operation,
     };
 }
@@ -124,12 +123,13 @@ describe('FetchOperation', () => {
         it('returns the successful response', async () => {
             const { transport, operation, endpointManager } = createOperationFixture();
             const response = createResponse();
+            const acquireEndpointSpy = jest.spyOn(endpointManager, 'acquireEndpoint');
             transport.request.mockResolvedValue(response);
 
             await expect(operation.perform()).resolves.toBe(response);
 
-            expect(endpointManager.acquireEndpoint).toHaveBeenCalledTimes(1);
-            expect(endpointManager.acquireEndpoint).toHaveBeenCalledWith(expect.any(AbortSignal));
+            expect(acquireEndpointSpy).toHaveBeenCalledTimes(1);
+            expect(acquireEndpointSpy).toHaveBeenCalledWith(expect.any(AbortSignal));
             expect(transport.request).toHaveBeenCalledTimes(1);
         });
 
@@ -151,7 +151,7 @@ describe('FetchOperation', () => {
         it('uses default headers', async () => {
             const { transport, operation } = createOperationFixture();
             transport.request.mockResolvedValue(createResponse());
-            
+
             await operation.perform();
 
             expect(transport.request).toHaveBeenCalledWith(
@@ -256,15 +256,17 @@ describe('FetchOperation', () => {
     describe('endpoint acquisition', () => {
         it('propagates an unexpected endpoint acquisition error unchanged', async () => {
             const originalError = new Error('endpoint provider failed');
-            const { operation, acquireEndpoint } = createOperationFixture();
-            acquireEndpoint.mockRejectedValue(originalError);
+            const { operation, endpointManager } = createOperationFixture();
+            const acquireEndpointSpy = jest.spyOn(endpointManager, 'acquireEndpoint');
+            acquireEndpointSpy.mockRejectedValue(originalError);
 
             await expect(operation.perform()).rejects.toBe(originalError);
         });
 
         it('converts EndpointAcquisitionTimeoutError into TimeoutException', async () => {
-            const { operation, acquireEndpoint } = createOperationFixture();
-            acquireEndpoint.mockRejectedValue(new EndpointAcquisitionTimeoutError(2_500, 5));
+            const { operation, endpointManager } = createOperationFixture();
+            const acquireEndpointSpy = jest.spyOn(endpointManager, 'acquireEndpoint');
+            acquireEndpointSpy.mockRejectedValue(new EndpointAcquisitionTimeoutError(2_500, 5));
 
             await expect(operation.perform()).rejects.toMatchObject({
                 name: 'TimeoutException',
@@ -274,7 +276,7 @@ describe('FetchOperation', () => {
         });
 
         it('does not start the request timeout before endpoint acquisition completes', async () => {
-            const { transport, operation, acquireEndpoint } = createOperationFixture({
+            const { transport, operation, endpointManager } = createOperationFixture({
                 timeoutMs: 1_000,
             });
             transport.request.mockResolvedValue(createResponse());
@@ -282,7 +284,8 @@ describe('FetchOperation', () => {
             const acquisition = new Promise<EndpointHandle>((resolve) => {
                 resolveAcquisition = resolve;
             });
-            acquireEndpoint.mockReturnValue(acquisition);
+            const acquireEndpointSpy = jest.spyOn(endpointManager, 'acquireEndpoint');
+            acquireEndpointSpy.mockReturnValue(acquisition);
 
             const promise = operation.perform();
             await jest.advanceTimersByTimeAsync(1_000);
@@ -296,11 +299,12 @@ describe('FetchOperation', () => {
 
         it('prioritizes caller cancellation over endpoint acquisition timeout', async () => {
             const controller = new AbortController();
-            const { operation, acquireEndpoint } = createOperationFixture({
+            const { operation, endpointManager } = createOperationFixture({
                 signal: controller.signal,
                 timeoutMs: 1_000,
             });
-            acquireEndpoint.mockImplementation(async () => {
+            const acquireEndpointSpy = jest.spyOn(endpointManager, 'acquireEndpoint');
+            acquireEndpointSpy.mockImplementation(async () => {
                 controller.abort();
                 throw new EndpointAcquisitionTimeoutError(1_000, 1);
             });
@@ -313,11 +317,11 @@ describe('FetchOperation', () => {
         it('throws CallerAbortedError when the caller signal is already aborted', async () => {
             const controller = new AbortController();
             controller.abort();
-            const { transport, endpoint, operation, acquireEndpoint } = createOperationFixture({
+            const { transport, endpoint, operation, endpointManager } = createOperationFixture({
                 signal: controller.signal,
             });
-
-            acquireEndpoint.mockImplementation(async (signal) => {
+            const acquireEndpointSpy = jest.spyOn(endpointManager, 'acquireEndpoint');
+            acquireEndpointSpy.mockImplementation(async (signal) => {
                 if (signal.aborted) {
                     throw new CallerAbortedError();
                 }
@@ -327,14 +331,15 @@ describe('FetchOperation', () => {
             const error = await operation.perform().catch((value: unknown) => value);
 
             expect(error).toBeInstanceOf(CallerAbortedError);
-            expect(acquireEndpoint).toHaveBeenCalledWith(expect.any(AbortSignal));
+            expect(acquireEndpointSpy).toHaveBeenCalledWith(expect.any(AbortSignal));
             expect(transport.request).not.toHaveBeenCalled();
         });
 
         it('converts an existing CallerAbortedError into the operation-level caller error', async () => {
             const originalError = new CallerAbortedError('endpoint acquisition was cancelled');
-            const { operation, acquireEndpoint } = createOperationFixture();
-            acquireEndpoint.mockRejectedValue(originalError);
+            const { operation, endpointManager } = createOperationFixture();
+            const acquireEndpointSpy = jest.spyOn(endpointManager, 'acquireEndpoint');
+            acquireEndpointSpy.mockRejectedValue(originalError);
 
             const error = await operation.perform().catch((value: unknown) => value);
 

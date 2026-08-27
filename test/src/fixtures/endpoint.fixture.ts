@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import { Endpoint } from '../../../src/http/endpoint/endpoint.js';
 import { EndpointFactory } from '../../../src/http/endpoint/endpointFactory.js';
 import { EndpointManager } from '../../../src/http/endpoint/manager/endpointManager.js';
@@ -20,17 +19,10 @@ export function createMockEndpoint(
     return new Endpoint(url, limiter, transport);
 }
 
-export function createMockEndpointManager(endpoint: Endpoint, acquireTimeout = 1_000) {
-    const manager = new EndpointManager([endpoint], {
+export function createMockEndpointManager(endpoint: Endpoint, acquireTimeout: number): EndpointManager {
+    return new EndpointManager([endpoint], {
         acquireTimeout,
     });
-
-    const acquireEndpoint = jest.spyOn(manager, 'acquireEndpoint').mockResolvedValue(endpoint.getHandle());
-
-    return {
-        manager,
-        acquireEndpoint,
-    };
 }
 
 export async function createProxyEndpointManager(
