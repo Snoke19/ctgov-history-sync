@@ -1,5 +1,6 @@
 import { createLogger } from '../config/logging.js';
 import { ApiResponseValidationError } from '../error/errors.js';
+import { sanitizeHttpUrl } from '../error/normalization/urlSanitizer.js';
 import { HttpResponse } from './transport/httpTransport.js';
 
 const logger = createLogger(import.meta.url);
@@ -65,15 +66,6 @@ function warnOnUnexpectedContentType(response: HttpResponse, url: string): void 
     const contentType = response.headers.get('Content-Type') ?? '';
 
     if (!contentType.includes('application/json')) {
-        logger.warn({ url: safeHttpUrl(url), contentType }, 'Unexpected HTTP response Content-Type');
-    }
-}
-
-function safeHttpUrl(value: string): string {
-    try {
-        const url = new URL(value);
-        return `${url.protocol}//${url.host}${url.pathname}`;
-    } catch {
-        return '<invalid URL>';
+        logger.warn({ url: sanitizeHttpUrl(url), contentType }, 'Unexpected HTTP response Content-Type');
     }
 }

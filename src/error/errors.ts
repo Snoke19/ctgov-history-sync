@@ -1,3 +1,5 @@
+import { stripUserInfo } from './normalization/urlSanitizer.js';
+
 export interface TrialErrorOptions extends ErrorOptions {
     readonly context?: Record<string, unknown> | undefined;
 }
@@ -157,27 +159,4 @@ export class RetryDelayCalculationError extends TrialError {
 
         super(`Failed to calculate retry delay: ${message}`, { cause });
     }
-}
-
-/**
- * Strips `user:password@` from the authority of a URL string without
- * normalizing anything else. Falls back to the raw string when the URL
- * cannot be parsed, still removing anything that looks like userinfo.
- */
-function stripUserInfo(value: string): string {
-    if (!value.includes('@')) {
-        return value;
-    }
-
-    try {
-        const url = new URL(value);
-
-        if (url.username === '' && url.password === '') {
-            return value;
-        }
-    } catch {
-        // Fall through to the conservative regex below.
-    }
-
-    return value.replace(/\/\/[^@/?#]+@/, '//');
 }

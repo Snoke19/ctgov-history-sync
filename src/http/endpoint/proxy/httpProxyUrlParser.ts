@@ -1,4 +1,5 @@
 import { createLogger } from '../../../config/logging.js';
+import { sanitizeProxyUrl } from '../../../error/normalization/urlSanitizer.js';
 
 const logger = createLogger(import.meta.url);
 
@@ -43,15 +44,6 @@ export class HttpProxyUrlParser implements ProxyUrlParser {
         }
 
         return urls;
-    }
-}
-
-function sanitizeProxyUrl(value: string): string {
-    try {
-        const url = new URL(value);
-        return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}`;
-    } catch {
-        return '<invalid proxy URL>';
     }
 }
 

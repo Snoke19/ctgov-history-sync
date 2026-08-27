@@ -2,6 +2,7 @@ import { fetch, Pool, ProxyAgent } from 'undici';
 import type { Dispatcher } from 'undici';
 import { createLogger } from '../../../config/logging.js';
 import type { ProxyPoolConfig } from '../../../config/types.js';
+import { sanitizeProxyUrl } from '../../../error/normalization/urlSanitizer.js';
 import { resolveConnections } from '../../endpoint/proxy/resolveConnections.js';
 import { adaptHttpResponse } from '../adaptHttpResponse.js';
 import { classifyTransportError, TransportErrorPredicates } from '../classifyTransportError.js';
@@ -74,16 +75,6 @@ export class UndiciTransportFactory implements ProxyTransportFactory {
         const agent = agentCreator(proxyUrl, clientFactory);
 
         return new UndiciHttpTransport(agent, proxyUrl);
-    }
-}
-
-function sanitizeProxyUrl(value: string): string {
-    try {
-        const url = new URL(value);
-
-        return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}`;
-    } catch {
-        return '<invalid proxy URL>';
     }
 }
 

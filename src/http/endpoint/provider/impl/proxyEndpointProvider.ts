@@ -1,5 +1,6 @@
 import { createLogger } from '../../../../config/logging.js';
 import { ConfigurationError } from '../../../../error/errors.js';
+import { sanitizeProxyUrl } from '../../../../error/normalization/urlSanitizer.js';
 import { makeAssertions } from '../../../../utils/assertions.js';
 import { ProxyTransportContext, ProxyTransportFactory } from '../../../transport/factory/proxyTransportFactory.js';
 import { ProxyUrlParser } from '../../proxy/httpProxyUrlParser.js';
@@ -55,15 +56,5 @@ export class ProxyEndpointProvider implements EndpointProvider {
             id: urlProxy,
             createTransport: () => this.transportFactory.create(urlProxy, context),
         }));
-    }
-}
-
-function sanitizeProxyUrl(value: string): string {
-    try {
-        const url = new URL(value);
-
-        return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}`;
-    } catch {
-        return '<invalid proxy URL>';
     }
 }

@@ -18,6 +18,7 @@ import {
 } from '../config/config.js';
 import { createLogger } from '../config/logging.js';
 import { ApiResponseValidationError, TrialError, TrialNotFoundError, TrialValidationError } from '../error/errors.js';
+import { sanitizeHttpUrl } from '../error/normalization/urlSanitizer.js';
 import { DefaultEndpointManagerFactory } from '../http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { ProxyEndpointProvider } from '../http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../http/endpoint/proxy/httpProxyUrlParser.js';
@@ -80,8 +81,8 @@ export async function createApiClient(): Promise<ApiClient> {
     logger.info(
         {
             nodeEnv: process.env.NODE_ENV ?? null,
-            apiBaseUrl: safeApiUrl(API_BASE_URL),
-            apiDetailUrl: safeApiUrl(API_DETAIL_URL),
+            apiBaseUrl: sanitizeHttpUrl(API_BASE_URL),
+            apiDetailUrl: sanitizeHttpUrl(API_DETAIL_URL),
             concurrency: CONCURRENCY,
             rateLimitCapacity: RATE_LIMIT_CAPACITY,
             rateLimitWindowMs: RATE_LIMIT_WINDOW,
@@ -117,7 +118,7 @@ export async function createApiClient(): Promise<ApiClient> {
         const apiClient = createApiClientWithHttpClient(httpClient);
 
         logger.info(
-            { apiBaseUrl: safeApiUrl(API_BASE_URL), apiDetailUrl: safeApiUrl(API_DETAIL_URL) },
+            { apiBaseUrl: sanitizeHttpUrl(API_BASE_URL), apiDetailUrl: sanitizeHttpUrl(API_DETAIL_URL) },
             'API client created',
         );
 
@@ -159,7 +160,7 @@ export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiCli
         logger.debug(
             {
                 operation: 'fetchStudiesPage',
-                url: safeApiUrl(url),
+                url: sanitizeHttpUrl(url),
                 pageSize: params.pageSize ?? null,
                 hasPageToken: Boolean(params.pageToken),
             },
@@ -179,7 +180,7 @@ export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiCli
         const url = new UrlBuilder(API_DETAIL_URL).path(normalizedNctId).queryParams(params).build();
 
         logger.debug(
-            { operation: 'fetchTrialDetail', nctId: normalizedNctId, url: safeApiUrl(url) },
+            { operation: 'fetchTrialDetail', nctId: normalizedNctId, url: sanitizeHttpUrl(url) },
             'Fetching trial detail',
         );
 
@@ -265,15 +266,6 @@ function isStudy(value: unknown): value is Study {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object';
-}
-
-function safeApiUrl(value: string): string {
-    try {
-        const url = new URL(value);
-        return `${url.protocol}//${url.host}${url.pathname}`;
-    } catch {
-        return '<invalid URL>';
-    }
 }
 
 function validateNctId(value: string): string {

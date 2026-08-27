@@ -1,5 +1,6 @@
 import { createLogger } from '../../config/logging.js';
 import { EndpointAssemblyError, TrialError } from '../../error/errors.js';
+import { sanitizeEndpointUrl } from '../../error/normalization/urlSanitizer.js';
 import { LimiterFactory } from '../limiter/factory/limiterFactory.js';
 import type { Limiter } from '../limiter/limiter.js';
 import type { HttpTransport } from '../transport/httpTransport.js';
@@ -149,14 +150,4 @@ async function rollbackEndpoints(endpoints: readonly Endpoint[], assemblyError: 
         },
         cleanupErrors,
     );
-}
-
-function sanitizeEndpointUrl(value: string): string {
-    try {
-        const url = new URL(value);
-
-        return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}`;
-    } catch {
-        return '<invalid endpoint URL>';
-    }
 }

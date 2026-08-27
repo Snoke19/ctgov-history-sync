@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getLogContext, LogContext, withLogContext } from '../config/logContext.js';
 import { createLogger } from '../config/logging.js';
 import { CallerAbortedError, EndpointAssemblyError, HttpException, TrialError } from '../error/errors.js';
+import { sanitizeHttpUrl } from '../error/normalization/urlSanitizer.js';
 import { FetchOperation, FetchOperationDefaults } from '../retry/fetchOperation.js';
 import { Retry } from '../retry/retry.js';
 import { calculateBackoff, RetryPolicyConfig, shouldRetry, validateRetryPolicyConfig } from '../retry/retryPolicy.js';
@@ -315,14 +316,5 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
             options.signal,
             monotonicNow,
         );
-    }
-}
-
-function sanitizeHttpUrl(value: string): string {
-    try {
-        const url = new URL(value);
-        return `${url.protocol}//${url.host}${url.pathname}`;
-    } catch {
-        return '<invalid URL>';
     }
 }

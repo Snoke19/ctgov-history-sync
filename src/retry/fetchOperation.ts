@@ -8,6 +8,7 @@ import {
     TrialError,
     UnexpectedError,
 } from '../error/errors.js';
+import { sanitizeHttpUrl } from '../error/normalization/urlSanitizer.js';
 import { defaultWallClock, WallClock } from '../http/clock.js';
 import { EndpointHandle } from '../http/endpoint/endpoint.js';
 import { EndpointManager } from '../http/endpoint/manager/endpointManager.js';
@@ -241,21 +242,8 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         return headers;
     }
 
-    /**
-     * Removes credentials, query parameters and fragments from the URL used
-     * in exception messages and logs.
-     *
-     * If the URL is invalid, deliberately return a safe placeholder instead
-     * of exposing potentially sensitive raw input.
-     */
     private sanitizedUrl(): string {
-        try {
-            const url = new URL(this.url);
-
-            return `${url.protocol}//${url.host}${url.pathname}`;
-        } catch {
-            return '<invalid URL>';
-        }
+        return sanitizeHttpUrl(this.url);
     }
 }
 
