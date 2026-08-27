@@ -9,8 +9,9 @@ import {
     UnexpectedError,
 } from '../../../src/error/errors.js';
 import { EndpointHandle } from '../../../src/http/endpoint/endpoint.js';
-import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
+import { HttpResponse, HttpTransport } from '../../../src/http/transport/httpTransport.js';
 import { FetchOperation } from '../../../src/retry/fetchOperation.js';
+import { rejectOnAbort } from '../fixtures/abort.fixture.js';
 import { createMockEndpoint, createMockEndpointManager } from '../fixtures/endpoint.fixture.js';
 import { createMockTransport } from '../fixtures/transport.fixture.js';
 
@@ -40,17 +41,12 @@ function createResponse(
     };
 }
 
-function rejectOnAbort(
-    signal: AbortSignal,
-    reject: (reason?: unknown) => void,
-    error: unknown = new Error('The operation was aborted.'),
-): void {
-    if (signal.aborted) {
-        reject(error);
-        return;
-    }
-
-    signal.addEventListener('abort', () => reject(error), { once: true });
+function rejectTransportRequestOnAbort(transport: jest.Mocked<HttpTransport>, error: unknown): void {
+    transport.request.mockImplementation((options) => {
+        return new Promise<HttpResponse>((_, reject) => {
+            rejectOnAbort(options.signal, reject, error);
+        });
+    });
 }
 
 function createOperationFixture(
@@ -102,11 +98,7 @@ describe('FetchOperation', () => {
         });
 
         const transportAbortError = new Error('The operation was aborted.');
-        transport.request.mockImplementation((options) => {
-            return new Promise<HttpResponse>((_, reject) => {
-                rejectOnAbort(options.signal, reject, transportAbortError);
-            });
-        });
+        rejectTransportRequestOnAbort(transport, transportAbortError);
 
         const promise = operation.perform();
         const rejection = promise.catch((error: unknown) => error);
@@ -355,11 +347,8 @@ describe('FetchOperation', () => {
             const { transport, operation } = createOperationFixture({
                 signal: controller.signal,
             });
-            transport.request.mockImplementation((options) => {
-                return new Promise<HttpResponse>((_, reject) => {
-                    rejectOnAbort(options.signal, reject, transportAbortError);
-                });
-            });
+            rejectTransportRequestOnAbort(transport, transportAbortError);
+
             transport.classifyError.mockReturnValue({
                 kind: 'cancelled',
                 cause: transportAbortError,
@@ -380,11 +369,7 @@ describe('FetchOperation', () => {
                 signal: controller.signal,
                 timeoutMs: DEFAULT_TIMEOUT_MS,
             });
-            transport.request.mockImplementation((options) => {
-                return new Promise<HttpResponse>((_, reject) => {
-                    rejectOnAbort(options.signal, reject, transportAbortError);
-                });
-            });
+            rejectTransportRequestOnAbort(transport, transportAbortError);
 
             const promise = operation.perform();
             const rejection = promise.catch((error: unknown) => error);
@@ -761,11 +746,7 @@ describe('FetchOperation', () => {
             const { transport, operation } = createOperationFixture({
                 timeoutMs: DEFAULT_TIMEOUT_MS,
             });
-            transport.request.mockImplementation((options) => {
-                return new Promise<HttpResponse>((_, reject) => {
-                    rejectOnAbort(options.signal, reject, transportAbortError);
-                });
-            });
+            rejectTransportRequestOnAbort(transport, transportAbortError);
 
             const promise = operation.perform();
             const rejection = promise.catch((error: unknown) => error);

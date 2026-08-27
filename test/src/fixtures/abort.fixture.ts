@@ -1,7 +1,18 @@
 import { jest } from '@jest/globals';
 
-export function createAbortError(): DOMException {
-    return new DOMException('The operation was aborted.', 'AbortError');
+export function createAbortError(): Error {
+    const error = new Error('The operation was aborted.');
+    error.name = 'AbortError';
+    return error;
+}
+
+export function rejectOnAbort(signal: AbortSignal, reject: (reason?: unknown) => void, error: unknown): void {
+    if (signal.aborted) {
+        reject(error);
+        return;
+    }
+
+    signal.addEventListener('abort', () => reject(error), { once: true });
 }
 
 export function createAbortableFetchMock(): jest.SpiedFunction<typeof fetch> {
@@ -13,16 +24,7 @@ export function createAbortableFetchMock(): jest.SpiedFunction<typeof fetch> {
                 return;
             }
 
-            const onAbort = (): void => {
-                reject(createAbortError());
-            };
-
-            if (signal.aborted) {
-                onAbort();
-                return;
-            }
-
-            signal.addEventListener('abort', onAbort, { once: true });
+            rejectOnAbort(signal, reject, createAbortError());
         });
     });
 }
@@ -36,16 +38,12 @@ export function createAbortableRequestMock(onRequestStarted: () => void): jest.S
                 throw new Error('Expected fetch signal');
             }
 
-            const onAbort = (): void => {
-                reject(createAbortError());
-            };
-
             if (signal.aborted) {
-                onAbort();
+                reject(createAbortError());
                 return;
             }
 
-            signal.addEventListener('abort', onAbort, { once: true });
+            rejectOnAbort(signal, reject, createAbortError());
 
             onRequestStarted();
         });
