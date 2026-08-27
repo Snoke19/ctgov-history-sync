@@ -17,8 +17,7 @@ import {
     WallClock,
 } from './clock.js';
 import { EndpointFactory } from './endpoint/endpointFactory.js';
-import { EndpointManager } from './endpoint/manager/endpointManager.js';
-import { EndpointManagerFactory } from './endpoint/manager/endpointManagerFactory.js';
+import { EndpointManager, EndpointManagerOptions } from './endpoint/manager/endpointManager.js';
 import { EndpointProvider } from './endpoint/provider/endpointProvider.js';
 import { HTTP_METHOD_GET, type FetchJsonRequestOptions } from './http.js';
 import { LimiterFactory } from './limiter/factory/limiterFactory.js';
@@ -96,8 +95,8 @@ export interface CreateHttpClientOptions {
     /** Builds the rate limiter applied per endpoint. */
     limiterFactory: LimiterFactory;
 
-    /** Creates the endpoint manager that owns endpoint pools. */
-    endpointManagerFactory: EndpointManagerFactory;
+    /** Options for the endpoint manager that owns endpoint pools. */
+    endpointManagerOptions: EndpointManagerOptions;
 
     /** Monotonic source used for elapsed-duration measurements. */
     monotonicClock?: MonotonicClock;
@@ -109,7 +108,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
         fetchDefaults,
         provider,
         limiterFactory,
-        endpointManagerFactory,
+        endpointManagerOptions,
         sleep = defaultSleeper.sleep,
         random = defaultRandom.random,
         wallClock = defaultWallClock,
@@ -125,7 +124,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
     let endpointManager: EndpointManager;
 
     try {
-        endpointManager = endpointManagerFactory.create(endpoints);
+        endpointManager = new EndpointManager(endpoints, endpointManagerOptions);
     } catch (error: unknown) {
         const trialError = TrialError.normalize(error);
 

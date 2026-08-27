@@ -1,7 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { defaultHttpClientDefaults, defaultRetryPolicyConfig } from '../../../src/api/api.js';
 import { ConfigurationError, EndpointAssemblyError } from '../../../src/error/errors.js';
-import { DefaultEndpointManagerFactory } from '../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { createHttpClient } from '../../../src/http/httpClient.js';
 import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import { createProxyOptions } from '../fixtures/clientOptions.fixture.js';
@@ -18,9 +17,9 @@ describe('Proxy + Undici construction chain', () => {
         await expect(
             createHttpClient(
                 buildHttpClientOptions(provider, {
-                    endpointManagerFactory: new DefaultEndpointManagerFactory({
+                    endpointManagerOptions: {
                         endpointAcquireTimeoutMs: 0,
-                    }),
+                    },
                 }),
             ),
         ).rejects.toBeInstanceOf(EndpointAssemblyError);
@@ -37,9 +36,9 @@ describe('Proxy + Undici construction chain', () => {
         await expect(
             createHttpClient(
                 buildHttpClientOptions(provider, {
-                    endpointManagerFactory: new DefaultEndpointManagerFactory({
+                    endpointManagerOptions: {
                         endpointAcquireTimeoutMs: 0,
-                    }),
+                    },
                 }),
             ),
         ).rejects.toEqual(

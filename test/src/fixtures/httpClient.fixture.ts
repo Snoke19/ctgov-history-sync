@@ -1,10 +1,8 @@
 import { defaultFetchOperationDefaults, defaultHttpClientDefaults } from '../../../src/api/api.js';
-import { DefaultEndpointManagerFactory } from '../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { EndpointProvider } from '../../../src/http/endpoint/provider/endpointProvider.js';
 import { DirectEndpointProvider } from '../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { createHttpClient, HttpClient } from '../../../src/http/httpClient.js';
 import { LimiterFactory } from '../../../src/http/limiter/factory/limiterFactory.js';
-import { FetchDirectTransportFactory } from '../../../src/http/transport/impl/fetchDirectTransport.js';
 import { createDefaultOptions } from './clientOptions.fixture.js';
 import { createClockFixture, type ClockFixture } from './clock.fixture.js';
 import { createDisabledLimiterFactory } from './limiter.fixture.js';
@@ -33,13 +31,13 @@ export function createTestClient(
         sleep: options.sleep,
         random: options.random,
         wallClock: options.wallClock,
-        provider: new DirectEndpointProvider(new FetchDirectTransportFactory()),
+        provider: new DirectEndpointProvider(),
         limiterFactory,
-        endpointManagerFactory: new DefaultEndpointManagerFactory({
+        endpointManagerOptions: {
             endpointAcquireTimeoutMs: options.endpointAcquireTimeoutMs,
             clock: options.monotonicClock.now,
             sleep: options.sleep,
-        }),
+        },
     });
 }
 
@@ -57,11 +55,11 @@ export function buildHttpClientOptions(
         wallClock: clock.wallClock,
         provider,
         limiterFactory: createDisabledLimiterFactory(),
-        endpointManagerFactory: new DefaultEndpointManagerFactory({
+        endpointManagerOptions: {
             endpointAcquireTimeoutMs: 30000,
             clock: clock.monotonicClock.now,
             sleep: clock.sleep,
-        }),
+        },
         ...overrides,
     };
 }

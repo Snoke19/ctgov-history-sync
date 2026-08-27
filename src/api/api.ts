@@ -3,7 +3,6 @@ import { defaults } from '../config/defaults.js';
 import { createLogger } from '../config/logging.js';
 import { ApiResponseValidationError, TrialError, TrialNotFoundError, TrialValidationError } from '../error/errors.js';
 import { sanitizeHttpUrl } from '../error/normalization/urlSanitizer.js';
-import { DefaultEndpointManagerFactory } from '../http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { ProxyEndpointProvider } from '../http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../http/endpoint/proxy/httpProxyUrlParser.js';
 import { createHttpClient, HttpClientDefaults } from '../http/httpClient.js';
@@ -113,9 +112,9 @@ export async function createApiClient(appConfig?: AppConfig): Promise<ApiClient>
                 capacity: config.rateLimit.capacity,
                 windowMs: config.rateLimit.windowMs,
             }),
-            endpointManagerFactory: new DefaultEndpointManagerFactory({
+            endpointManagerOptions: {
                 endpointAcquireTimeoutMs: config.endpoint.acquireTimeoutMs,
-            }),
+            },
         });
 
         const apiClient = createApiClientWithHttpClient(httpClient, config);

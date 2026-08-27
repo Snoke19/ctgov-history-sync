@@ -1,12 +1,8 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { defaultFetchOperationDefaults, defaultHttpClientDefaults } from '../../../../src/api/api.js';
-import { DefaultEndpointManagerFactory } from '../../../../src/http/endpoint/manager/defaultEndpointManagerFactory.js';
 import { DirectEndpointProvider } from '../../../../src/http/endpoint/provider/impl/directEndpointProvider.js';
 import { createHttpClient } from '../../../../src/http/httpClient.js';
-import {
-    FetchDirectTransport,
-    FetchDirectTransportFactory,
-} from '../../../../src/http/transport/impl/fetchDirectTransport.js';
+import { FetchDirectTransport } from '../../../../src/http/transport/impl/fetchDirectTransport.js';
 import { API_URL } from '../../fixtures/constants.js';
 import { withClient } from '../../fixtures/lifecycle.fixture.js';
 import { createDisabledLimiterFactory } from '../../fixtures/limiter.fixture.js';
@@ -35,21 +31,17 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
     });
 
     it('closes all endpoints cleanly when client.close() is called', async () => {
-        const transport = new FetchDirectTransport();
-        const closeSpy = jest.spyOn(transport, 'close');
+        const closeSpy = jest.spyOn(FetchDirectTransport.prototype, 'close').mockResolvedValue(undefined);
 
-        const transportFactory = new FetchDirectTransportFactory();
-        jest.spyOn(transportFactory, 'create').mockReturnValue(transport);
-
-        const provider = new DirectEndpointProvider(transportFactory);
+        const provider = new DirectEndpointProvider();
         const client = await createHttpClient({
             defaults: defaultHttpClientDefaults,
             fetchDefaults: defaultFetchOperationDefaults,
             provider,
             limiterFactory: createDisabledLimiterFactory(),
-            endpointManagerFactory: new DefaultEndpointManagerFactory({
+            endpointManagerOptions: {
                 endpointAcquireTimeoutMs: 5000,
-            }),
+            },
         });
 
         await client.close();
@@ -58,21 +50,17 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
     });
 
     it('is idempotent when client.close() is called twice', async () => {
-        const transport = new FetchDirectTransport();
-        const closeSpy = jest.spyOn(transport, 'close');
+        const closeSpy = jest.spyOn(FetchDirectTransport.prototype, 'close').mockResolvedValue(undefined);
 
-        const transportFactory = new FetchDirectTransportFactory();
-        jest.spyOn(transportFactory, 'create').mockReturnValue(transport);
-
-        const provider = new DirectEndpointProvider(transportFactory);
+        const provider = new DirectEndpointProvider();
         const client = await createHttpClient({
             defaults: defaultHttpClientDefaults,
             fetchDefaults: defaultFetchOperationDefaults,
             provider,
             limiterFactory: createDisabledLimiterFactory(),
-            endpointManagerFactory: new DefaultEndpointManagerFactory({
+            endpointManagerOptions: {
                 endpointAcquireTimeoutMs: 5000,
-            }),
+            },
         });
 
         await client.close();
