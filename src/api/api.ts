@@ -1,21 +1,5 @@
-import {
-    API_BASE_URL,
-    API_DETAIL_URL,
-    CONCURRENCY,
-    ENDPOINT_ACQUIRE_TIMEOUT_MS,
-    PROXY_POOL_CONFIG,
-    PROXY_URLS,
-    RATE_LIMIT_CAPACITY,
-    RATE_LIMIT_WINDOW,
-    RETRY_ON_TIMEOUT,
-    RETRY_ON_NETWORK_ERROR,
-    RETRYABLE_STATUS_CODES,
-    RETRY_BASE_DELAY_MS,
-    BACKOFF_CAP_MS,
-    REQUEST_ABORT_TIMEOUT_MS,
-    MAX_RETRIES,
-    DEFAULT_USER_AGENT,
-} from '../config/config.js';
+import { AppConfig, loadConfig } from '../config/appConfig.js';
+import { defaults } from '../config/defaults.js';
 import { createLogger } from '../config/logging.js';
 import { ApiResponseValidationError, TrialError, TrialNotFoundError, TrialValidationError } from '../error/errors.js';
 import { sanitizeHttpUrl } from '../error/normalization/urlSanitizer.js';
@@ -49,76 +33,95 @@ export interface ApiClient {
 }
 
 export const defaultRetryPolicyConfig: RetryPolicyConfig = {
-    retryOnTimeout: RETRY_ON_TIMEOUT,
-    retryOnNetworkError: RETRY_ON_NETWORK_ERROR,
-    retryableStatusCodes: RETRYABLE_STATUS_CODES,
-    baseDelayMs: RETRY_BASE_DELAY_MS,
-    backoffCapMs: BACKOFF_CAP_MS,
+    retryOnTimeout: defaults.RETRY_ON_TIMEOUT,
+    retryOnNetworkError: defaults.RETRY_ON_NETWORK_ERROR,
+    retryableStatusCodes: new Set(defaults.RETRYABLE_STATUS_CODES),
+    baseDelayMs: defaults.RETRY_BASE_DELAY_MS,
+    backoffCapMs: defaults.BACKOFF_CAP_MS,
 };
 
 export const defaultHttpClientDefaults: HttpClientDefaults = {
-    requestAbortTimeoutMs: REQUEST_ABORT_TIMEOUT_MS,
-    maxRetries: MAX_RETRIES,
+    requestAbortTimeoutMs: defaults.REQUEST_ABORT_TIMEOUT_MS,
+    maxRetries: defaults.MAX_RETRIES,
     retryPolicy: defaultRetryPolicyConfig,
 };
 
 export const defaultFetchOperationDefaults: FetchOperationDefaults = {
-    requestAbortTimeoutMs: REQUEST_ABORT_TIMEOUT_MS,
-    userAgent: DEFAULT_USER_AGENT,
+    requestAbortTimeoutMs: defaults.REQUEST_ABORT_TIMEOUT_MS,
+    userAgent: defaults.DEFAULT_USER_AGENT,
 };
 
 /**
  * Creates a production-ready API client with the application's configured
  * HTTP infrastructure.
  *
- * The HTTP client, proxy endpoint provider, transport factory, rate limiter,
- * and connection-pool configuration are intentionally hidden from callers.
- *
- * Logging context (correlationId, operation) is picked up automatically from
- * the AsyncLocalStorage context of the caller.
+ * Explicit dependency: environment → loadConfig() → AppConfig → composition root.
+ * Pass AppConfig from the application boundary (src/index.ts). When omitted,
+ * loadConfig() is called lazily for backwards compatibility with tests.
  */
-export async function createApiClient(): Promise<ApiClient> {
+export async function createApiClient(appConfig?: AppConfig): Promise<ApiClient> {
+    const config = appConfig ?? loadConfig();
+
     logger.info(
         {
-            nodeEnv: process.env.NODE_ENV ?? null,
-            apiBaseUrl: sanitizeHttpUrl(API_BASE_URL),
-            apiDetailUrl: sanitizeHttpUrl(API_DETAIL_URL),
-            concurrency: CONCURRENCY,
-            rateLimitCapacity: RATE_LIMIT_CAPACITY,
-            rateLimitWindowMs: RATE_LIMIT_WINDOW,
-            endpointAcquireTimeoutMs: ENDPOINT_ACQUIRE_TIMEOUT_MS,
+            nodeEnv: config.logging.nodeEnv || null,
+            apiBaseUrl: sanitizeHttpUrl(config.api.baseUrl),
+            apiDetailUrl: sanitizeHttpUrl(config.api.detailUrl),
+            concurrency: config.http.concurrency,
+            rateLimitCapacity: config.rateLimit.capacity,
+            rateLimitWindowMs: config.rateLimit.windowMs,
+            endpointAcquireTimeoutMs: config.endpoint.acquireTimeoutMs,
         },
         'API configuration loaded',
     );
+
+    const retryPolicy: RetryPolicyConfig = {
+        retryOnTimeout: config.http.retryOnTimeout,
+        retryOnNetworkError: config.http.retryOnNetworkError,
+        retryableStatusCodes: config.http.retryableStatusCodes,
+        baseDelayMs: config.http.retryBaseDelayMs,
+        backoffCapMs: config.http.backoffCapMs,
+    };
+
+    const httpDefaults: HttpClientDefaults = {
+        requestAbortTimeoutMs: config.http.requestAbortTimeoutMs,
+        maxRetries: config.http.maxRetries,
+        retryPolicy,
+    };
+
+    const fetchDefaults: FetchOperationDefaults = {
+        requestAbortTimeoutMs: config.http.requestAbortTimeoutMs,
+        userAgent: config.http.defaultUserAgent,
+    };
 
     let httpClient: ApiHttpClient | undefined;
 
     try {
         httpClient = await createHttpClient({
-            defaults: defaultHttpClientDefaults,
-            fetchDefaults: defaultFetchOperationDefaults,
+            defaults: httpDefaults,
+            fetchDefaults,
             provider: new ProxyEndpointProvider(
-                new UndiciTransportFactory({ poolConfig: PROXY_POOL_CONFIG }),
+                new UndiciTransportFactory({ poolConfig: config.proxy.pool }),
                 new HttpProxyUrlParser(),
                 {
-                    proxyUrls: PROXY_URLS,
-                    concurrency: CONCURRENCY,
+                    proxyUrls: config.proxy.urls,
+                    concurrency: config.http.concurrency,
                 },
             ),
             limiterFactory: new DefaultLimiterFactory({
                 enabled: true,
-                capacity: RATE_LIMIT_CAPACITY,
-                windowMs: RATE_LIMIT_WINDOW,
+                capacity: config.rateLimit.capacity,
+                windowMs: config.rateLimit.windowMs,
             }),
             endpointManagerFactory: new DefaultEndpointManagerFactory({
-                endpointAcquireTimeoutMs: ENDPOINT_ACQUIRE_TIMEOUT_MS,
+                endpointAcquireTimeoutMs: config.endpoint.acquireTimeoutMs,
             }),
         });
 
-        const apiClient = createApiClientWithHttpClient(httpClient);
+        const apiClient = createApiClientWithHttpClient(httpClient, config);
 
         logger.info(
-            { apiBaseUrl: sanitizeHttpUrl(API_BASE_URL), apiDetailUrl: sanitizeHttpUrl(API_DETAIL_URL) },
+            { apiBaseUrl: sanitizeHttpUrl(config.api.baseUrl), apiDetailUrl: sanitizeHttpUrl(config.api.detailUrl) },
             'API client created',
         );
 
@@ -150,12 +153,17 @@ export async function createApiClient(): Promise<ApiClient> {
 /**
  * Creates an API client from an already-created HTTP client.
  *
- * This is the dependency-injection seam used by unit tests and callers that
- * intentionally provide custom HTTP infrastructure.
+ * DI seam for tests. When appConfig is omitted, URLs are resolved lazily
+ * from loadConfig() so existing tests continue to work without changes.
  */
-export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiClient {
+export function createApiClientWithHttpClient(
+    httpClient: ApiHttpClient,
+    appConfig?: Pick<AppConfig, 'api'>,
+): ApiClient {
+    const apiConfig = appConfig ?? loadConfig();
+
     async function fetchStudiesPage(params: FetchStudiesPageParams = {}): Promise<StudiesPageResponse> {
-        const url = new UrlBuilder(API_BASE_URL).queryParams(params).build();
+        const url = new UrlBuilder(apiConfig.api.baseUrl).queryParams(params).build();
 
         logger.debug(
             {
@@ -177,7 +185,7 @@ export function createApiClientWithHttpClient(httpClient: ApiHttpClient): ApiCli
     async function fetchTrialDetail(nctId: string, params: FetchTrialDetailParams = {}): Promise<unknown> {
         const normalizedNctId = validateNctId(nctId);
 
-        const url = new UrlBuilder(API_DETAIL_URL).path(normalizedNctId).queryParams(params).build();
+        const url = new UrlBuilder(apiConfig.api.detailUrl).path(normalizedNctId).queryParams(params).build();
 
         logger.debug(
             { operation: 'fetchTrialDetail', nctId: normalizedNctId, url: sanitizeHttpUrl(url) },

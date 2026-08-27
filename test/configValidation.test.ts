@@ -349,12 +349,14 @@ describe('configValidation', () => {
             jest.resetModules();
 
             try {
-                const config = await import('../src/config/config.js');
+                const { loadConfig } = await import('../src/config/appConfig.js');
                 const logging = await import('../src/config/logging.js');
 
-                expect(typeof config.NODE_ENV).toBe('string');
-                expect(typeof config.CONCURRENCY).toBe('number');
-                expect(typeof config.API_BASE_URL).toBe('string');
+                const config = loadConfig();
+
+                expect(typeof config.logging.nodeEnv).toBe('string');
+                expect(typeof config.http.concurrency).toBe('number');
+                expect(typeof config.api.baseUrl).toBe('string');
                 expect(typeof logging.createLogger).toBe('function');
             } finally {
                 jest.resetModules();

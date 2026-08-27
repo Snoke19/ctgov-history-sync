@@ -1,6 +1,6 @@
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
-import { DEFAULT_USER_AGENT } from '../../../../src/config/config.js';
+import { defaults } from '../../../../src/config/defaults.js';
 import { CallerAbortedError, TimeoutException } from '../../../../src/error/errors.js';
 import { HTTP_METHOD_GET } from '../../../../src/http/http.js';
 import type { HttpClient } from '../../../../src/http/httpClient.js';
@@ -124,7 +124,7 @@ describe('HttpClient full-stack integration', () => {
         });
 
         expect(result?.headers.accept).toBe('application/json');
-        expect(result?.headers['user-agent']).toBe(DEFAULT_USER_AGENT);
+        expect(result?.headers['user-agent']).toBe(defaults.DEFAULT_USER_AGENT);
         expect(result?.headers['x-custom']).toBe('v');
     });
 

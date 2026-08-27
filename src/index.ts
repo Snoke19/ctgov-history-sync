@@ -203,18 +203,21 @@ async function run(): Promise<void> {
     let api: ApiClient | undefined;
 
     try {
-        // Load configuration lazily so required-configuration failures surface here,
-        // at the application boundary, where they can be logged with full context.
-        const { CONCURRENCY, PAGE_SIZE } = await import('./config/config.js');
+        // Explicit config loading: environment → loadConfig() → AppConfig → composition root
+        const { loadConfig } = await import('./config/appConfig.js');
         const { createApiClient } = await import('./api/api.js');
+        const appConfig = loadConfig();
 
-        logger.info({ dateRange: DATE_RANGE, pageSize: PAGE_SIZE, concurrency: CONCURRENCY }, 'Scraper starting');
+        logger.info(
+            { dateRange: DATE_RANGE, pageSize: appConfig.api.pageSize, concurrency: appConfig.http.concurrency },
+            'Scraper starting',
+        );
 
-        api = await createApiClient();
+        api = await createApiClient(appConfig);
 
         logger.info('Scraper API client initialized');
 
-        await scrape(api, PAGE_SIZE, CONCURRENCY);
+        await scrape(api, appConfig.api.pageSize, appConfig.http.concurrency);
     } catch (err: unknown) {
         if (err instanceof Error) {
             logger.error({ err }, 'Scraper failed');
