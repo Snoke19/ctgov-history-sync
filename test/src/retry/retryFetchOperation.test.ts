@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
+import { TimeoutException } from '../../../src/error/errors.js';
 import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
 import { FetchOperation } from '../../../src/retry/fetchOperation.js';
 import { Retry } from '../../../src/retry/retry.js';
@@ -162,7 +163,7 @@ describe('Retry + FetchOperation integration', () => {
 
         await jest.advanceTimersByTimeAsync(timeoutMs);
 
-        await expect(promise).rejects.toBeInstanceOf(Error);
+        await expect(promise).rejects.toBeInstanceOf(TimeoutException);
 
         expect(transport.request).toHaveBeenCalledTimes(1);
         expect(sleep).not.toHaveBeenCalled();
