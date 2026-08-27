@@ -10,7 +10,7 @@ The project is more than an API scraper. Its main engineering goal is to provide
 
 ```mermaid
 flowchart LR
-    A[ClinicalTrials.gov API] --> B[Study Search]
+    A[ClinicalTrials.gov API] --> B[ScrapeUseCase]
     B --> C[Cursor Pagination]
     C --> D[NCT IDs]
     D --> E[Concurrent Detail Requests]
@@ -39,24 +39,28 @@ Infrastructure answers:
 
 A typical run is:
 
-1. Build a ClinicalTrials.gov study query.
-2. Fetch a page of studies.
-3. Follow `nextPageToken` until pagination is complete.
-4. Extract NCT identifiers.
-5. Fetch study details concurrently.
-6. Optionally request historical study information.
-7. Validate responses.
-8. Return successful records and classify failures through the project's error model.
+1. Load and validate environment configuration into a typed `AppConfig`.
+2. Build the application dependencies at the composition boundary.
+3. Start a `ScrapeUseCase` with explicit scrape configuration.
+4. Build a ClinicalTrials.gov study query.
+5. Fetch a page of studies.
+6. Follow `nextPageToken` until pagination is complete.
+7. Extract NCT identifiers.
+8. Fetch study details concurrently.
+9. Optionally request historical study information.
+10. Validate responses.
+11. Return successful records and classify failures through the project's error model.
 
-The current entry point also maintains in-memory page/checkpoint state and emits structured execution information through logging.
+The current scrape checkpoint is in-memory state owned by `ScrapeUseCase`; it is not durable across process restarts.
 
 ## System architecture
 
-The repository deliberately separates the API adapter from HTTP execution, endpoint admission, transport, and retry mechanics.
+The repository separates application orchestration from the API adapter and from HTTP execution, endpoint admission, transport, and retry mechanics.
 
 ```mermaid
 flowchart TB
     APP[Application / src/index.ts]
+    UC[ScrapeUseCase / src/application]
     API[API Adapter / src/api]
     HC[HttpClient]
     RETRY[Retry + RetryPolicy]
@@ -69,7 +73,8 @@ flowchart TB
     DIRECT[Direct Fetch Transport]
     CTG[ClinicalTrials.gov]
 
-    APP --> API
+    APP --> UC
+    UC --> API
     API --> HC
     HC --> RETRY
     RETRY --> FO
@@ -85,18 +90,22 @@ flowchart TB
 
 ### Responsibilities
 
-| Component              | Responsibility                                                           |
-| ---------------------- | ------------------------------------------------------------------------ |
-| `src/index.ts`         | Application orchestration, pagination, concurrency and checkpoint state  |
-| `ApiClient`            | Domain-facing ClinicalTrials.gov operations                              |
-| `HttpClient`           | HTTP request orchestration and response handling                         |
-| `FetchOperation`       | One logical HTTP attempt: acquire endpoint, timeout, transport call      |
-| `Retry`                | Retry attempts, retry decisions, backoff and cancellation during backoff |
-| `EndpointManager`      | Endpoint selection, admission waiting and acquisition timeout            |
-| `EndpointProvider`     | Creates endpoint definitions and their transports/limiters               |
-| `Limiter`              | Per-endpoint request admission/rate control                              |
-| `HttpTransport`        | Abstract network execution and transport-level classification            |
-| `TrialError` hierarchy | Stable application/infrastructure error contract                         |
+| Component | Responsibility |
+| --- | --- |
+| `src/index.ts` | Bootstrap, configuration loading, dependency composition, process-level signal/shutdown handling |
+| `ScrapeUseCase` | Scrape workflow: pagination, concurrent detail fetching, per-item failure handling, in-memory progress state and scrape-level logging |
+| `ApiClient` | Domain-facing ClinicalTrials.gov operations |
+| `HttpClient` | HTTP request orchestration, retry construction, response handling and resource lifecycle |
+| `FetchOperation` | One logical HTTP attempt: endpoint acquisition, timeout/cancellation propagation and transport invocation |
+| `Retry` | Retry attempts, retry decisions, backoff and cancellation during backoff |
+| `EndpointManager` | Endpoint selection, admission waiting and endpoint-acquisition timeout |
+| `EndpointProvider` | Builds endpoint definitions for a concrete acquisition mode, such as direct or proxy HTTP |
+| `EndpointFactory` | Assembles runtime endpoints from provider definitions, including limiter/transport construction and rollback/cleanup |
+| `Endpoint` | Runtime endpoint resource: identity, limiter, transport and transport lifecycle |
+| `EndpointHandle` | Narrow read-only view of an acquired endpoint used by request execution |
+| `Limiter` | Per-endpoint request admission/rate control |
+| `HttpTransport` | Abstract network execution and transport-level error classification |
+| `TrialError` hierarchy | Stable application/infrastructure error contract |
 
 ## Request lifecycle
 
@@ -105,26 +114,29 @@ The core execution path is intentionally explicit:
 ```mermaid
 sequenceDiagram
     autonumber
-    participant App as ApiClient
+    participant App as ScrapeUseCase
+    participant API as ApiClient
     participant HC as HttpClient
     participant R as Retry
     participant FO as FetchOperation
     participant EM as EndpointManager
     participant T as HttpTransport
-    participant API as ClinicalTrials.gov
+    participant CTG as ClinicalTrials.gov
 
-    App->>HC: fetchJson(url, options)
+    App->>API: fetchStudiesPage / fetchTrialDetail
+    API->>HC: fetchJson(url, options)
     HC->>R: perform()
     R->>FO: perform()
     FO->>EM: acquireEndpoint(signal)
-    EM-->>FO: endpoint acquired
+    EM-->>FO: endpoint handle
     FO->>T: request(..., signal)
-    T->>API: HTTP request
-    API-->>T: response
+    T->>CTG: HTTP request
+    CTG-->>T: response
     T-->>FO: response
     FO-->>R: result
     R-->>HC: result
-    HC-->>App: validated data
+    HC-->>API: validated HTTP payload
+    API-->>App: validated study data
 ```
 
 ## Retry and endpoint admission are different concerns
@@ -154,7 +166,7 @@ token unavailable
     ≠ HTTP retry failure
 ```
 
-A future endpoint-health/cooldown mechanism may be introduced if production measurements justify it, but it is intentionally separate from token-bucket rate limiting.
+A future endpoint-health/cooldown mechanism may be introduced if measurements justify it, but it is intentionally separate from token-bucket rate limiting.
 
 ## Timeout and cancellation model
 
@@ -171,16 +183,16 @@ flowchart LR
     C --> SLEEP[Retry backoff sleep]
 
     AT[acquireTimeout] --> EM
-    TM[timeoutMs] --> HTTP
+    TM[requestAbortTimeoutMs] --> HTTP
 ```
 
-| Control           | Owner             | Scope                           |
-| ----------------- | ----------------- | ------------------------------- |
-| `signal`          | Caller            | Whole logical operation         |
-| `AbortController` | `FetchOperation`  | Current attempt and propagation |
-| `acquireTimeout`  | `EndpointManager` | Waiting for endpoint capacity   |
-| `timeoutMs`       | `FetchOperation`  | One HTTP attempt                |
-| Retry backoff     | `Retry`           | Time between attempts           |
+| Control | Owner | Scope |
+| --- | --- | --- |
+| `callerAbortSignal` | Caller | Whole logical operation |
+| `AbortController` | `FetchOperation` | Current attempt and propagation |
+| `endpointAcquireTimeoutMs` | `EndpointManager` | Waiting for endpoint capacity |
+| `requestAbortTimeoutMs` | `FetchOperation` | One HTTP attempt |
+| Retry backoff | `Retry` | Time between attempts |
 
 Therefore:
 
@@ -189,7 +201,7 @@ acquire endpoint
       ↓
 endpoint acquired
       ↓
-start timeoutMs
+start requestAbortTimeoutMs
       ↓
 HTTP attempt
       ↓
@@ -265,7 +277,8 @@ The retry subsystem supports:
 - jitter;
 - bounded backoff cap;
 - `Retry-After` handling;
-- cancellation during backoff.
+- cancellation during backoff;
+- explicit per-request retry-policy overrides.
 
 A retry may acquire another endpoint. This keeps endpoint selection separate from failure recovery and allows a later attempt to use another proxy when the endpoint pool contains multiple candidates.
 
@@ -308,6 +321,28 @@ The token bucket uses a monotonic clock, lazy refill, burst capacity, and determ
 
 > Multiple proxies do **not** automatically mean unlimited upstream capacity. Actual throughput must be established from measurements and upstream behavior such as `429` responses.
 
+## Configuration architecture
+
+Configuration is loaded explicitly at the application boundary:
+
+```text
+Environment variables
+        ↓
+    loadConfig()
+        ↓
+      AppConfig
+        ↓
+ composition root
+        ↓
+ narrow config objects
+        ↓
+ infrastructure components
+```
+
+Lower-level components do not depend on environment-derived globals. Configuration is passed explicitly through typed objects such as `HttpClientDefaults`, `FetchOperationDefaults`, `RetryPolicyConfig`, and endpoint/rate-limit options.
+
+This makes configuration easier to test, avoids hidden module-level state, and leaves room for different per-run or per-source settings.
+
 ## Observability
 
 Structured logging is implemented with **Pino**.
@@ -340,34 +375,49 @@ flowchart TB
     U --> C2[Limiter / endpoint manager]
     U --> C3[Transport classification]
     U --> C4[Validation / errors]
-    I --> C5[Real local HTTP server]
-    I --> C6[HTTP client lifecycle]
-    I --> C7[Real retry / timeout behavior]
+    U --> C5[ScrapeUseCase]
+    I --> C6[Real local HTTP server]
+    I --> C7[HTTP client lifecycle]
+    I --> C8[Real retry / timeout behavior]
 ```
 
-The test suite covers configuration, error taxonomy, API behavior, endpoint management, limiters, transport implementations, retry semantics, cancellation, request/response validation, logging, and integration behavior.
+The test suite covers configuration, error taxonomy, API behavior, application orchestration, endpoint management, limiters, transport implementations, retry semantics, cancellation, request/response validation, logging, and integration behavior.
 
 Integration tests use local HTTP servers where appropriate so that important behavior is verified against real TCP/HTTP execution rather than only mocks.
 
-Tests emphasize **contracts and observable behavior**: attempt counts, retry decisions, cancellation, backoff, endpoint acquisition, response validation, and resource lifecycle.
+Tests emphasize **contracts and observable behavior**: pagination, concurrency, attempt counts, retry decisions, cancellation, backoff, endpoint acquisition, response validation, and resource lifecycle.
 
 ## Current architecture and future direction
 
-The HTTP subsystem is intentionally strong and modular. The main remaining architectural gaps are above and around it rather than inside the basic HTTP primitives.
+The current architecture is intentionally strong in the HTTP/infrastructure layer while keeping the application layer small.
 
-### Current gaps
+### Current state
 
-- `src/index.ts` still combines application orchestration, pagination, concurrency, and in-memory checkpoint state.
-- The composition root directly wires the production proxy/transport stack.
-- Configuration is still consumed from module-level exports in several layers.
-- Checkpoint and failed-work recovery are not durable.
-- Observability can be extended with quantitative throughput, queue-depth, endpoint-wait, retry, and failure metrics.
+- `src/index.ts` is a bootstrap/composition entry point.
+- `ScrapeUseCase` owns the current scrape workflow.
+- `ApiClient` isolates ClinicalTrials.gov-specific operations from HTTP infrastructure.
+- `HttpTransport` isolates concrete network execution.
+- Direct and proxy HTTP execution are represented by separate providers/transport implementations.
+- Configuration is explicitly loaded into `AppConfig` and passed through the dependency graph.
+- Checkpointing is currently in-memory only.
+- Study output is currently held in memory; there is no durable persistence layer.
+
+### Known gaps
+
+The next meaningful improvements are above the existing HTTP primitives rather than another round of low-level abstraction:
+
+- bounded streaming producer/consumer pipeline and backpressure;
+- durable output and checkpoint storage;
+- idempotent synchronization/recovery semantics;
+- quantitative metrics for throughput, queue depth, retries, endpoint wait, and failures;
+- endpoint health/cooldown or circuit breaking if real measurements justify it;
+- incremental synchronization and historical change processing.
 
 ### Deliberate non-goals for the current scope
 
-The project does **not** currently need speculative abstractions for browser automation, raw sockets, generic plugins, or a universal fallback engine.
+The project does **not** currently need speculative abstractions for browser automation, raw sockets, QUIC, generic plugin systems, or a universal acquisition/fallback framework.
 
-A higher-level acquisition strategy boundary may become useful if the project genuinely needs fundamentally different acquisition mechanisms. The current HTTP abstraction is sufficient for the existing scope.
+The existing HTTP abstractions are sufficient for the current direct/proxy use cases. A higher-level acquisition boundary should be introduced only if a fundamentally different acquisition mechanism becomes a real requirement.
 
 ## Repository structure
 
@@ -381,14 +431,15 @@ A higher-level acquisition strategy boundary may become useful if the project ge
 │
 ├── src/
 │   ├── api/                 # ClinicalTrials.gov API adapter
-│   ├── config/              # Configuration and logging setup
-│   ├── error/               # Domain error taxonomy
+│   ├── application/        # Application use cases and scrape orchestration
+│   ├── config/              # Typed configuration and logging setup
+│   ├── error/               # Domain/infrastructure error taxonomy
 │   ├── http/
 │   │   ├── endpoint/        # Endpoint/provider/manager
 │   │   ├── limiter/         # Rate limiting
 │   │   └── transport/       # HTTP transport implementations
 │   ├── retry/               # Retry engine and retry policy
-│   └── index.ts             # Application entry point
+│   └── index.ts             # Bootstrap / composition entry point
 │
 ├── test/                    # Unit and integration tests
 ├── examples/
@@ -414,16 +465,16 @@ The studies endpoint provides search and cursor-based pagination. The detail end
 
 Configuration is supplied through environment variables. Start with `.env.example`.
 
-| Area        | Examples                                   | Purpose                               |
-| ----------- | ------------------------------------------ | ------------------------------------- |
-| API         | `API_BASE_URL`, `API_DETAIL_URL`           | Upstream endpoints                    |
-| Performance | `PAGE_SIZE`, `CONCURRENCY`                 | Pagination and parallel work          |
-| Timeout     | `FETCH_TIMEOUT_MS`, `ACQUIRE_TIMEOUT`      | Attempt and endpoint-admission limits |
-| Proxy       | `PROXY_URLS`, `PROXY_POOL_*`               | Proxy endpoints and connection pools  |
-| Rate limit  | `RATE_LIMIT_CAPACITY`, `RATE_LIMIT_WINDOW` | Token-bucket admission                |
-| Retry       | `MAX_RETRIES`, `RETRYABLE_STATUS_CODES`    | Retry policy                          |
-| Backoff     | `RETRY_BASE_DELAY_MS`, `BACKOFF_CAP_MS`    | Retry delay calculation               |
-| Logging     | `LOG_LEVEL`, `LOG_TO_FILE`                 | Structured logging                    |
+| Area | Examples | Purpose |
+| --- | --- | --- |
+| API | `API_BASE_URL`, `API_DETAIL_URL`, `PAGE_SIZE` | Upstream endpoints and page size |
+| Performance | `CONCURRENCY` | Concurrent detail requests |
+| Timeout | `REQUEST_ABORT_TIMEOUT_MS`, `ENDPOINT_ACQUIRE_TIMEOUT_MS` | Attempt and endpoint-admission limits |
+| Proxy | `PROXY_URLS`, `PROXY_POOL_*` | Proxy endpoints and connection pools |
+| Rate limit | `RATE_LIMIT_CAPACITY`, `RATE_LIMIT_WINDOW` | Token-bucket admission |
+| Retry | `MAX_RETRIES`, `RETRYABLE_STATUS_CODES`, `RETRY_ON_TIMEOUT`, `RETRY_ON_NETWORK_ERROR` | Retry policy |
+| Backoff | `RETRY_BASE_DELAY_MS`, `BACKOFF_CAP_MS` | Retry delay calculation |
+| Logging | `LOG_LEVEL`, `LOG_TO_FILE`, `NODE_ENV` | Structured logging |
 
 ## Getting started
 
@@ -452,7 +503,7 @@ Configure API, concurrency, proxy, rate-limit, retry, timeout, and logging value
 npm start
 ```
 
-The current application entry point is `src/index.ts`.
+The application bootstrap entry point is `src/index.ts`.
 
 ## Development commands
 
@@ -471,7 +522,7 @@ npm run format:check
 
 - [`docs/ARCHITECTURE_REVIEW.md`](docs/ARCHITECTURE_REVIEW.md) — detailed architectural assessment and evolution plan.
 - [`docs/ARCHITECTURE_UML.md`](docs/ARCHITECTURE_UML.md) — deeper UML/current-system model.
-- [`docs/TECH_DEBT.md`](docs/TECH_DEBT.md) — tracked technical debt.
+- [`docs/TECH_DEBT.md`](docs/TECH_DEBT.md) — tracked technical debt and scalability considerations.
 
 ## Technology stack
 
