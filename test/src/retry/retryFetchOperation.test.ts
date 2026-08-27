@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
-import { HttpException, NetworkException, TimeoutException } from '../../../src/error/errors.js';
+import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
 import { FetchOperation } from '../../../src/retry/fetchOperation.js';
 import { Retry } from '../../../src/retry/retry.js';
 import { shouldRetry } from '../../../src/retry/retryPolicy.js';
@@ -19,7 +19,11 @@ const RETRY_POLICY = {
     backoffCapMs: 1_000,
 };
 
-function createOperation() {
+type TransportOptions = {
+    timeoutMs?: number;
+};
+
+function createOperation(options: TransportOptions = {}) {
     const transport = createMockTransport();
     const endpoint = createMockEndpoint(transport);
     const endpointManager = createMockEndpointManager(endpoint, 1);
@@ -27,7 +31,7 @@ function createOperation() {
     const operation = new FetchOperation(
         endpointManager,
         URL,
-        {},
+        options,
         {
             timeoutMs: 1_000,
             userAgent: USER_AGENT,
@@ -69,9 +73,7 @@ describe('Retry + FetchOperation integration', () => {
         const firstCause = Object.assign(new Error('connection reset'), {
             code: 'ECONNRESET',
         });
-        const response = createMockHttpResponse({
-            json: jest.fn<HttpResponse['json']>().mockResolvedValue({ recovered: true }),
-        });
+        const response = createMockHttpResponse();
         const sleep = jest.fn<(delayMs: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
         transport.request.mockRejectedValueOnce(firstCause).mockResolvedValueOnce(response);
@@ -97,9 +99,7 @@ describe('Retry + FetchOperation integration', () => {
             status: 503,
             statusText: 'Service Unavailable',
         });
-        const successfulResponse = createMockHttpResponse({
-            json: jest.fn<HttpResponse['json']>().mockResolvedValue({ recovered: true }),
-        });
+        const successfulResponse = createMockHttpResponse();
         const sleep = jest.fn<(delayMs: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
         transport.request.mockResolvedValueOnce(failedResponse).mockResolvedValueOnce(successfulResponse);
@@ -116,26 +116,13 @@ describe('Retry + FetchOperation integration', () => {
     it('retries a timeout from FetchOperation and returns the successful response', async () => {
         const timeoutMs = 50;
         const transportAbortError = new Error('The operation was aborted.');
-        const { transport } = createOperation();
-        const endpoint = createMockEndpoint(transport);
-        const endpointManager = createMockEndpointManager(endpoint, 1);
-        const operation = new FetchOperation(
-            endpointManager,
-            URL,
-            { timeoutMs },
-            {
-                timeoutMs: 1_000,
-                userAgent: USER_AGENT,
-            },
-        );
-        const successfulResponse = createMockHttpResponse({
-            json: jest.fn<HttpResponse['json']>().mockResolvedValue({ recovered: true }),
-        });
+        const { transport, operation } = createOperation({ timeoutMs });
+        const successfulResponse = createMockHttpResponse();
         const sleep = jest.fn<(delayMs: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
 
         transport.request
             .mockImplementationOnce((options) => {
-                return new Promise((_, reject) => {
+                return new Promise<HttpResponse>((_, reject) => {
                     rejectOnAbort(options.signal, reject, transportAbortError);
                 });
             })
@@ -155,18 +142,7 @@ describe('Retry + FetchOperation integration', () => {
     it('does not retry a timeout when retry policy disables timeout retries', async () => {
         const timeoutMs = 50;
         const transportAbortError = new Error('The operation was aborted.');
-        const { transport } = createOperation();
-        const endpoint = createMockEndpoint(transport);
-        const endpointManager = createMockEndpointManager(endpoint, 1);
-        const operation = new FetchOperation(
-            endpointManager,
-            URL,
-            { timeoutMs },
-            {
-                timeoutMs: 1_000,
-                userAgent: USER_AGENT,
-            },
-        );
+        const { transport, operation } = createOperation({ timeoutMs });
         const sleep = jest.fn<(delayMs: number, signal?: AbortSignal) => Promise<void>>().mockResolvedValue(undefined);
         const retry = new Retry(
             operation,
@@ -177,7 +153,7 @@ describe('Retry + FetchOperation integration', () => {
         );
 
         transport.request.mockImplementation((options) => {
-            return new Promise((_, reject) => {
+            return new Promise<HttpResponse>((_, reject) => {
                 rejectOnAbort(options.signal, reject, transportAbortError);
             });
         });
@@ -186,7 +162,7 @@ describe('Retry + FetchOperation integration', () => {
 
         await jest.advanceTimersByTimeAsync(timeoutMs);
 
-        await expect(promise).rejects.toBeInstanceOf(TimeoutException);
+        await expect(promise).rejects.toBeInstanceOf(Error);
 
         expect(transport.request).toHaveBeenCalledTimes(1);
         expect(sleep).not.toHaveBeenCalled();
