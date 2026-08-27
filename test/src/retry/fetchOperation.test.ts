@@ -88,6 +88,26 @@ function rejectOnAbort(
     signal.addEventListener('abort', () => reject(error), { once: true });
 }
 
+function createOperationFixture(
+    transportOptions: {
+        headers?: Record<string, string>;
+        signal?: AbortSignal;
+        timeoutMs?: number;
+    } = {},
+) {
+    const transport = createMockTransport();
+    const endpoint = createEndpoint(transport);
+    const endpointManager = createEndpointManager(endpoint);
+    const operation = createOperation(endpointManager, transportOptions);
+
+    return {
+        transport,
+        endpoint,
+        endpointManager,
+        operation,
+    };
+}
+
 describe('FetchOperation', () => {
     beforeEach(() => {
         jest.useFakeTimers();
@@ -100,18 +120,17 @@ describe('FetchOperation', () => {
 
     it('uses the operation timeout instead of the default timeout', async () => {
         const timeoutMs = 250;
-        const transport = createMockTransport();
+        const { transport, operation } = createOperationFixture({
+            timeoutMs,
+        });
+
         const transportAbortError = new Error('The operation was aborted.');
         transport.request.mockImplementation((options) => {
             return new Promise<HttpResponse>((_, reject) => {
                 rejectOnAbort(options.signal, reject, transportAbortError);
             });
         });
-        const endpoint = createEndpoint(transport);
-        const endpointManager = createEndpointManager(endpoint);
-        const operation = createOperation(endpointManager, {
-            timeoutMs,
-        });
+
         const promise = operation.perform();
         const rejection = promise.catch((error: unknown) => error);
 
@@ -125,14 +144,9 @@ describe('FetchOperation', () => {
 
     describe('successful requests', () => {
         it('returns the successful response', async () => {
-            const transport = createMockTransport();
+            const { transport, operation, endpointManager } = createOperationFixture();
             const response = createResponse();
-
             transport.request.mockResolvedValue(response);
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
 
             await expect(operation.perform()).resolves.toBe(response);
 
@@ -142,12 +156,8 @@ describe('FetchOperation', () => {
         });
 
         it('uses GET and passes the operation abort signal to transport', async () => {
-            const transport = createMockTransport();
+            const { transport, operation } = createOperationFixture();
             transport.request.mockResolvedValue(createResponse());
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
 
             await operation.perform();
 
@@ -161,12 +171,8 @@ describe('FetchOperation', () => {
         });
 
         it('uses default headers', async () => {
-            const transport = createMockTransport();
+            const { transport, operation } = createOperationFixture();
             transport.request.mockResolvedValue(createResponse());
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
 
             await operation.perform();
 
@@ -181,11 +187,8 @@ describe('FetchOperation', () => {
         });
 
         it('allows caller headers to override defaults', async () => {
-            const transport = createMockTransport();
+            const { transport, endpointManager } = createOperationFixture();
             transport.request.mockResolvedValue(createResponse());
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
 
             const operation = createOperation(endpointManager, {
                 headers: {
@@ -208,11 +211,8 @@ describe('FetchOperation', () => {
         });
 
         it.each(['accept', 'ACCEPT', 'Accept'])('canonicalizes the %s Accept header', async (headerName) => {
-            const transport = createMockTransport();
+            const { transport, endpointManager } = createOperationFixture();
             transport.request.mockResolvedValue(createResponse());
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
 
             const operation = createOperation(endpointManager, {
                 headers: {
@@ -235,11 +235,8 @@ describe('FetchOperation', () => {
         it.each(['user-agent', 'USER-AGENT', 'User-Agent'])(
             'canonicalizes the %s User-Agent header',
             async (headerName) => {
-                const transport = createMockTransport();
+                const { transport, endpointManager } = createOperationFixture();
                 transport.request.mockResolvedValue(createResponse());
-
-                const endpoint = createEndpoint(transport);
-                const endpointManager = createEndpointManager(endpoint);
 
                 const operation = createOperation(endpointManager, {
                     headers: {
@@ -261,11 +258,8 @@ describe('FetchOperation', () => {
         );
 
         it('preserves arbitrary caller headers unchanged', async () => {
-            const transport = createMockTransport();
+            const { transport, endpointManager } = createOperationFixture();
             transport.request.mockResolvedValue(createResponse());
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
 
             const operation = createOperation(endpointManager, {
                 headers: {
@@ -321,7 +315,7 @@ describe('FetchOperation', () => {
         });
 
         it('does not start the request timeout before endpoint acquisition completes', async () => {
-            const transport = createMockTransport();
+            const { transport } = createOperationFixture();
             transport.request.mockResolvedValue(createResponse());
             let resolveAcquisition!: (endpoint: EndpointHandle) => void;
             const acquisition = new Promise<EndpointHandle>((resolve) => {
@@ -369,8 +363,8 @@ describe('FetchOperation', () => {
         it('throws CallerAbortedError when the caller signal is already aborted', async () => {
             const controller = new AbortController();
             controller.abort();
-            const transport = createMockTransport();
-            const endpoint = createEndpoint(transport);
+
+            const { transport, endpoint } = createOperationFixture();
             const endpointManager = {
                 acquireEndpoint: jest
                     .fn<(signal: AbortSignal) => Promise<EndpointHandle>>()
@@ -416,22 +410,16 @@ describe('FetchOperation', () => {
             const transportAbortError = new Error('The operation was aborted.');
             const controller = new AbortController();
 
-            const transport = createMockTransport();
-
+            const { transport, endpointManager } = createOperationFixture();
             transport.request.mockImplementation((_options) => {
                 return new Promise<HttpResponse>((_, reject) => {
                     rejectOnAbort(_options.signal, reject);
                 });
             });
-
             transport.classifyError.mockReturnValue({
                 kind: 'cancelled',
                 cause: transportAbortError,
             });
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-
             const operation = createOperation(endpointManager, {
                 signal: controller.signal,
             });
@@ -446,17 +434,15 @@ describe('FetchOperation', () => {
         it('prioritizes caller cancellation over the internal timeout', async () => {
             const controller = new AbortController();
             const transportAbortError = new Error('The operation was aborted.');
-            const transport = createMockTransport();
+
+            const { transport, operation } = createOperationFixture({
+                signal: controller.signal,
+                timeoutMs: DEFAULT_TIMEOUT_MS,
+            });
             transport.request.mockImplementation((options) => {
                 return new Promise<HttpResponse>((_, reject) => {
                     rejectOnAbort(options.signal, reject, transportAbortError);
                 });
-            });
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager, {
-                signal: controller.signal,
-                timeoutMs: DEFAULT_TIMEOUT_MS,
             });
 
             const promise = operation.perform();
@@ -588,9 +574,10 @@ describe('FetchOperation', () => {
 
     describe('HTTP responses', () => {
         it('preserves HttpException when response body draining fails', async () => {
-            const transport = createMockTransport();
             const discardError = new Error('discard failed');
             const discard = jest.fn<() => Promise<void>>().mockRejectedValue(discardError);
+
+            const { transport, operation } = createOperationFixture();
             transport.request.mockResolvedValue(
                 createResponse({
                     ok: false,
@@ -600,10 +587,6 @@ describe('FetchOperation', () => {
                 }),
             );
 
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
-
             const error = await operation.perform().catch((value: unknown) => value);
             expect(discard).toHaveBeenCalledTimes(1);
             expect(error).toBeInstanceOf(HttpException);
@@ -611,9 +594,10 @@ describe('FetchOperation', () => {
         });
 
         it('extracts Retry-After HTTP-date into HttpException', async () => {
-            const transport = createMockTransport();
             const now = Date.parse('2026-08-26T12:00:00.000Z');
             const retryAt = new Date(now + 30_000).toUTCString();
+
+            const { transport, endpointManager } = createOperationFixture();
             transport.request.mockResolvedValue(
                 createResponse({
                     ok: false,
@@ -624,8 +608,7 @@ describe('FetchOperation', () => {
                     },
                 }),
             );
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
+
             const operation = new FetchOperation(
                 endpointManager as unknown as EndpointManager,
                 URL,
@@ -650,10 +633,7 @@ describe('FetchOperation', () => {
             [500, 'Internal Server Error'],
             [503, 'Service Unavailable'],
         ])('throws HttpException for HTTP %s responses', async (status, statusText) => {
-            const transport = createMockTransport();
-
             const discard = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
-
             const response = createResponse({
                 ok: false,
                 status,
@@ -661,11 +641,8 @@ describe('FetchOperation', () => {
                 discard,
             });
 
+            const { transport, operation } = createOperationFixture();
             transport.request.mockResolvedValue(response);
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
 
             await expect(operation.perform()).rejects.toMatchObject({
                 name: 'HttpException',
@@ -677,8 +654,7 @@ describe('FetchOperation', () => {
         });
 
         it('extracts Retry-After delay-seconds into HttpException', async () => {
-            const transport = createMockTransport();
-
+            const { transport, operation } = createOperationFixture();
             transport.request.mockResolvedValue(
                 createResponse({
                     ok: false,
@@ -690,10 +666,6 @@ describe('FetchOperation', () => {
                 }),
             );
 
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
-
             const error = await operation.perform().catch((value: unknown) => value);
 
             expect(error).toBeInstanceOf(HttpException);
@@ -704,8 +676,7 @@ describe('FetchOperation', () => {
         });
 
         it('sets Retry-After to undefined when the header is malformed', async () => {
-            const transport = createMockTransport();
-
+            const { transport, operation } = createOperationFixture();
             transport.request.mockResolvedValue(
                 createResponse({
                     ok: false,
@@ -716,10 +687,6 @@ describe('FetchOperation', () => {
                     },
                 }),
             );
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
 
             const error = await operation.perform().catch((value: unknown) => value);
 
@@ -781,7 +748,7 @@ describe('FetchOperation', () => {
 
     describe('error messages', () => {
         it('bounds a long Error message', async () => {
-            const transport = createMockTransport();
+            const { transport, operation } = createOperationFixture();
             const longMessage = 'x'.repeat(1_000);
             const cause = new Error(longMessage);
             transport.request.mockRejectedValue(cause);
@@ -789,10 +756,6 @@ describe('FetchOperation', () => {
                 kind: 'network',
                 cause,
             });
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
 
             const error = await operation.perform().catch((value: unknown) => value);
             expect(error).toBeInstanceOf(NetworkException);
@@ -804,18 +767,14 @@ describe('FetchOperation', () => {
         });
 
         it('bounds a long string transport cause', async () => {
-            const transport = createMockTransport();
             const longCause = 'connection failed '.repeat(100);
 
+            const { transport, operation } = createOperationFixture();
             transport.request.mockRejectedValue(longCause);
             transport.classifyError.mockReturnValue({
                 kind: 'network',
                 cause: longCause,
             });
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
 
             const error = await operation.perform().catch((value: unknown) => value);
             expect(error).toBeInstanceOf(NetworkException);
@@ -827,55 +786,38 @@ describe('FetchOperation', () => {
         });
 
         it('includes a string transport cause without throwing while formatting the error', async () => {
-            const transport = createMockTransport();
-
+            const { transport, operation } = createOperationFixture();
             transport.request.mockRejectedValue('connection failed');
-
             transport.classifyError.mockReturnValue({
                 kind: 'network',
                 cause: 'connection failed',
             });
 
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
-
             const error = await operation.perform().catch((value: unknown) => value);
 
             expect(error).toBeInstanceOf(NetworkException);
-
             expect((error as NetworkException).message).toContain('connection failed');
         });
 
         it('does not expose sensitive fields from an arbitrary transport cause', async () => {
-            const transport = createMockTransport();
-
+            const { transport, operation } = createOperationFixture();
             const sensitiveCause = {
                 message: 'connection failed',
                 username: 'admin',
                 password: 'super-secret-password',
                 token: 'super-secret-token',
             };
-
             transport.request.mockRejectedValue(sensitiveCause);
-
             transport.classifyError.mockReturnValue({
                 kind: 'network',
                 cause: sensitiveCause,
             });
 
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
-
             const error = await operation.perform().catch((value: unknown) => value);
 
             expect(error).toBeInstanceOf(NetworkException);
-
             const message = (error as NetworkException).message;
-
             expect(message).toContain('https://example.com/trials');
-
             expect(message).not.toContain('super-secret-password');
             expect(message).not.toContain('super-secret-token');
         });
@@ -883,11 +825,8 @@ describe('FetchOperation', () => {
 
     describe('request timeout', () => {
         it('clears the request timeout after a successful request', async () => {
-            const transport = createMockTransport();
+            const { transport, operation } = createOperationFixture();
             transport.request.mockResolvedValue(createResponse());
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
 
             await operation.perform();
 
@@ -895,15 +834,12 @@ describe('FetchOperation', () => {
         });
 
         it('clears the request timeout after a failed request', async () => {
-            const transport = createMockTransport();
+            const { transport, operation } = createOperationFixture();
             transport.request.mockRejectedValue(new Error('network down'));
             transport.classifyError.mockReturnValue({
                 kind: 'network',
                 cause: new Error('ECONNRESET'),
             });
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
 
             await expect(operation.perform()).rejects.toBeInstanceOf(NetworkException);
 
@@ -914,13 +850,10 @@ describe('FetchOperation', () => {
             const controller = new AbortController();
             const addSpy = jest.spyOn(controller.signal, 'addEventListener');
             const removeSpy = jest.spyOn(controller.signal, 'removeEventListener');
-            const transport = createMockTransport();
-            transport.request.mockResolvedValue(createResponse());
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager, {
+            const { transport, operation } = createOperationFixture({
                 signal: controller.signal,
             });
+            transport.request.mockResolvedValue(createResponse());
 
             await operation.perform();
 
@@ -932,16 +865,14 @@ describe('FetchOperation', () => {
             const controller = new AbortController();
             const addSpy = jest.spyOn(controller.signal, 'addEventListener');
             const removeSpy = jest.spyOn(controller.signal, 'removeEventListener');
-            const transport = createMockTransport();
+
+            const { transport, operation } = createOperationFixture({
+                signal: controller.signal,
+            });
             transport.request.mockRejectedValue(new Error('network down'));
             transport.classifyError.mockReturnValue({
                 kind: 'network',
                 cause: new Error('ECONNRESET'),
-            });
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager, {
-                signal: controller.signal,
             });
 
             await expect(operation.perform()).rejects.toBeInstanceOf(NetworkException);
@@ -950,17 +881,14 @@ describe('FetchOperation', () => {
         });
 
         it('throws TimeoutException when the internal request timeout aborts the transport', async () => {
-            const transport = createMockTransport();
             const transportAbortError = new Error('The operation was aborted.');
+            const { transport, operation } = createOperationFixture({
+                timeoutMs: DEFAULT_TIMEOUT_MS,
+            });
             transport.request.mockImplementation((options) => {
                 return new Promise<HttpResponse>((_, reject) => {
                     rejectOnAbort(options.signal, reject, transportAbortError);
                 });
-            });
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager, {
-                timeoutMs: DEFAULT_TIMEOUT_MS,
             });
 
             const promise = operation.perform();
@@ -978,12 +906,8 @@ describe('FetchOperation', () => {
 
     describe('abort and timeout cleanup', () => {
         it('clears the request timeout after a successful request', async () => {
-            const transport = createMockTransport();
+            const { transport, operation } = createOperationFixture();
             transport.request.mockResolvedValue(createResponse());
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
 
             await operation.perform();
 
@@ -991,17 +915,12 @@ describe('FetchOperation', () => {
         });
 
         it('clears the request timeout after a failed request', async () => {
-            const transport = createMockTransport();
-
+            const { transport, operation } = createOperationFixture();
             transport.request.mockRejectedValue(new Error('network down'));
             transport.classifyError.mockReturnValue({
                 kind: 'network',
                 cause: new Error('ECONNRESET'),
             });
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager);
 
             await expect(operation.perform()).rejects.toBeInstanceOf(NetworkException);
 
@@ -1013,19 +932,14 @@ describe('FetchOperation', () => {
             const addSpy = jest.spyOn(controller.signal, 'addEventListener');
             const removeSpy = jest.spyOn(controller.signal, 'removeEventListener');
 
-            const transport = createMockTransport();
-            transport.request.mockResolvedValue(createResponse());
-
-            const endpoint = createEndpoint(transport);
-            const endpointManager = createEndpointManager(endpoint);
-            const operation = createOperation(endpointManager, {
+            const { transport, operation } = createOperationFixture({
                 signal: controller.signal,
             });
+            transport.request.mockResolvedValue(createResponse());
 
             await operation.perform();
 
             expect(addSpy).toHaveBeenCalledWith('abort', expect.any(Function), { once: true });
-
             expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function));
         });
     });
