@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-
 import { TimeoutException } from '../../../src/error/errors.js';
 import { HttpResponse } from '../../../src/http/transport/httpTransport.js';
 import { FetchOperation } from '../../../src/retry/fetchOperation.js';
@@ -29,15 +28,10 @@ function createOperation(options: TransportOptions = {}) {
     const endpoint = createMockEndpoint(transport);
     const endpointManager = createMockEndpointManager(endpoint, 1);
 
-    const operation = new FetchOperation(
-        endpointManager,
-        URL,
-        options,
-        {
-            timeoutMs: 1_000,
-            userAgent: USER_AGENT,
-        },
-    );
+    const operation = new FetchOperation(endpointManager, URL, options, {
+        timeoutMs: 1_000,
+        userAgent: USER_AGENT,
+    });
 
     return {
         transport,
@@ -148,7 +142,11 @@ describe('Retry + FetchOperation integration', () => {
         const retry = new Retry(
             operation,
             3,
-            (error) => shouldRetry(error, { ...RETRY_POLICY, retryOnTimeout: false }),
+            (error) =>
+                shouldRetry(error, {
+                    ...RETRY_POLICY,
+                    retryOnTimeout: false,
+                }),
             () => 0,
             sleep,
         );
@@ -159,11 +157,13 @@ describe('Retry + FetchOperation integration', () => {
             });
         });
 
-        const promise = retry.perform();
+        const result = retry.perform();
+
+        const rejection = expect(result).rejects.toBeInstanceOf(TimeoutException);
 
         await jest.advanceTimersByTimeAsync(timeoutMs);
 
-        await expect(promise).rejects.toBeInstanceOf(TimeoutException);
+        await rejection;
 
         expect(transport.request).toHaveBeenCalledTimes(1);
         expect(sleep).not.toHaveBeenCalled();
