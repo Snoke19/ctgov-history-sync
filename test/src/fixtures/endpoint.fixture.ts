@@ -1,13 +1,37 @@
+import { jest } from '@jest/globals';
+import { Endpoint } from '../../../src/http/endpoint/endpoint.js';
 import { EndpointFactory } from '../../../src/http/endpoint/endpointFactory.js';
 import { EndpointManager } from '../../../src/http/endpoint/manager/endpointManager.js';
 import { EndpointDefinition, EndpointProvider } from '../../../src/http/endpoint/provider/endpointProvider.js';
 import { ProxyEndpointProvider } from '../../../src/http/endpoint/provider/impl/proxyEndpointProvider.js';
 import { HttpProxyUrlParser } from '../../../src/http/endpoint/proxy/httpProxyUrlParser.js';
+import type { Limiter } from '../../../src/http/limiter/limiter.js';
 import { HttpTransport } from '../../../src/http/transport/httpTransport.js';
 import { DEFAULT_PROXY_URLS } from './constants.js';
-import { createDisabledLimiterFactory } from './limiter.fixture.js';
+import { createDisabledLimiterFactory, createMockLimiter } from './limiter.fixture.js';
 import { createUndiciTransportFactory } from './transport.fixture.js';
 import { TestClientOptions } from './types.js';
+
+export function createMockEndpoint(
+    transport: HttpTransport,
+    limiter: Limiter = createMockLimiter(),
+    url = 'https://proxy.example.com',
+): Endpoint {
+    return new Endpoint(url, limiter, transport);
+}
+
+export function createMockEndpointManager(endpoint: Endpoint, acquireTimeout = 1_000) {
+    const manager = new EndpointManager([endpoint], {
+        acquireTimeout,
+    });
+
+    const acquireEndpoint = jest.spyOn(manager, 'acquireEndpoint').mockResolvedValue(endpoint.getHandle());
+
+    return {
+        manager,
+        acquireEndpoint,
+    };
+}
 
 export async function createProxyEndpointManager(
     options: TestClientOptions,

@@ -1,5 +1,15 @@
+import { jest } from '@jest/globals';
 import { DefaultLimiterFactory } from '../../../src/http/limiter/factory/defaultLimiterFactory.js';
 import type { LimiterFactory } from '../../../src/http/limiter/factory/limiterFactory.js';
+import type { Limiter } from '../../../src/http/limiter/limiter.js';
+
+export function createMockLimiter(overrides: Partial<jest.Mocked<Limiter>> = {}): jest.Mocked<Limiter> {
+    return {
+        tryAcquire: jest.fn<(now: number) => boolean>().mockReturnValue(true),
+        timeUntilToken: jest.fn<(now: number) => number>().mockReturnValue(0),
+        ...overrides,
+    };
+}
 
 export function createDisabledLimiterFactory(): LimiterFactory {
     return new DefaultLimiterFactory({
