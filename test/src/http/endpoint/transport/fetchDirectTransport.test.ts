@@ -46,7 +46,7 @@ describe('FetchDirectTransport', () => {
                 url: 'https://example.com/api',
                 method: HTTP_METHOD_GET,
                 headers: { 'X-Custom': 'value' },
-                signal: controller.signal,
+                requestAbortSignal: controller.signal,
             });
 
             expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -67,7 +67,7 @@ describe('FetchDirectTransport', () => {
                 url: 'https://example.com/api',
                 method: HTTP_METHOD_GET,
                 headers: {},
-                signal: controller.signal,
+                requestAbortSignal: controller.signal,
             });
 
             const [, fetchOptions] = fetchMock.mock.calls[0] as [unknown, RequestInit];
@@ -86,7 +86,7 @@ describe('FetchDirectTransport', () => {
                 url: 'https://example.com/api',
                 method: HTTP_METHOD_GET,
                 headers: {},
-                signal: controller.signal,
+                requestAbortSignal: controller.signal,
             });
 
             const [, fetchOptions] = fetchMock.mock.calls[0] as [unknown, RequestInit];
@@ -106,7 +106,7 @@ describe('FetchDirectTransport', () => {
                     url: 'https://example.com/api',
                     method: HTTP_METHOD_GET,
                     headers: {},
-                    signal: controller.signal,
+                    requestAbortSignal: controller.signal,
                 }),
             ).rejects.toBe(error);
         });

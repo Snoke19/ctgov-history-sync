@@ -6,7 +6,7 @@ export function createDefaultOptions(overrides: Partial<TestClientOptions> = {})
 
     return {
         concurrency: 5,
-        acquireTimeout: 5000,
+        endpointAcquireTimeoutMs: 5000,
         ...clock,
         ...overrides,
     };
@@ -14,7 +14,7 @@ export function createDefaultOptions(overrides: Partial<TestClientOptions> = {})
 
 export function createProxyOptions(overrides: Partial<TestClientOptions> = {}): TestClientOptions {
     return createDefaultOptions({
-        acquireTimeout: 30000,
+        endpointAcquireTimeoutMs: 30000,
         ...overrides,
     });
 }

@@ -175,7 +175,7 @@ describe('error classes', () => {
             const err = new TokenBucketTimeoutError(5000);
             expect(err).toBeInstanceOf(TrialError);
             expect(err.name).toBe('TokenBucketTimeoutError');
-            expect(err.timeoutMs).toBe(5000);
+            expect(err.rateLimitAcquireTimeoutMs).toBe(5000);
             expect(err.message).toBe('TokenBucket timeout: no token available within 5000ms');
         });
     });
@@ -185,7 +185,7 @@ describe('error classes', () => {
             const err = new EndpointAcquisitionTimeoutError(1000, 3);
             expect(err).toBeInstanceOf(TrialError);
             expect(err.name).toBe('EndpointAcquisitionTimeoutError');
-            expect(err.timeoutMs).toBe(1000);
+            expect(err.endpointAcquireTimeoutMs).toBe(1000);
             expect(err.proxyCount).toBe(3);
             expect(err.message).toBe(
                 'Endpoint acquisition timeout: no endpoint available within 1000ms (pool size: 3)',

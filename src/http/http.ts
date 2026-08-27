@@ -24,11 +24,11 @@ export interface FetchJsonRequestOptions {
     headers?: Record<string, string>;
 
     /**
-     * Maximum duration of a single HTTP attempt in milliseconds.
-     * Each retry attempt receives a fresh timeout.
-     * Defaults to FETCH_TIMEOUT_MS.
+     * Maximum duration of a single HTTP attempt in milliseconds before it is aborted.
+     * Each retry attempt receives a fresh abort timeout.
+     * Defaults to REQUEST_ABORT_TIMEOUT_MS.
      */
-    timeoutMs?: number;
+    requestAbortTimeoutMs?: number;
 
     /**
      * Maximum number of retries after the initial attempt.
@@ -45,8 +45,8 @@ export interface FetchJsonRequestOptions {
      */
     allow404?: boolean;
 
-    /** Caller-controlled cancellation signal. */
-    signal?: AbortSignal;
+    /** Caller-controlled cancellation signal. Aborts the request via RequestAbortScope. */
+    callerAbortSignal?: AbortSignal;
 
     retryPolicy?: Partial<RetryPolicyConfig>;
 }

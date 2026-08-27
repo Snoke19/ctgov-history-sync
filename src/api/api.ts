@@ -1,8 +1,8 @@
 import {
     API_BASE_URL,
     API_DETAIL_URL,
-    ACQUIRE_TIMEOUT,
     CONCURRENCY,
+    ENDPOINT_ACQUIRE_TIMEOUT_MS,
     PROXY_POOL_CONFIG,
     PROXY_URLS,
     RATE_LIMIT_CAPACITY,
@@ -12,7 +12,7 @@ import {
     RETRYABLE_STATUS_CODES,
     RETRY_BASE_DELAY_MS,
     BACKOFF_CAP_MS,
-    FETCH_TIMEOUT_MS,
+    REQUEST_ABORT_TIMEOUT_MS,
     MAX_RETRIES,
     DEFAULT_USER_AGENT,
 } from '../config/config.js';
@@ -57,13 +57,13 @@ export const defaultRetryPolicyConfig: RetryPolicyConfig = {
 };
 
 export const defaultHttpClientDefaults: HttpClientDefaults = {
-    timeoutMs: FETCH_TIMEOUT_MS,
+    requestAbortTimeoutMs: REQUEST_ABORT_TIMEOUT_MS,
     maxRetries: MAX_RETRIES,
     retryPolicy: defaultRetryPolicyConfig,
 };
 
 export const defaultFetchOperationDefaults: FetchOperationDefaults = {
-    timeoutMs: FETCH_TIMEOUT_MS,
+    requestAbortTimeoutMs: REQUEST_ABORT_TIMEOUT_MS,
     userAgent: DEFAULT_USER_AGENT,
 };
 
@@ -86,7 +86,7 @@ export async function createApiClient(): Promise<ApiClient> {
             concurrency: CONCURRENCY,
             rateLimitCapacity: RATE_LIMIT_CAPACITY,
             rateLimitWindowMs: RATE_LIMIT_WINDOW,
-            acquireTimeoutMs: ACQUIRE_TIMEOUT,
+            endpointAcquireTimeoutMs: ENDPOINT_ACQUIRE_TIMEOUT_MS,
         },
         'API configuration loaded',
     );
@@ -111,7 +111,7 @@ export async function createApiClient(): Promise<ApiClient> {
                 windowMs: RATE_LIMIT_WINDOW,
             }),
             endpointManagerFactory: new DefaultEndpointManagerFactory({
-                acquireTimeout: ACQUIRE_TIMEOUT,
+                endpointAcquireTimeoutMs: ENDPOINT_ACQUIRE_TIMEOUT_MS,
             }),
         });
 

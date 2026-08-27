@@ -44,7 +44,7 @@ function createResponse(
 function rejectTransportRequestOnAbort(transport: jest.Mocked<HttpTransport>, error: unknown): void {
     transport.request.mockImplementation((options) => {
         return new Promise<HttpResponse>((_, reject) => {
-            rejectOnAbort(options.signal, reject, error);
+            rejectOnAbort(options.requestAbortSignal, reject, error);
         });
     });
 }
@@ -52,8 +52,8 @@ function rejectTransportRequestOnAbort(transport: jest.Mocked<HttpTransport>, er
 function createOperationFixture(
     transportOptions: {
         headers?: Record<string, string>;
-        signal?: AbortSignal;
-        timeoutMs?: number;
+        callerAbortSignal?: AbortSignal;
+        requestAbortTimeoutMs?: number;
     } = {},
     url = URL,
     now?: () => number,
@@ -67,7 +67,7 @@ function createOperationFixture(
         url,
         transportOptions,
         {
-            timeoutMs: DEFAULT_TIMEOUT_MS,
+            requestAbortTimeoutMs: DEFAULT_TIMEOUT_MS,
             userAgent: USER_AGENT,
         },
         now,
@@ -92,9 +92,9 @@ describe('FetchOperation', () => {
     });
 
     it('uses the operation timeout instead of the default timeout', async () => {
-        const timeoutMs = 250;
+        const requestAbortTimeoutMs = 250;
         const { transport, operation } = createOperationFixture({
-            timeoutMs,
+            requestAbortTimeoutMs,
         });
 
         const transportAbortError = new Error('The operation was aborted.');
@@ -103,12 +103,12 @@ describe('FetchOperation', () => {
         const promise = operation.perform();
         const rejection = promise.catch((error: unknown) => error);
 
-        await jest.advanceTimersByTimeAsync(timeoutMs - 1);
+        await jest.advanceTimersByTimeAsync(requestAbortTimeoutMs - 1);
         expect(transport.request).toHaveBeenCalledTimes(1);
         await jest.advanceTimersByTimeAsync(1);
         const error = await rejection;
         expect(error).toBeInstanceOf(TimeoutException);
-        expect((error as TimeoutException).message).toContain(`Request timed out after ${timeoutMs}ms`);
+        expect((error as TimeoutException).message).toContain(`Request timed out after ${requestAbortTimeoutMs}ms`);
     });
 
     describe('successful requests', () => {
@@ -135,7 +135,7 @@ describe('FetchOperation', () => {
                 expect.objectContaining({
                     url: URL,
                     method: 'GET',
-                    signal: expect.any(AbortSignal),
+                    requestAbortSignal: expect.any(AbortSignal),
                 }),
             );
         });
@@ -269,7 +269,7 @@ describe('FetchOperation', () => {
 
         it('does not start the request timeout before endpoint acquisition completes', async () => {
             const { transport, operation, endpointManager } = createOperationFixture({
-                timeoutMs: 1_000,
+                requestAbortTimeoutMs: 1_000,
             });
             transport.request.mockResolvedValue(createResponse());
             let resolveAcquisition!: (endpoint: EndpointHandle) => void;
@@ -292,8 +292,8 @@ describe('FetchOperation', () => {
         it('prioritizes caller cancellation over endpoint acquisition timeout', async () => {
             const controller = new AbortController();
             const { operation, endpointManager } = createOperationFixture({
-                signal: controller.signal,
-                timeoutMs: 1_000,
+                callerAbortSignal: controller.signal,
+                requestAbortTimeoutMs: 1_000,
             });
             const acquireEndpointSpy = jest.spyOn(endpointManager, 'acquireEndpoint');
             acquireEndpointSpy.mockImplementation(async () => {
@@ -310,7 +310,7 @@ describe('FetchOperation', () => {
             const controller = new AbortController();
             controller.abort();
             const { transport, endpoint, operation, endpointManager } = createOperationFixture({
-                signal: controller.signal,
+                callerAbortSignal: controller.signal,
             });
             const acquireEndpointSpy = jest.spyOn(endpointManager, 'acquireEndpoint');
             acquireEndpointSpy.mockImplementation(async (signal) => {
@@ -345,7 +345,7 @@ describe('FetchOperation', () => {
             const transportAbortError = new Error('The operation was aborted.');
             const controller = new AbortController();
             const { transport, operation } = createOperationFixture({
-                signal: controller.signal,
+                callerAbortSignal: controller.signal,
             });
             rejectTransportRequestOnAbort(transport, transportAbortError);
 
@@ -366,8 +366,8 @@ describe('FetchOperation', () => {
             const transportAbortError = new Error('The operation was aborted.');
 
             const { transport, operation } = createOperationFixture({
-                signal: controller.signal,
-                timeoutMs: DEFAULT_TIMEOUT_MS,
+                callerAbortSignal: controller.signal,
+                requestAbortTimeoutMs: DEFAULT_TIMEOUT_MS,
             });
             rejectTransportRequestOnAbort(transport, transportAbortError);
 
@@ -710,7 +710,7 @@ describe('FetchOperation', () => {
             const addSpy = jest.spyOn(controller.signal, 'addEventListener');
             const removeSpy = jest.spyOn(controller.signal, 'removeEventListener');
             const { transport, operation } = createOperationFixture({
-                signal: controller.signal,
+                callerAbortSignal: controller.signal,
             });
             transport.request.mockResolvedValue(createResponse());
 
@@ -726,7 +726,7 @@ describe('FetchOperation', () => {
             const removeSpy = jest.spyOn(controller.signal, 'removeEventListener');
 
             const { transport, operation } = createOperationFixture({
-                signal: controller.signal,
+                callerAbortSignal: controller.signal,
             });
             transport.request.mockRejectedValue(new Error('network down'));
             transport.classifyError.mockReturnValue({
@@ -744,7 +744,7 @@ describe('FetchOperation', () => {
         it('throws TimeoutException when the internal request timeout aborts the transport', async () => {
             const transportAbortError = new Error('The operation was aborted.');
             const { transport, operation } = createOperationFixture({
-                timeoutMs: DEFAULT_TIMEOUT_MS,
+                requestAbortTimeoutMs: DEFAULT_TIMEOUT_MS,
             });
             rejectTransportRequestOnAbort(transport, transportAbortError);
 
@@ -788,7 +788,7 @@ describe('FetchOperation', () => {
             const removeSpy = jest.spyOn(controller.signal, 'removeEventListener');
 
             const { transport, operation } = createOperationFixture({
-                signal: controller.signal,
+                callerAbortSignal: controller.signal,
             });
             transport.request.mockResolvedValue(createResponse());
 

@@ -19,9 +19,9 @@ export function createMockEndpoint(
     return new Endpoint(url, limiter, transport);
 }
 
-export function createMockEndpointManager(endpoint: Endpoint, acquireTimeout: number): EndpointManager {
+export function createMockEndpointManager(endpoint: Endpoint, endpointAcquireTimeoutMs: number): EndpointManager {
     return new EndpointManager([endpoint], {
-        acquireTimeout,
+        endpointAcquireTimeoutMs,
     });
 }
 
@@ -39,7 +39,7 @@ export async function createProxyEndpointManager(
     const endpoints = await factory.build();
 
     return new EndpointManager(endpoints, {
-        acquireTimeout: options.acquireTimeout,
+        endpointAcquireTimeoutMs: options.endpointAcquireTimeoutMs,
         clock: options.monotonicClock.now,
         sleep: options.sleep,
     });

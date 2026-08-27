@@ -36,7 +36,7 @@ export function createTestClient(
         provider: new DirectEndpointProvider(new FetchDirectTransportFactory()),
         limiterFactory,
         endpointManagerFactory: new DefaultEndpointManagerFactory({
-            acquireTimeout: options.acquireTimeout,
+            endpointAcquireTimeoutMs: options.endpointAcquireTimeoutMs,
             clock: options.monotonicClock.now,
             sleep: options.sleep,
         }),
@@ -58,7 +58,7 @@ export function buildHttpClientOptions(
         provider,
         limiterFactory: createDisabledLimiterFactory(),
         endpointManagerFactory: new DefaultEndpointManagerFactory({
-            acquireTimeout: 30000,
+            endpointAcquireTimeoutMs: 30000,
             clock: clock.monotonicClock.now,
             sleep: clock.sleep,
         }),

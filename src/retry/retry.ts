@@ -26,7 +26,7 @@ export class Retry<T> implements BusinessOperation<T> {
     private readonly shouldRetry: (error: TrialError) => boolean;
     private readonly retryDelay: RetryDelay;
     private readonly sleep: Sleeper['sleep'];
-    private readonly signal: AbortSignal | undefined;
+    private readonly callerAbortSignal: AbortSignal | undefined;
     private readonly clock: MonotonicClock['now'];
 
     constructor(
@@ -35,7 +35,7 @@ export class Retry<T> implements BusinessOperation<T> {
         shouldRetry: (error: TrialError) => boolean,
         retryDelay: RetryDelay,
         sleep: Sleeper['sleep'] = defaultSleeper.sleep,
-        signal?: AbortSignal,
+        callerAbortSignal?: AbortSignal,
         clock: MonotonicClock['now'] = defaultMonotonicClock.now,
     ) {
         if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
@@ -53,7 +53,7 @@ export class Retry<T> implements BusinessOperation<T> {
         this.shouldRetry = shouldRetry;
         this.retryDelay = retryDelay;
         this.sleep = sleep;
-        this.signal = signal;
+        this.callerAbortSignal = callerAbortSignal;
         this.clock = clock;
     }
 
@@ -163,20 +163,20 @@ export class Retry<T> implements BusinessOperation<T> {
     }
 
     private ensureNotAborted(): void {
-        if (this.signal?.aborted) {
+        if (this.callerAbortSignal?.aborted) {
             throw new CallerAbortedError('Caller aborted before first attempt.');
         }
     }
 
     private async waitForRetry(delayMs: number): Promise<void> {
-        if (this.signal?.aborted) {
+        if (this.callerAbortSignal?.aborted) {
             throw new CallerAbortedError('Caller aborted before retry backoff.');
         }
 
         try {
-            await this.sleep(delayMs, this.signal);
+            await this.sleep(delayMs, this.callerAbortSignal);
         } catch (error: unknown) {
-            if (this.signal?.aborted) {
+            if (this.callerAbortSignal?.aborted) {
                 throw new CallerAbortedError('The retry backoff was aborted by the caller.', { cause: error });
             }
 
@@ -186,7 +186,7 @@ export class Retry<T> implements BusinessOperation<T> {
         // Safety net: a conforming Sleeper rejects when the signal aborts during
         // the delay. Re-check after resolution so Retry still honors cancellation
         // if a custom Sleeper resolves despite an abort (for example, a test double).
-        if (this.signal?.aborted) {
+        if (this.callerAbortSignal?.aborted) {
             throw new CallerAbortedError('Caller aborted after retry backoff.');
         }
     }

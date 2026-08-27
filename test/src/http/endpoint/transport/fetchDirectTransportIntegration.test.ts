@@ -48,7 +48,7 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
             url: `${baseUrl}/json`,
             method: HTTP_METHOD_GET,
             headers: {},
-            signal,
+            requestAbortSignal: signal,
         });
 
         expect(response.status).toBe(200);
@@ -64,7 +64,7 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
             url: `${baseUrl}/echo`,
             method: HTTP_METHOD_GET,
             headers: {},
-            signal,
+            requestAbortSignal: signal,
         });
 
         expect(response.status).toBe(200);
@@ -81,7 +81,7 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
             url: `${baseUrl}/missing`,
             method: HTTP_METHOD_GET,
             headers: {},
-            signal,
+            requestAbortSignal: signal,
         });
 
         expect(response.status).toBe(404);
@@ -96,7 +96,7 @@ describe('FetchDirectTransport integration (undici via global fetch)', () => {
             url: `${baseUrl}/json`,
             method: HTTP_METHOD_GET,
             headers: {},
-            signal,
+            requestAbortSignal: signal,
         });
 
         expect(await response.text()).toBe(JSON.stringify({ path: '/json', ok: true }));

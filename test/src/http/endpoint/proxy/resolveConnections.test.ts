@@ -5,10 +5,10 @@ const POOL_CONFIG = Object.freeze({
     connections: 10,
     maxConnections: 50,
     pipelining: 1,
-    keepAliveTimeout: 4000,
-    headersTimeout: 30000,
-    bodyTimeout: 30000,
-    connectTimeout: 5000,
+    keepAliveTimeoutMs: 4000,
+    headersTimeoutMs: 30000,
+    bodyTimeoutMs: 30000,
+    connectTimeoutMs: 5000,
 });
 
 describe('resolveConnections', () => {

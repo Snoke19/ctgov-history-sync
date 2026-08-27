@@ -171,10 +171,10 @@ describe('HttpClient full-stack integration', () => {
         expect(flakyHits).toBe(2);
     });
 
-    it('throws TimeoutException when a real HTTP request exceeds timeoutMs', async () => {
+    it('throws TimeoutException when a real HTTP request exceeds requestAbortTimeoutMs', async () => {
         await expect(
             client.fetchJson(`${baseUrl}/slow`, {
-                timeoutMs: 100,
+                requestAbortTimeoutMs: 100,
                 maxRetries: 0,
             }),
         ).rejects.toBeInstanceOf(TimeoutException);
@@ -186,7 +186,7 @@ describe('HttpClient full-stack integration', () => {
         const controller = new AbortController();
 
         const pending = client.fetchJson(`${baseUrl}/stall`, {
-            signal: controller.signal,
+            callerAbortSignal: controller.signal,
             maxRetries: 0,
         });
 

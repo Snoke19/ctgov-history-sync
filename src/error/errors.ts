@@ -119,23 +119,25 @@ export class CallerAbortedError extends TrialError {
 
 export class EndpointAcquisitionTimeoutError extends TrialError {
     override readonly name = 'EndpointAcquisitionTimeoutError';
-    readonly timeoutMs: number;
+    readonly endpointAcquireTimeoutMs: number;
     readonly proxyCount: number;
 
-    constructor(timeoutMs: number, proxyCount: number) {
-        super(`Endpoint acquisition timeout: no endpoint available within ${timeoutMs}ms (pool size: ${proxyCount})`);
-        this.timeoutMs = timeoutMs;
+    constructor(endpointAcquireTimeoutMs: number, proxyCount: number) {
+        super(
+            `Endpoint acquisition timeout: no endpoint available within ${endpointAcquireTimeoutMs}ms (pool size: ${proxyCount})`,
+        );
+        this.endpointAcquireTimeoutMs = endpointAcquireTimeoutMs;
         this.proxyCount = proxyCount;
     }
 }
 
 export class TokenBucketTimeoutError extends TrialError {
     override readonly name = 'TokenBucketTimeoutError';
-    readonly timeoutMs: number;
+    readonly rateLimitAcquireTimeoutMs: number;
 
-    constructor(timeoutMs: number) {
-        super(`TokenBucket timeout: no token available within ${timeoutMs}ms`);
-        this.timeoutMs = timeoutMs;
+    constructor(rateLimitAcquireTimeoutMs: number) {
+        super(`TokenBucket timeout: no token available within ${rateLimitAcquireTimeoutMs}ms`);
+        this.rateLimitAcquireTimeoutMs = rateLimitAcquireTimeoutMs;
     }
 }
 

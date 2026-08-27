@@ -5,8 +5,8 @@ import type { FetchJsonRequestOptions } from './http.js';
 const requestAssert = makeAssertions(TrialValidationError);
 
 export function validateFetchJsonRequestOptions(options: FetchJsonRequestOptions): void {
-    if (options.timeoutMs !== undefined) {
-        requestAssert.assertInteger(options.timeoutMs, 'timeoutMs', {
+    if (options.requestAbortTimeoutMs !== undefined) {
+        requestAssert.assertInteger(options.requestAbortTimeoutMs, 'requestAbortTimeoutMs', {
             min: 1,
             label: 'a positive integer',
         });

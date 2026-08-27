@@ -18,7 +18,7 @@ type EndpointManagerErrorLogContext = {
 };
 
 export interface EndpointManagerOptions {
-    readonly acquireTimeout: number;
+    readonly endpointAcquireTimeoutMs: number;
     readonly clock?: MonotonicClock['now'] | undefined;
     readonly sleep?: Sleeper['sleep'] | undefined;
 }
@@ -32,7 +32,7 @@ function createEndpointManagerErrorLogContext(error: unknown, endpointCount: num
 
 export class EndpointManager {
     private readonly endpoints: readonly Endpoint[];
-    private readonly acquireTimeout: number;
+    private readonly endpointAcquireTimeoutMs: number;
     private readonly clock: MonotonicClock['now'];
     private readonly sleep: Sleeper['sleep'];
     private nextIndex = 0;
@@ -42,18 +42,18 @@ export class EndpointManager {
             throw new EndpointAssemblyError('EndpointManager requires at least one endpoint.');
         }
 
-        endpointManagerAssert.assertInteger(options.acquireTimeout, 'acquireTimeout', {
+        endpointManagerAssert.assertInteger(options.endpointAcquireTimeoutMs, 'endpointAcquireTimeoutMs', {
             min: 1,
             label: 'a positive integer',
         });
 
         this.endpoints = endpoints;
-        this.acquireTimeout = options.acquireTimeout;
+        this.endpointAcquireTimeoutMs = options.endpointAcquireTimeoutMs;
         this.clock = options.clock ?? defaultMonotonicClock.now;
         this.sleep = options.sleep ?? defaultSleeper.sleep;
 
         logger.info(
-            { endpointCount: this.endpoints.length, acquireTimeoutMs: this.acquireTimeout },
+            { endpointCount: this.endpoints.length, endpointAcquireTimeoutMs: this.endpointAcquireTimeoutMs },
             'Endpoint manager initialized',
         );
     }
@@ -62,11 +62,11 @@ export class EndpointManager {
         return this.endpoints.length;
     }
 
-    async acquireEndpoint(signal: AbortSignal): Promise<EndpointHandle> {
-        const acquisitionDeadline = this.clock() + this.acquireTimeout;
+    async acquireEndpoint(requestAbortSignal: AbortSignal): Promise<EndpointHandle> {
+        const acquisitionDeadline = this.clock() + this.endpointAcquireTimeoutMs;
 
         while (true) {
-            if (signal.aborted) {
+            if (requestAbortSignal.aborted) {
                 throw new CallerAbortedError();
             }
 
@@ -77,12 +77,12 @@ export class EndpointManager {
                 logger.warn(
                     {
                         endpointCount: this.endpoints.length,
-                        acquireTimeoutMs: this.acquireTimeout,
+                        endpointAcquireTimeoutMs: this.endpointAcquireTimeoutMs,
                     },
                     'Endpoint acquisition timed out',
                 );
 
-                throw new EndpointAcquisitionTimeoutError(this.acquireTimeout, this.endpoints.length);
+                throw new EndpointAcquisitionTimeoutError(this.endpointAcquireTimeoutMs, this.endpoints.length);
             }
 
             let shortestWait = Infinity;
@@ -110,12 +110,12 @@ export class EndpointManager {
                 {
                     endpointCount: this.endpoints.length,
                     waitMs,
-                    acquireTimeoutMs: this.acquireTimeout,
+                    endpointAcquireTimeoutMs: this.endpointAcquireTimeoutMs,
                 },
                 'All endpoints busy; waiting for token',
             );
 
-            await this.sleep(waitMs, signal);
+            await this.sleep(waitMs, requestAbortSignal);
         }
     }
 

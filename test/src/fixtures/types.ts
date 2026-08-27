@@ -2,7 +2,7 @@ import { MonotonicClock, RandomSource, Sleeper, WallClock } from '../../../src/h
 
 export interface TestClientOptions {
     readonly concurrency: number;
-    readonly acquireTimeout: number;
+    readonly endpointAcquireTimeoutMs: number;
     readonly sleep: Sleeper['sleep'];
     readonly random: RandomSource['random'];
     readonly monotonicClock: MonotonicClock;

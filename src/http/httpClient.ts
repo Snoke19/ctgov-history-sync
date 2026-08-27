@@ -60,9 +60,9 @@ export interface HttpClient {
 
 export interface HttpClientDefaults {
     /**
-     * Maximum duration of a single HTTP attempt in milliseconds.
+     * Maximum duration of a single HTTP attempt in milliseconds before it is aborted.
      */
-    readonly timeoutMs: number;
+    readonly requestAbortTimeoutMs: number;
 
     /**
      * Maximum number of retries after the initial attempt.
@@ -163,7 +163,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
                 url: sanitizeHttpUrl(url),
                 method: HTTP_METHOD_GET,
                 allow404: options.allow404 ?? false,
-                timeoutMs: options.timeoutMs ?? defaults.timeoutMs,
+                requestAbortTimeoutMs: options.requestAbortTimeoutMs ?? defaults.requestAbortTimeoutMs,
                 maxRetries: options.maxRetries ?? defaults.maxRetries,
             },
             'HTTP request started',
@@ -313,7 +313,7 @@ export async function createHttpClient(options: CreateHttpClientOptions): Promis
                 });
             },
             sleep,
-            options.signal,
+            options.callerAbortSignal,
             monotonicNow,
         );
     }

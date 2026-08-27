@@ -1,9 +1,9 @@
 export interface ProxyPoolConfig {
     readonly connections: number;
     readonly maxConnections: number;
-    readonly connectTimeout: number;
+    readonly connectTimeoutMs: number;
     readonly pipelining: number;
-    readonly keepAliveTimeout: number;
-    readonly headersTimeout: number;
-    readonly bodyTimeout: number;
+    readonly keepAliveTimeoutMs: number;
+    readonly headersTimeoutMs: number;
+    readonly bodyTimeoutMs: number;
 }

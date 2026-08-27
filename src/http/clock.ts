@@ -20,9 +20,9 @@ export interface Sleeper {
     /**
      * Suspend execution for `ms` milliseconds.
      *
-     * If `signal` aborts before the delay elapses, the sleep rejects early.
+     * If `abortSignal` aborts before the delay elapses, the sleep rejects early.
      */
-    sleep(ms: number, signal?: AbortSignal): Promise<void>;
+    sleep(ms: number, abortSignal?: AbortSignal): Promise<void>;
 }
 
 export interface RandomSource {
@@ -31,9 +31,9 @@ export interface RandomSource {
 }
 
 export const defaultSleeper: Sleeper = {
-    sleep: (ms, signal) =>
+    sleep: (ms, abortSignal) =>
         new Promise<void>((resolve, reject) => {
-            if (signal?.aborted) {
+            if (abortSignal?.aborted) {
                 reject(new CallerAbortedError());
                 return;
             }
@@ -42,7 +42,7 @@ export const defaultSleeper: Sleeper = {
 
             const cleanup = (): void => {
                 clearTimeout(timer);
-                signal?.removeEventListener('abort', onAbort);
+                abortSignal?.removeEventListener('abort', onAbort);
             };
 
             const onAbort = (): void => {
@@ -61,7 +61,7 @@ export const defaultSleeper: Sleeper = {
                 resolve();
             }, ms);
 
-            signal?.addEventListener('abort', onAbort, { once: true });
+            abortSignal?.addEventListener('abort', onAbort, { once: true });
         }),
 };
 

@@ -48,7 +48,7 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
             provider,
             limiterFactory: createDisabledLimiterFactory(),
             endpointManagerFactory: new DefaultEndpointManagerFactory({
-                acquireTimeout: 5000,
+                endpointAcquireTimeoutMs: 5000,
             }),
         });
 
@@ -71,7 +71,7 @@ describe('HttpClient endpoint lifecycle & resource management', () => {
             provider,
             limiterFactory: createDisabledLimiterFactory(),
             endpointManagerFactory: new DefaultEndpointManagerFactory({
-                acquireTimeout: 5000,
+                endpointAcquireTimeoutMs: 5000,
             }),
         });
 

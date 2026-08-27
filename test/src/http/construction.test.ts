@@ -19,7 +19,7 @@ describe('Proxy + Undici construction chain', () => {
             createHttpClient(
                 buildHttpClientOptions(provider, {
                     endpointManagerFactory: new DefaultEndpointManagerFactory({
-                        acquireTimeout: 0,
+                        endpointAcquireTimeoutMs: 0,
                     }),
                 }),
             ),
@@ -38,7 +38,7 @@ describe('Proxy + Undici construction chain', () => {
             createHttpClient(
                 buildHttpClientOptions(provider, {
                     endpointManagerFactory: new DefaultEndpointManagerFactory({
-                        acquireTimeout: 0,
+                        endpointAcquireTimeoutMs: 0,
                     }),
                 }),
             ),
@@ -156,10 +156,10 @@ describe('Proxy + Undici construction chain', () => {
         ).rejects.toBeInstanceOf(ConfigurationError);
     });
 
-    it('throws when acquireTimeout is missing', async () => {
+    it('throws when endpointAcquireTimeoutMs is missing', async () => {
         const options = createProxyOptions();
 
-        delete (options as unknown as Record<string, unknown>).acquireTimeout;
+        delete (options as unknown as Record<string, unknown>).endpointAcquireTimeoutMs;
 
         await expect(createProxyEndpointManager(options)).rejects.toBeInstanceOf(EndpointAssemblyError);
     });

@@ -5,10 +5,12 @@ import type { HttpRequest, HttpResponse, HttpTransport, TransportErrorClassifica
 
 export class FetchDirectTransport implements HttpTransport {
     async request(options: HttpRequest): Promise<HttpResponse> {
+        const requestAbortSignal = options.requestAbortSignal;
+        if (!requestAbortSignal) throw new Error('requestAbortSignal is required');
         const response = await fetch(options.url, {
             method: options.method,
             headers: options.headers,
-            signal: options.signal,
+            signal: requestAbortSignal,
         });
 
         return adaptHttpResponse(response);

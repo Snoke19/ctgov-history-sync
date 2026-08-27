@@ -97,7 +97,7 @@ describe('UndiciHttpTransport', () => {
                 url: 'https://api.example.com/resource',
                 method: HTTP_METHOD_GET,
                 headers: { Authorization: 'Bearer test-token' },
-                signal: new AbortController().signal,
+                requestAbortSignal: new AbortController().signal,
                 ...overrides,
             };
         }
@@ -105,7 +105,7 @@ describe('UndiciHttpTransport', () => {
         it('passes signal to fetch', async () => {
             const { signal } = new AbortController();
 
-            await transport.request(makeRequest({ signal }));
+            await transport.request(makeRequest({ requestAbortSignal: signal }));
 
             expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ signal }));
         });

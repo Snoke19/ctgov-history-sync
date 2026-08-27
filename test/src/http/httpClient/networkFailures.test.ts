@@ -128,7 +128,7 @@ describe('HttpClient network & timeout failures', () => {
 
         const error = await expectRejected(
             client.fetchJson(`${API_URL}/cancelled`, {
-                signal: controller.signal,
+                callerAbortSignal: controller.signal,
             }),
             CallerAbortedError,
         );
@@ -137,14 +137,14 @@ describe('HttpClient network & timeout failures', () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('throws TimeoutException when HTTP request exceeds timeoutMs', async () => {
+    it('throws TimeoutException when HTTP request exceeds requestAbortTimeoutMs', async () => {
         const fetchMock = createAbortableFetchMock();
         const client = await createTestClient();
 
         await withClosedClient(client, async () => {
             const error = await expectRejected(
                 client.fetchJson(`${API_URL}/slow`, {
-                    timeoutMs: 50,
+                    requestAbortTimeoutMs: 50,
                     maxRetries: 0,
                 }),
                 TimeoutException,
@@ -164,7 +164,7 @@ describe('HttpClient network & timeout failures', () => {
         await withClosedClient(client, async () => {
             const error = await expectRejected(
                 client.fetchJson(`${API_URL}/timeout-no-retry`, {
-                    timeoutMs: 50,
+                    requestAbortTimeoutMs: 50,
                     maxRetries: 2,
                     retryPolicy: { retryOnTimeout: false },
                 }),
@@ -193,7 +193,7 @@ describe('HttpClient network & timeout failures', () => {
 
         await withClosedClient(client, async () => {
             const pending = client.fetchJson(`${API_URL}/abort-during-backoff`, {
-                signal: controller.signal,
+                callerAbortSignal: controller.signal,
                 maxRetries: 3,
             });
 
@@ -224,7 +224,7 @@ describe('HttpClient network & timeout failures', () => {
 
         await withClosedClient(client, async () => {
             const pending = client.fetchJson(`${API_URL}/slow`, {
-                signal: controller.signal,
+                callerAbortSignal: controller.signal,
                 maxRetries: 1,
             });
 
@@ -247,7 +247,7 @@ describe('HttpClient network & timeout failures', () => {
         await withClosedClient(client, async () => {
             for (let i = 0; i < 3; i++) {
                 const result = await client.fetchJson<{ ok: boolean }>(`${API_URL}/leak-${i}`, {
-                    signal: controller.signal,
+                    callerAbortSignal: controller.signal,
                 });
 
                 expect(result).toEqual({ ok: true });

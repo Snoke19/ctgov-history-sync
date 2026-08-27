@@ -11,7 +11,7 @@ describe('config defaults', () => {
             API_DETAIL_URL: '',
             PAGE_SIZE: 10,
             CONCURRENCY: 10,
-            FETCH_TIMEOUT_MS: 15_000,
+            REQUEST_ABORT_TIMEOUT_MS: 15_000,
             RETRY_BASE_DELAY_MS: 1_000,
             MAX_RETRIES: 3,
             RETRYABLE_STATUS_CODES: [408, 429, 500, 502, 503, 504],
@@ -23,13 +23,13 @@ describe('config defaults', () => {
             PROXY_POOL_CONNECTIONS: 1,
             MAX_POOL_CONNECTIONS: 10,
             PROXY_POOL_PIPELINING: 1,
-            PROXY_POOL_KEEP_ALIVE_TIMEOUT: 300_000,
-            PROXY_POOL_HEADERS_TIMEOUT: 15_000,
-            PROXY_POOL_BODY_TIMEOUT: 45_000,
-            PROXY_POOL_CONNECT_TIMEOUT: 5_000,
+            PROXY_POOL_KEEP_ALIVE_TIMEOUT_MS: 300_000,
+            PROXY_POOL_HEADERS_TIMEOUT_MS: 15_000,
+            PROXY_POOL_BODY_TIMEOUT_MS: 45_000,
+            PROXY_POOL_CONNECT_TIMEOUT_MS: 5_000,
             RATE_LIMIT_CAPACITY: 40,
             RATE_LIMIT_WINDOW: 60_000,
-            ACQUIRE_TIMEOUT: 30_000,
+            ENDPOINT_ACQUIRE_TIMEOUT_MS: 30_000,
         });
     });
 });

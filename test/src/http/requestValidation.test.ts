@@ -3,7 +3,7 @@ import { TrialValidationError } from '../../../src/error/errors.js';
 import { validateFetchJsonRequestOptions } from '../../../src/http/requestValidation.js';
 
 describe('validateFetchJsonRequestOptions', () => {
-    describe('timeoutMs', () => {
+    describe('requestAbortTimeoutMs', () => {
         it.each([
             ['zero', 0],
             ['negative integer', -1],
@@ -12,18 +12,18 @@ describe('validateFetchJsonRequestOptions', () => {
             ['Infinity', Infinity],
             ['negative Infinity', -Infinity],
             ['unsafe integer', Number.MAX_SAFE_INTEGER + 1],
-        ])('rejects %s', (_, timeoutMs) => {
+        ])('rejects %s', (_, requestAbortTimeoutMs) => {
             expect(() =>
                 validateFetchJsonRequestOptions({
-                    timeoutMs,
+                    requestAbortTimeoutMs,
                 }),
             ).toThrow(TrialValidationError);
         });
 
-        it.each([1, 50, 1_000, Number.MAX_SAFE_INTEGER])('accepts positive safe integer %s', (timeoutMs) => {
+        it.each([1, 50, 1_000, Number.MAX_SAFE_INTEGER])('accepts positive safe integer %s', (requestAbortTimeoutMs) => {
             expect(() =>
                 validateFetchJsonRequestOptions({
-                    timeoutMs,
+                    requestAbortTimeoutMs,
                 }),
             ).not.toThrow();
         });

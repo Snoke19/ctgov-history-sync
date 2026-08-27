@@ -6,7 +6,15 @@ export function createAbortError(): Error {
     return error;
 }
 
-export function rejectOnAbort(signal: AbortSignal, reject: (reason?: unknown) => void, error: unknown): void {
+export function rejectOnAbort(
+    signal: AbortSignal | undefined,
+    reject: (reason?: unknown) => void,
+    error: unknown,
+): void {
+    if (!signal) {
+        return;
+    }
+
     if (signal.aborted) {
         reject(error);
         return;

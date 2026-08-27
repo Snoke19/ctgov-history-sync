@@ -9,6 +9,7 @@ import {
     UnexpectedError,
 } from '../error/errors.js';
 import { sanitizeHttpUrl } from '../error/normalization/urlSanitizer.js';
+import { ABORT_REASON_CALLER, ABORT_REASON_TIMEOUT, RequestAbortScope } from '../http/abort/requestAbortScope.js';
 import { defaultWallClock, WallClock } from '../http/clock.js';
 import { EndpointHandle } from '../http/endpoint/endpoint.js';
 import { EndpointManager } from '../http/endpoint/manager/endpointManager.js';
@@ -25,11 +26,10 @@ const CANONICAL_HEADER_NAMES = new Map<string, string>([
     ['user-agent', 'User-Agent'],
 ]);
 
-type TimeoutId = ReturnType<typeof setTimeout>;
 type ClassifiedTransportError = NetworkException | TimeoutException | UnexpectedError;
 
 export interface FetchOperationDefaults {
-    readonly timeoutMs: number;
+    readonly requestAbortTimeoutMs: number;
     readonly userAgent: string;
 }
 
@@ -43,67 +43,38 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     ) {}
 
     async perform(): Promise<HttpResponse> {
-        const controller = new AbortController();
-        const removeCallerAbortListener = this.attachCallerAbort(controller);
-
-        let timeoutId: TimeoutId | undefined;
+        const callerAbortSignal = this.options.callerAbortSignal;
+        const scope = new RequestAbortScope({
+            callerAbortSignal,
+            requestAbortTimeoutMs: this.getRequestAbortTimeoutMs(),
+        });
 
         try {
-            const endpoint = await this.acquireEndpoint(controller.signal);
-
-            timeoutId = this.startRequestTimeout(controller);
-
-            return await this.executeRequest(endpoint, controller.signal);
+            const endpoint = await this.endpointManager.acquireEndpoint(scope.requestAbortSignal);
+            scope.startRequestAbortTimeout();
+            return await this.executeRequest(endpoint, scope.requestAbortSignal);
         } catch (error: unknown) {
-            throw this.handleOperationError(error, controller.signal);
+            throw this.handleOperationError(error, scope.requestAbortSignal);
         } finally {
-            clearTimeout(timeoutId);
-            removeCallerAbortListener();
+            scope.dispose();
         }
     }
 
-    private attachCallerAbort(controller: AbortController): () => void {
-        const callerSignal = this.options.signal;
-
-        if (!callerSignal) {
-            return () => {};
-        }
-
-        const forwardAbort = (): void => {
-            controller.abort('caller');
-        };
-
-        if (callerSignal.aborted) {
-            forwardAbort();
-        } else {
-            callerSignal.addEventListener('abort', forwardAbort, { once: true });
-        }
-
-        return () => {
-            callerSignal.removeEventListener('abort', forwardAbort);
-        };
+    private getRequestAbortTimeoutMs(): number {
+        return this.options.requestAbortTimeoutMs ?? this.defaults.requestAbortTimeoutMs;
     }
 
-    private startRequestTimeout(controller: AbortController): TimeoutId {
-        return setTimeout(() => {
-            controller.abort('timeout');
-        }, this.getRequestTimeoutMs());
-    }
+    private handleOperationError(error: unknown, requestAbortSignal: AbortSignal): unknown {
+        const abortReason = requestAbortSignal.reason;
+        const callerAbortSignal = this.options.callerAbortSignal;
 
-    private getRequestTimeoutMs(): number {
-        return this.options.timeoutMs ?? this.defaults.timeoutMs;
-    }
-
-    private handleOperationError(error: unknown, signal: AbortSignal): unknown {
-        const abortReason = signal.reason;
-
-        if (this.options.signal?.aborted || abortReason === 'caller') {
+        if (callerAbortSignal?.aborted || abortReason === ABORT_REASON_CALLER) {
             return this.createCallerAbortedError(error);
         }
 
         if (error instanceof EndpointAcquisitionTimeoutError) {
             return new TimeoutException(
-                `Endpoint acquisition timed out after ${error.timeoutMs}ms: ${this.sanitizedUrl()}`,
+                `Endpoint acquisition timed out after ${error.endpointAcquireTimeoutMs}ms: ${this.sanitizedUrl()}`,
                 { cause: error },
             );
         }
@@ -112,7 +83,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
             return this.createCallerAbortedError(error);
         }
 
-        if (abortReason === 'timeout') {
+        if (abortReason === ABORT_REASON_TIMEOUT) {
             return this.createRequestTimeoutError(error);
         }
 
@@ -121,24 +92,20 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
     private createCallerAbortedError(cause: unknown): CallerAbortedError {
         return new CallerAbortedError(
-            `Request cancelled by caller: ${this.sanitizedUrl()} — cause: ${describeError(cause)}`,
+            `Request cancelled by caller: ${this.sanitizedUrl()} — cause: ${this.describeError(cause)}`,
             { cause },
         );
     }
 
     private createRequestTimeoutError(cause: unknown): TimeoutException {
         return new TimeoutException(
-            `Request timed out after ${this.getRequestTimeoutMs()}ms: ${this.sanitizedUrl()} — cause: ${describeError(cause)}`,
+            `Request timed out after ${this.getRequestAbortTimeoutMs()}ms: ${this.sanitizedUrl()} — cause: ${this.describeError(cause)}`,
             { cause },
         );
     }
 
-    private async acquireEndpoint(signal: AbortSignal): Promise<EndpointHandle> {
-        return this.endpointManager.acquireEndpoint(signal);
-    }
-
-    private async executeRequest(endpoint: EndpointHandle, signal: AbortSignal): Promise<HttpResponse> {
-        const response = await this.request(endpoint, signal);
+    private async executeRequest(endpoint: EndpointHandle, requestAbortSignal: AbortSignal): Promise<HttpResponse> {
+        const response = await this.request(endpoint, requestAbortSignal);
 
         if (response.ok) {
             return response;
@@ -147,21 +114,21 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         return this.handleHttpError(response);
     }
 
-    private async request(endpoint: EndpointHandle, signal: AbortSignal): Promise<HttpResponse> {
+    private async request(endpoint: EndpointHandle, requestAbortSignal: AbortSignal): Promise<HttpResponse> {
         try {
             return await endpoint.transport.request({
                 url: this.url,
                 method: HTTP_METHOD_GET,
                 headers: this.buildHeaders(),
-                signal,
+                requestAbortSignal,
             });
         } catch (error: unknown) {
             if (error instanceof TrialError) {
                 throw error;
             }
 
-            const reason = signal.reason;
-            if (reason === 'caller' || reason === 'timeout') {
+            const reason = requestAbortSignal.reason;
+            if (reason === ABORT_REASON_CALLER || reason === ABORT_REASON_TIMEOUT) {
                 throw error;
             }
 
@@ -188,7 +155,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
         switch (classification.kind) {
             case 'timeout':
                 return new TimeoutException(
-                    `Request timed out after ${this.getRequestTimeoutMs()}ms: ${this.sanitizedUrl()} — cause: ${describeError(cause)}`,
+                    `Request timed out after ${this.getRequestAbortTimeoutMs()}ms: ${this.sanitizedUrl()} — cause: ${this.describeError(cause)}`,
                     { cause },
                 );
             case 'cancelled': {
@@ -207,7 +174,7 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
 
             case 'network':
                 return new NetworkException(
-                    `Network failure: ${this.sanitizedUrl()} — cause: ${describeError(cause)}`,
+                    `Network failure: ${this.sanitizedUrl()} — cause: ${this.describeError(cause)}`,
                     { cause },
                 );
 
@@ -223,6 +190,11 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
                 );
 
                 return unexpectedError;
+            }
+            default: {
+                const _exhaustiveCheck: never = classification.kind;
+                void _exhaustiveCheck;
+                return new UnexpectedError(cause);
             }
         }
     }
@@ -245,31 +217,31 @@ export class FetchOperation implements BusinessOperation<HttpResponse> {
     private sanitizedUrl(): string {
         return sanitizeHttpUrl(this.url);
     }
-}
 
-/**
- * Produces a human-readable one-line description of any thrown value.
- * Named error codes (e.g. ECONNRESET) are included when present.
- */
-function describeError(error: unknown): string {
-    if (error instanceof Error) {
-        const code = 'code' in error ? (error as NodeJS.ErrnoException).code : undefined;
-        const message = truncate(error.message);
+    /**
+     * Produces a human-readable one-line description of any thrown value.
+     * Named error codes (e.g. ECONNRESET) are included when present.
+     */
+    private describeError(error: unknown): string {
+        if (error instanceof Error) {
+            const code = 'code' in error ? (error as NodeJS.ErrnoException).code : undefined;
+            const message = this.truncate(error.message);
 
-        return code ? `${error.name} (${code}): ${message}` : `${error.name}: ${message}`;
+            return code ? `${error.name} (${code}): ${message}` : `${error.name}: ${message}`;
+        }
+
+        if (typeof error === 'string') {
+            return this.truncate(error);
+        }
+
+        return 'Unknown transport error';
     }
 
-    if (typeof error === 'string') {
-        return truncate(error);
+    private truncate(value: string): string {
+        if (value.length <= MAX_ERROR_DESCRIPTION_LENGTH) {
+            return value;
+        }
+
+        return `${value.slice(0, MAX_ERROR_DESCRIPTION_LENGTH)}…`;
     }
-
-    return 'Unknown transport error';
-}
-
-function truncate(value: string): string {
-    if (value.length <= MAX_ERROR_DESCRIPTION_LENGTH) {
-        return value;
-    }
-
-    return `${value.slice(0, MAX_ERROR_DESCRIPTION_LENGTH)}…`;
 }

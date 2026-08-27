@@ -32,7 +32,7 @@ export class UndiciHttpTransport implements HttpTransport {
             method: options.method,
             headers: options.headers,
             dispatcher: this.agent,
-            signal: options.signal,
+            signal: options.requestAbortSignal,
         });
 
         return adaptHttpResponse(response);
@@ -104,11 +104,11 @@ const createPoolFactory =
             ...rest,
             connections: connections ?? poolConfig.connections,
             pipelining: poolConfig.pipelining,
-            keepAliveTimeout: poolConfig.keepAliveTimeout,
-            headersTimeout: poolConfig.headersTimeout,
-            bodyTimeout: poolConfig.bodyTimeout,
+            keepAliveTimeout: poolConfig.keepAliveTimeoutMs,
+            headersTimeout: poolConfig.headersTimeoutMs,
+            bodyTimeout: poolConfig.bodyTimeoutMs,
             connect: {
-                timeout: connect.timeout ?? poolConfig.connectTimeout,
+                timeout: connect.timeout ?? poolConfig.connectTimeoutMs,
                 ...connect,
             },
         });
